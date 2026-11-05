@@ -76,6 +76,10 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                     self._json(200, analysis)
             elif path == "/api/hm-planning-reviews":
                 self._json(200, {"reviews": repository.list_hm_planning_reviews()})
+            elif path == "/api/hm-planning-briefs":
+                self._json(200, {"briefs": repository.list_hm_planning_briefs()})
+            elif path == "/api/hm-brief-reviews":
+                self._json(200, {"reviews": repository.list_hm_brief_reviews()})
             elif path == "/docs/hm-kaggle-data-pipeline.md":
                 self._send(200, PIPELINE_DOC.read_bytes(), "text/markdown; charset=utf-8")
             elif path.startswith("/api/evidence/"):
@@ -128,6 +132,13 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                 if analysis is None:
                     raise ValueError("H&M 상품기획 분석 결과가 없습니다.")
                 self._json(201, repository.save_hm_planning_review(payload, analysis))
+            elif path == "/api/hm-planning-briefs":
+                analysis = fixtures.get_hm_planning_analysis()
+                if analysis is None:
+                    raise ValueError("H&M 상품기획 분석 결과가 없습니다.")
+                self._json(201, repository.save_hm_planning_brief(payload, analysis))
+            elif path == "/api/hm-brief-reviews":
+                self._json(201, repository.save_hm_brief_review(payload))
             else:
                 self._json(404, {"error": "Not found"})
         except (ValueError, TypeError, json.JSONDecodeError) as exc:

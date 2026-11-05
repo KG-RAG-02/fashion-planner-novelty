@@ -193,6 +193,7 @@ function renderHmPlanningAnalysis(report) {
   }, null, 2);
   $('#hmPlanningStatus').textContent = `${report.product_types.length}개 유형 · ${report.purchase_rows.toLocaleString()} 구매 행 · Article 기준 · 미매칭 ${report.unmatched_weekly_rows}`;
   loadHmPlanningReviews();
+  loadHmPlanningBriefs();
 }
 
 async function loadHmPlanningReviews() {
@@ -200,6 +201,58 @@ async function loadHmPlanningReviews() {
     const { reviews } = await request('/api/hm-planning-reviews');
     $('#hmPlanningReviews').innerHTML = reviews.length ? reviews.map(item => `<article class="hm-opportunity-card"><b>${escapeHtml(item.request.product_group_name)} · ${escapeHtml(item.request.product_type_name)}</b><span>${escapeHtml(item.review_id)} · ${escapeHtml(item.created_at)}</span><small>시즌 ${escapeHtml(item.request.target_season || '미입력')} · 시장 ${escapeHtml(item.request.market || '미입력')} · 채널 ${escapeHtml(item.request.channel || '미입력')}</small><small>선택 근거: ${escapeHtml(item.decision.selection_reason)}</small><small>반대 근거: ${escapeHtml(item.decision.counter_evidence || '미입력')}</small><small>확인 사항: ${escapeHtml(item.decision.unknowns_to_validate || item.request.missing_fields.join(', '))}</small><small>${escapeHtml(item.analysis_version)} · ${escapeHtml(item.source_period)}</small></article>`).join('') : '<div class="empty-result">아직 실제 데이터 후보 선택 기록이 없습니다.</div>';
   } catch (error) { $('#hmPlanningReviews').textContent = error.message; }
+}
+
+async function loadHmPlanningBriefs() {
+  try {
+    const { briefs } = await request('/api/hm-planning-briefs');
+    const { reviews } = await request('/api/hm-brief-reviews');
+    const reviewsByBrief = new Map();
+    for (const review of reviews) {
+      const existing = reviewsByBrief.get(review.brief_id) || [];
+      existing.push(review);
+      reviewsByBrief.set(review.brief_id, existing);
+    }
+    $('#hmPlanningBriefs').innerHTML = briefs.length ? briefs.map(item => `<article class="hm-opportunity-card"><b>${escapeHtml(item.facts.product_group_name)} · ${escapeHtml(item.facts.product_type_name)} · v${item.brief_version}</b><span>${escapeHtml(item.brief_id)} · ${escapeHtml(item.status)} · ${escapeHtml(item.created_at)}</span><small>과거 구매 ${Number(item.facts.purchase_rows).toLocaleString()}건 · 관측 ${escapeHtml(`${item.source_period.start}–${item.source_period.end}`)}</small><small>고객 타깃: 미확인 · 색상/실루엣/소재: ${item.claims.filter(claim => claim.kind === 'hypothesis').length}개 MD 가설</small><small>이미지 prompt inputs · Evidence ${escapeHtml(item.evidence_ids.join(', '))}</small><details><summary>브리프·이미지 입력 JSON</summary><pre class="hm-prompt-template">${escapeHtml(JSON.stringify(item, null, 2))}</pre></details><form class="hm-brief-review-form" data-hm-brief-review="${escapeHtml(item.brief_id)}"><label>근거 연결 <select name="evidence_grounding" required><option value="">점수</option>${[1,2,3,4,5].map(n=>`<option>${n}</option>`).join('')}</select></label><label>요청 적합성 <select name="request_fit" required><option value="">점수</option>${[1,2,3,4,5].map(n=>`<option>${n}</option>`).join('')}</select></label><label>상품 방향 <select name="product_direction" required><option value="">점수</option>${[1,2,3,4,5].map(n=>`<option>${n}</option>`).join('')}</select></label><label>결정 <select name="decision"><option value="revise">수정</option><option value="advance">다음 검토로 진행</option><option value="hold">보류</option></select></label><label class="wide">수정 의견<textarea name="feedback" rows="2"></textarea></label><button class="secondary-button" type="submit">이 버전 검토 기록</button><span class="inline-status"></span></form><div class="brief-review-history">${(reviewsByBrief.get(item.brief_id) || []).map(review => `<small>${escapeHtml(review.created_at)} · ${escapeHtml({revise:'수정',advance:'진행',hold:'보류'}[review.decision])} · 근거 ${review.ratings.evidence_grounding}/5 · 요청 ${review.ratings.request_fit}/5 · 방향 ${review.ratings.product_direction}/5 · ${escapeHtml(review.feedback || '의견 없음')}</small>`).join('')}</div></article>`).join('') : '<div class="empty-result">생성한 실제 데이터 브리프가 없습니다.</div>';
+    $$('[data-hm-brief-review]').forEach(form => form.addEventListener('submit', saveHmBriefReview));
+  } catch (error) { $('#hmPlanningBriefs').textContent = error.message; }
+}
+
+async function saveHmBriefReview(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = Object.fromEntries(new FormData(form).entries());
+  const status = form.querySelector('.inline-status');
+  status.textContent = '저장 중…';
+  try {
+    const result = await request('/api/hm-brief-reviews', { method: 'POST', body: JSON.stringify({
+      brief_id: form.dataset.hmBriefReview, decision: data.decision,
+      ratings: { evidence_grounding: data.evidence_grounding, request_fit: data.request_fit, product_direction: data.product_direction },
+      feedback: data.feedback,
+    }) });
+    status.textContent = `저장 완료 · ${result.review_id}`;
+    await loadHmPlanningBriefs();
+  } catch (error) { status.textContent = error.message; }
+}
+
+async function generateHmBrief() {
+  const form = $('#hmPlanningForm');
+  const data = Object.fromEntries(new FormData(form).entries());
+  const status = $('#hmPlanningSaveStatus');
+  if (!data.opportunity_id) { status.textContent = '기획 후보를 선택해 주세요.'; return; }
+  status.textContent = '브리프 초안 생성 중…';
+  try {
+    const brief = await request('/api/hm-planning-briefs', { method: 'POST', body: JSON.stringify({
+      opportunity_id: data.opportunity_id,
+      request: { target_season: data.target_season, market: data.market, channel: data.channel,
+        price_hypothesis: data.price_hypothesis, color_hypothesis: data.color_hypothesis,
+        silhouette_hypothesis: data.silhouette_hypothesis, material_hypothesis: data.material_hypothesis,
+        design_constraints: data.design_constraints, selection_reason: data.selection_reason,
+        counter_evidence: data.counter_evidence, unknowns_to_validate: data.unknowns_to_validate },
+    }) });
+    status.textContent = `브리프 ${brief.brief_id} v${brief.brief_version} 생성 · ${brief.status}`;
+    await loadHmPlanningBriefs();
+  } catch (error) { status.textContent = error.message; }
 }
 
 async function saveHmPlanningReview(event) {
@@ -211,7 +264,7 @@ async function saveHmPlanningReview(event) {
   try {
     const saved = await request('/api/hm-planning-reviews', { method: 'POST', body: JSON.stringify({
       opportunity_id: data.opportunity_id,
-      request: { target_season: data.target_season, market: data.market, channel: data.channel, price_hypothesis: data.price_hypothesis, design_constraints: data.design_constraints },
+      request: { target_season: data.target_season, market: data.market, channel: data.channel, price_hypothesis: data.price_hypothesis, color_hypothesis: data.color_hypothesis, silhouette_hypothesis: data.silhouette_hypothesis, material_hypothesis: data.material_hypothesis, design_constraints: data.design_constraints },
       decision: { selection_reason: data.selection_reason, counter_evidence: data.counter_evidence, unknowns_to_validate: data.unknowns_to_validate },
     }) });
     status.textContent = `저장 완료 · ${saved.review_id}`;
@@ -359,6 +412,7 @@ function bindUI() {
   });
   $('#generateButton').addEventListener('click', generateVariants);
   $('#hmPlanningForm')?.addEventListener('submit', saveHmPlanningReview);
+  $('#hmBriefGenerateButton')?.addEventListener('click', generateHmBrief);
   $('#searchForm').addEventListener('submit', searchDocuments);
   $('#compareButton').addEventListener('click', () => {
     const panel = $('#comparePanel');

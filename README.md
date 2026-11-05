@@ -58,7 +58,7 @@ PYTHONPATH=src python3 -m vogue_npp.hm_data
 PYTHONPATH=src python3 -m vogue_npp.hm_planning_analysis
 ```
 
-결과 `hm_planning_analysis.json`은 UI의 **상품유형 전체 분석**에 제공됩니다. MD가 후보를 선택해 사유·반대 근거·확인할 미지 항목을 기록하면 합성 데모의 브리프와 분리된 `hm_planning_reviews` 테이블에 저장됩니다. 판매 월은 월요일 시작 주의 시작월이며, 실제 MD 시즌으로 추정하지 않습니다. 연도별 변화는 불완전한 연도와 상품 노출 기간을 보정하지 않은 서술 통계입니다. 상대 가격 구간은 원천 수치 분위 구간으로, 통화나 판매가 제안이 아닙니다. 기획 후보는 과거 판매 규모를 탐색하는 용도입니다.
+결과 `hm_planning_analysis.json`은 UI의 **상품유형 전체 분석**에 제공됩니다. MD가 후보 선택 근거를 저장하거나 선택 후보의 결정적 브리프 초안을 생성하면 합성 데모 브리프와 분리된 `hm_planning_reviews`/`hm_planning_briefs` 테이블에 보존됩니다. 브리프는 Evidence 사실, MD 가설, unknown을 구분하고 이미지 생성 입력 JSON을 만듭니다. 실제 LLM·이미지 생성 API 호출은 하지 않습니다. 판매 월은 월요일 시작 주의 시작월이며, 실제 MD 시즌으로 추정하지 않습니다. 연도별 변화는 불완전한 연도와 상품 노출 기간을 보정하지 않은 서술 통계입니다. 상대 가격 구간은 원천 수치 분위 구간으로, 통화나 판매가 제안이 아닙니다. 기획 후보는 과거 판매 규모를 탐색하는 용도입니다.
 
 결과는 Git에서 제외되는 `data/processed/hm-personalized-fashion-recommendations/` 아래 상품 카탈로그, 주간 거래 집계, Style·상품군·색상·채널·월별 분석 CSV, `hm_analysis.json`, `manifest.json`으로 생성됩니다. 완료된 실제 파일 점검과 제한은 [H&M Kaggle 처리 계획](docs/design/hm-kaggle-data-pipeline.md)에 기록했습니다. 분석 산출물은 아래 웹 앱의 **H&M 데이터** 섹션에 합성 데모와 분리해 표시합니다.
 
@@ -85,6 +85,10 @@ docker compose up --build -d
 브라우저에서 [http://127.0.0.1:8765](http://127.0.0.1:8765)을 엽니다. 중지하려면 `docker compose down`을 실행하세요. 브리프·시안·검토 기록은 Compose named volume에 보존되고, H&M 처리 결과는 호스트의 `data/processed/hm-personalized-fashion-recommendations/`에서 읽기 전용으로 마운트됩니다. Kaggle 원본·가공 파일과 `.env`는 이미지에 복사되지 않습니다. H&M 데이터가 아직 없더라도 앱은 실행되며 해당 화면에 분석 산출물 부재를 표시합니다.
 
 ## 설계 상태
+
+### 실제 데이터 상품기획 흐름 상태
+
+로컬 프로토타입은 H&M 과거 Article 거래 근거 조회, 후보 선택/반대근거 저장, Evidence와 가설을 구분하는 버전형 기획 브리프, 브리프별 사람 검토 기록까지 지원합니다. 브리프 생성은 결정적 템플릿이며 실제 H&M의 승인된 내부 RAG, 트렌드·재고·원가·고객 데이터, 사용자 인증, LLM/이미지 공급자 연결은 아직 없습니다. 따라서 운영용 상품기획 시스템 완료 상태가 아닙니다. 다음 제품화 단계의 데이터 권한, 로그인/역할, 보존·삭제, 모델 공급자/비용, 이미지 권리, 배포 및 모니터링은 [H&M 데이터 흐름 문서](docs/design/hm-kaggle-data-pipeline.md)의 미완료 경계를 기준으로 결정해야 합니다.
 
 에이전트 입력·출력 계약과 향후 통합 경계는 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. 도메인 코어는 기존 입력 정합성 검사, 기획 기회 비교, 내부 콘셉트 초안 생성과 출처 안전 검사를 유지합니다. 별도 로컬 웹 프로토타입은 가상 자료에서만 브리프·평가 흐름을 시연하며, 공통 에이전트 API나 운영용 LLM 생성기로 간주하지 않습니다.
 

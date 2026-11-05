@@ -59,6 +59,19 @@ def initialize() -> None:
                 analysis_version TEXT NOT NULL, source_period TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS hm_planning_briefs (
+                brief_id TEXT PRIMARY KEY, brief_version INTEGER NOT NULL,
+                opportunity_id TEXT NOT NULL, payload TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(opportunity_id, brief_version)
+            );
+            CREATE TABLE IF NOT EXISTS hm_brief_reviews (
+                review_id TEXT PRIMARY KEY, brief_id TEXT NOT NULL,
+                brief_version INTEGER NOT NULL, decision TEXT NOT NULL,
+                ratings_json TEXT NOT NULL, feedback TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(brief_id) REFERENCES hm_planning_briefs(brief_id)
+            );
         """)
         version = db.execute("SELECT value FROM app_meta WHERE key='fixture_version'").fetchone()
         fixture = load_fixture()
@@ -310,4 +323,72 @@ def list_hm_planning_reviews() -> list[dict[str, Any]]:
     return [{"review_id": row["review_id"], "opportunity_id": row["opportunity_id"],
              "request": json.loads(row["request_payload"]), "decision": json.loads(row["decision_payload"]),
              "analysis_version": row["analysis_version"], "source_period": row["source_period"],
+             "created_at": row["created_at"]} for row in rows]
+
+
+def save_hm_planning_brief(payload: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any]:
+    """Build and version a deterministic brief from one H&M candidate."""
+    initialize()
+    from ..planning_workflow import build_review_brief
+
+    brief = build_review_brief(payload, analysis)
+    brief_id = "HM-BRIEF-" + uuid.uuid4().hex[:12].upper()
+    opportunity_id = brief["opportunity_id"]
+    with connect() as db:
+        version = int(db.execute("SELECT COALESCE(MAX(brief_version),0)+1 FROM hm_planning_briefs WHERE opportunity_id=?", (opportunity_id,)).fetchone()[0])
+        created_at = utc_now()
+        brief["brief_id"] = brief_id
+        brief["brief_version"] = version
+        brief["created_at"] = created_at
+        brief["image_prompt_package"]["brief_id"] = brief_id
+        db.execute("INSERT INTO hm_planning_briefs VALUES(?,?,?,?,?)", (brief_id, version, opportunity_id, json.dumps(brief, ensure_ascii=False), created_at))
+    return brief
+
+
+def list_hm_planning_briefs() -> list[dict[str, Any]]:
+    initialize()
+    with connect() as db:
+        rows = db.execute("SELECT payload FROM hm_planning_briefs ORDER BY created_at DESC LIMIT 100").fetchall()
+    return [json.loads(row["payload"]) for row in rows]
+
+
+def save_hm_brief_review(payload: dict[str, Any]) -> dict[str, Any]:
+    """Record a human review against an immutable H&M brief version."""
+    initialize()
+    brief_id = str(payload.get("brief_id", "")).strip()
+    decision = str(payload.get("decision", "")).strip()
+    if decision not in {"revise", "advance", "hold"}:
+        raise ValueError("검토 결정을 선택해 주세요.")
+    supplied_ratings = payload.get("ratings") if isinstance(payload.get("ratings"), dict) else {}
+    ratings: dict[str, int] = {}
+    for key in ("evidence_grounding", "request_fit", "product_direction"):
+        try:
+            value = int(supplied_ratings.get(key, 0))
+        except (TypeError, ValueError):
+            value = 0
+        if not 1 <= value <= 5:
+            raise ValueError("모든 검토 항목은 1–5점으로 입력해 주세요.")
+        ratings[key] = value
+    feedback = str(payload.get("feedback", "")).strip()[:4000]
+    review_id = "HM-BRIEF-REVIEW-" + uuid.uuid4().hex[:10].upper()
+    created_at = utc_now()
+    with connect() as db:
+        brief = db.execute("SELECT brief_version FROM hm_planning_briefs WHERE brief_id=?", (brief_id,)).fetchone()
+        if brief is None:
+            raise ValueError("검토할 브리프를 찾을 수 없습니다.")
+        db.execute("INSERT INTO hm_brief_reviews VALUES(?,?,?,?,?,?,?)", (
+            review_id, brief_id, brief["brief_version"], decision,
+            json.dumps(ratings, ensure_ascii=False), feedback, created_at,
+        ))
+    return {"review_id": review_id, "brief_id": brief_id, "brief_version": brief["brief_version"],
+            "decision": decision, "ratings": ratings, "feedback": feedback, "created_at": created_at}
+
+
+def list_hm_brief_reviews() -> list[dict[str, Any]]:
+    initialize()
+    with connect() as db:
+        rows = db.execute("SELECT * FROM hm_brief_reviews ORDER BY created_at DESC LIMIT 200").fetchall()
+    return [{"review_id": row["review_id"], "brief_id": row["brief_id"],
+             "brief_version": row["brief_version"], "decision": row["decision"],
+             "ratings": json.loads(row["ratings_json"]), "feedback": row["feedback"],
              "created_at": row["created_at"]} for row in rows]
