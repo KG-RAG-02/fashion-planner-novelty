@@ -10,6 +10,18 @@ PYTHONPATH=src python3 -m vogue_npp.prototype_server
 
 브라우저에서 `http://127.0.0.1:8765`를 엽니다. 서버는 loopback 주소에만 바인딩합니다. 종료할 때 터미널에서 `Ctrl+C`를 누릅니다.
 
+## Docker Compose 실행
+
+Docker Compose가 설치된 환경에서는 저장소 루트에서 컨테이너를 빌드하고 백그라운드로 시작합니다.
+
+```bash
+docker compose up --build -d
+```
+
+브라우저에서 `http://127.0.0.1:8765`를 엽니다. 서버는 컨테이너 내부 인터페이스에 바인딩하지만 호스트 포트는 loopback에만 공개됩니다. 종료할 때 `docker compose down`을 실행합니다. 사용자 브리프·시안·평가 SQLite 데이터는 Compose named volume `vogue-local-data`에 남고, 호스트의 H&M `data/processed/hm-personalized-fashion-recommendations/`는 컨테이너 안에 읽기 전용으로 연결됩니다. 이 폴더가 비어 있으면 웹 앱은 실행되고 H&M 결과만 없는 상태로 표시합니다.
+
+이미지 build context에서 `.env`, Kaggle raw ZIP, `data/interim`, `data/processed`, `data/local`은 제외됩니다. 모델 API 키를 Docker 실행 환경에 주입하지 않으며, 현재 프로토타입은 외부 모델 호출을 하지 않습니다.
+
 ## 화면 흐름
 
 ```mermaid
@@ -76,7 +88,7 @@ flowchart LR
 
 ## 보안·운영 경계
 
-- 본 프로토타입은 loopback에서만 실행하고 로그인·팀 권한·감사 통제는 제공하지 않는다. 다른 사용자에게 네트워크로 공유하지 않는다.
+- 로컬 실행은 loopback에 바인딩하고, Docker Compose는 호스트 loopback 포트만 공개한다. 로그인·팀 권한·감사 통제는 제공하지 않으므로 다른 사용자에게 네트워크로 공유하지 않는다.
 - 샘플은 회사 실데이터, 고객 개인정보, 승인되지 않은 기밀 자료를 포함하지 않는다.
 - 브라우저에서 외부 이미지·폰트·스크립트 또는 모델 API를 호출하지 않는다.
 - 현재 `.env`/LLM 설정은 이 로컬 목업 앱에서 읽지 않는다. 실제 모델 연결 전 서버 secret 관리, 권한, 데이터 최소화, 외부 전송 조건 및 API 실패 상태를 설계해야 한다.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -124,9 +125,11 @@ class PrototypeHandler(BaseHTTPRequestHandler):
 
 def main() -> None:
     store.initialize()
-    host, port = "127.0.0.1", 8765
+    host = os.getenv("VOGUE_HOST", "127.0.0.1")
+    port = int(os.getenv("VOGUE_PORT", "8765"))
     server = ThreadingHTTPServer((host, port), PrototypeHandler)
-    print(f"VOGUE prototype running at http://{host}:{port} (local only; synthetic demo and separate H&M analysis)")
+    display_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    print(f"VOGUE prototype running at http://{display_host}:{port} (local only; synthetic demo and separate H&M analysis)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

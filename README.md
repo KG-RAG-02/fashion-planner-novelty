@@ -58,6 +58,16 @@ PYTHONPATH=src python3 -m vogue_npp.prototype_server
 
 브라우저 결과와 데이터 흐름·fixture 스키마·지표 산식·제한사항은 [프로토타입 실행·설계 안내](docs/design/prototype-runbook.md)에 문서화했습니다. 화면의 브리프·시안·평가는 로컬 Git 제외 SQLite 파일 `data/local/prototype.sqlite3`에 기록됩니다. 실제 Kaggle의 과거 상품·거래 분석은 별도 섹션에서 조회하며, 합성 재고/리뷰/트렌드 또는 기획 브리프와 자동 병합하지 않습니다. 포함된 ImageGen 사진은 프로젝트에 고정된 콘셉트 예시이며 앱에서 외부 이미지 API를 실시간 호출하지 않습니다.
 
+### Docker로 실행
+
+Docker Compose를 설치한 뒤 저장소 루트에서 실행합니다.
+
+```bash
+docker compose up --build -d
+```
+
+브라우저에서 [http://127.0.0.1:8765](http://127.0.0.1:8765)을 엽니다. 중지하려면 `docker compose down`을 실행하세요. 브리프·시안·검토 기록은 Compose named volume에 보존되고, H&M 처리 결과는 호스트의 `data/processed/hm-personalized-fashion-recommendations/`에서 읽기 전용으로 마운트됩니다. Kaggle 원본·가공 파일과 `.env`는 이미지에 복사되지 않습니다. H&M 데이터가 아직 없더라도 앱은 실행되며 해당 화면에 분석 산출물 부재를 표시합니다.
+
 ## 설계 상태
 
 에이전트 입력·출력 계약과 향후 통합 경계는 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. 도메인 코어는 기존 입력 정합성 검사, 기획 기회 비교, 내부 콘셉트 초안 생성과 출처 안전 검사를 유지합니다. 별도 로컬 웹 프로토타입은 가상 자료에서만 브리프·평가 흐름을 시연하며, 공통 에이전트 API나 운영용 LLM 생성기로 간주하지 않습니다.
@@ -71,7 +81,7 @@ Notion 요구사항을 기준으로 한 다음 구현 순서와 통합 경계는
 ```python
 from vogue_npp import PlanningInputs, build_planning_context, generate_concept_draft
 
-inputs = PlanningInputs(request=..., trend=..., inventory=...)  # normalized internal models
+inputs = PlanningInputs(request=..., trend=..., sales=..., inventory=...)  # all four normalized inputs
 context = build_planning_context(inputs)
 draft, validation_issues = generate_concept_draft(context)
 ```

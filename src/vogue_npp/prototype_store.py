@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import re
 import sqlite3
 import uuid
@@ -14,8 +15,11 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "examples" / "fixtures" / "prototype_demo.json"
-DB_PATH = ROOT / "data" / "local" / "prototype.sqlite3"
-HM_ANALYSIS_PATH = ROOT / "data" / "processed" / "hm-personalized-fashion-recommendations" / "hm_analysis.json"
+DB_PATH = Path(os.getenv("VOGUE_DB_PATH", str(ROOT / "data" / "local" / "prototype.sqlite3")))
+HM_ANALYSIS_PATH = Path(os.getenv(
+    "VOGUE_HM_ANALYSIS_PATH",
+    str(ROOT / "data" / "processed" / "hm-personalized-fashion-recommendations" / "hm_analysis.json"),
+))
 IMAGEGEN_VARIANT_ID = "IMG-27SS-IMAGEGEN-01"
 IMAGEGEN_ASSET = "/assets/27ss-light-utility-anorak-imagegen.png"
 

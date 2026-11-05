@@ -1,0 +1,34 @@
+services:
+  vogue-prototype:
+    build:
+      context: .
+    image: vogue-new-product-planning:local
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      VOGUE_HOST: 0.0.0.0
+      VOGUE_PORT: "8765"
+      VOGUE_DB_PATH: /app/data/local/prototype.sqlite3
+      VOGUE_HM_ANALYSIS_PATH: /app/data/processed/hm-personalized-fashion-recommendations/hm_analysis.json
+    volumes:
+      - vogue-local-data:/app/data/local
+      - type: bind
+        source: ./data/processed/hm-personalized-fashion-recommendations
+        target: /app/data/processed/hm-personalized-fashion-recommendations
+        read_only: true
+        bind:
+          create_host_path: true
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "from urllib.request import urlopen; urlopen('http://127.0.0.1:8765/api/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  vogue-local-data:
