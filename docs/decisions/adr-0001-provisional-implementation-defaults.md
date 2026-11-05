@@ -18,8 +18,9 @@ API Design에서 최종 wire schema의 상세 필드, 전송, 인증, timeout/re
 3. **초안 생성:** 첫 구현은 결정적 규칙 기반 생성기입니다. 요청에서 명시된 속성과 Evidence가 연결된 트렌드 속성을 정리해 검토용 콘셉트 초안을 만듭니다.
 4. **주장 정책:** 고객 니즈, 판매 수요, 차별화 사실, 가격, 원가, 생산 가능성을 추정해 사실처럼 채우지 않습니다. 입력에 없는 조건은 unknown 또는 검증 질문으로 남깁니다. 재고는 기준 시점 스냅샷으로 취급합니다.
 5. **통신/저장:** 네트워크 호출, 외부 모델 호출, 데이터 원천 연결, 지속 저장은 하지 않습니다. 실패·부분 상태는 도메인 결과와 검증 이슈로 호출자에게 보존합니다.
-6. **공통 계약:** 이 저장소에서 별도 `contracts/` 또는 public ProductConcept serializer를 만들지 않습니다. 합의된 동일 계약 파일이 준비되면 transport/contract adapter를 추가합니다.
-7. **후속 에이전트:** Product Feasibility Agent는 이후 별도 저장소에서 진행합니다. 이 저장소의 범위에 포함하지 않습니다.
+6. **입력 상태:** 상태는 에이전트 ID가 아니라 `planning_request`, `trend_result`, `inventory_product_result` 입력 슬롯별로 보존합니다. 같은 Query & Trend Agent가 요청 구조체와 트렌드 결과를 모두 만들 수 있기 때문입니다.
+7. **공통 계약:** 이 저장소에서 별도 `contracts/` 또는 public ProductConcept serializer를 만들지 않습니다. 합의된 동일 계약 파일이 준비되면 transport/contract adapter를 추가합니다.
+8. **후속 에이전트:** Product Feasibility Agent는 이후 별도 저장소에서 진행합니다. 이 저장소의 범위에 포함하지 않습니다.
 
 ## 고려한 대안
 

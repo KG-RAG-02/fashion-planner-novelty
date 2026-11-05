@@ -57,6 +57,7 @@ class ProductConceptDraft:
     product_definition: SourcedClaim
     market: tuple[str, ...] = ()
     channel: tuple[str, ...] = ()
+    request_constraints: tuple[str, ...] = ()
     field_origins: Mapping[str, ContextOrigin] = field(default_factory=dict)
     input_statuses: Mapping[str, InputStatus] = field(default_factory=dict)
     input_conflicts: tuple[ContextConflict, ...] = ()

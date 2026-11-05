@@ -85,11 +85,21 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
 def _inventory_relationships(context: ProductPlanningContext) -> tuple[SourcedClaim, ...]:
     relationships: list[SourcedClaim] = []
     for product in context.inventory.products:
-        if not product.style_id or not product.evidence_ids:
+        if not product.style_id or not product.style_id.strip() or not product.evidence_ids:
             continue
-        value = f"관련 자사 상품 {product.style_id}가 입력 결과에 포함되어 있습니다."
+        style_id = product.style_id.strip()
+        value = f"관련 자사 상품 {style_id}가 입력 결과에 포함되어 있습니다."
+        if product.quantity is not None:
+            value += (
+                f" 재고 스냅샷: {product.quantity} {product.unit or '(단위 미상)'}"
+                f"; 정의: {product.inventory_definition or '미확인'}"
+            )
         if product.as_of:
-            value += f" 재고 정보 기준 시점: {product.as_of}."
+            value += f"; 기준 시점: {product.as_of}"
+        if product.quantity is not None:
+            value += ". 이 값은 조회 시점의 재고이며 수요나 판매 추세를 뜻하지 않습니다."
+        else:
+            value += "."
         relationships.append(
             SourcedClaim(
                 value=value,
@@ -97,6 +107,19 @@ def _inventory_relationships(context: ProductPlanningContext) -> tuple[SourcedCl
                 evidence_ids=product.evidence_ids,
             )
         )
+        for attribute in product.attributes:
+            if attribute.value is None or not attribute.evidence_ids:
+                continue
+            relationships.append(
+                SourcedClaim(
+                    value=(
+                        f"자사 상품 {style_id}의 확인된 속성: "
+                        f"{attribute.name}={attribute.value}."
+                    ),
+                    kind="evidence_observation",
+                    evidence_ids=attribute.evidence_ids,
+                )
+            )
     return tuple(relationships)
 
 
@@ -106,12 +129,14 @@ def _product_definition(context: ProductPlanningContext) -> SourcedClaim:
     requested_attributes = [
         f"{signal.name.strip()}={signal.value}"
         for signal in context.request.requested_attributes
-        if signal.value is not None and signal.name.strip()
+        if signal.value is not None
+        and signal.name.strip()
+        and signal.origin == "user_requested"
     ]
     evidenced_trends = [
         candidate
         for candidate in context.trends.candidates
-        if candidate.evidence_ids
+        if candidate.evidence_ids and candidate.name.strip()
     ]
     fragments = [f"{prefix} 콘셉트 검토 초안"]
     if requested_attributes:
@@ -149,9 +174,20 @@ def _validation_questions(context: ProductPlanningContext) -> tuple[str, ...]:
     for field_name, value in request_values.items():
         if value and context.request.field_origins.get(field_name, "unknown") == "unknown":
             questions.append(f"{field_name} 값의 출처(user/inferred)를 확인해 주세요.")
+    if any(
+        signal.value is not None and signal.origin == "unknown"
+        for signal in context.request.requested_attributes
+    ):
+        questions.append("출처가 확인되지 않은 요청 속성이 있어 MD 확인이 필요합니다.")
     questions.append("대상 고객과 착용 상황을 MD가 확인해 주세요.")
+    questions.append("기존 자사 상품과의 차별화 방향은 상품기획 검토가 필요합니다.")
     if not context.trends.candidates:
         questions.append("근거가 연결된 트렌드 후보를 확인할 수 있는지 검토해 주세요.")
+    elif not any(
+        candidate.evidence_ids and candidate.name.strip()
+        for candidate in context.trends.candidates
+    ):
+        questions.append("트렌드 후보를 뒷받침하는 Evidence 참조를 확인해 주세요.")
     if not context.inventory.products:
         questions.append("관련 자사 상품과 재고 자료의 조회 여부를 확인해 주세요.")
     if not any(product.style_id and product.evidence_ids for product in context.inventory.products):
@@ -176,6 +212,7 @@ def generate_concept_draft(
         category=context.request.category,
         market=context.request.market,
         channel=context.request.channel,
+        request_constraints=context.request.constraints,
         field_origins={
             **context.request.field_origins,
             **{

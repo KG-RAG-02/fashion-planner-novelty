@@ -28,9 +28,9 @@ VOGUE 프로젝트의 3번 **New Product Planning Agent**를 구현하는 저장
 
 구현 경계와 계약 공백은 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. `src/vogue_npp`에는 입력 정합성 검사, 기획 컨텍스트 조립, 내부 콘셉트 초안 생성과 출처 안전 검사가 있습니다. 생성기는 입력으로 받은 사용자 조건과 Evidence를 정리하는 검토용 뼈대이며, 운영용 생성 모델이나 외부 API가 아닙니다.
 
-## 로컬 사용 예
+## 호출 형태
 
-도메인 모델은 이미 공통 계약 어댑터가 정규화한 입력을 받습니다. 실행 방법과 실제 필드는 계약 합의 후 추가합니다.
+아래는 도메인 함수의 호출 형태를 보여주는 축약 예시입니다. `...`는 사전에 정규화한 입력 객체를 뜻하며 실행 가능한 코드는 아래 합성 데모입니다. 실제 공통 wire payload 어댑터는 계약 합의 후 추가합니다.
 
 ```python
 from vogue_npp import PlanningInputs, build_planning_context, generate_concept_draft
@@ -41,3 +41,11 @@ draft, validation_issues = generate_concept_draft(context)
 ```
 
 `draft`는 내부 검토 모델이며 입력별 상태, 충돌, Evidence ID와 제한사항을 보존합니다. 이를 공통 `ProductConcept` 응답으로 직렬화하는 코드는 아직 없습니다.
+
+합성 입력으로 전체 흐름을 출력하는 예제는 다음과 같이 실행합니다. 예제 안의 상품·트렌드 ID와 재고 값은 모두 가상이며 실제 데이터로 사용하면 안 됩니다.
+
+```bash
+PYTHONPATH=src python3 examples/synthetic_demo.py
+```
+
+초안 품질 시나리오와 아직 측정하지 않은 항목은 [초안 생성 평가 계획](docs/design/generator-evaluation-plan.md)에 적었습니다.

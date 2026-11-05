@@ -51,6 +51,7 @@ class AttributeSignal:
 @dataclass(frozen=True)
 class PlanningRequest:
     result: AgentResult
+    original_query: str | None = None
     season: str | None = None
     market: tuple[str, ...] = ()
     channel: tuple[str, ...] = ()
@@ -286,16 +287,19 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         )
 
     statuses: dict[str, InputStatus] = {}
-    for result in results:
+    named_results = (
+        ("planning_request", inputs.request.result),
+        ("trend_result", inputs.trend.result),
+        ("inventory_product_result", inputs.inventory.result),
+    )
+    for input_name, result in named_results:
         if result.status not in {"ok", "partial", "no_results", "error"}:
             raise InputConsistencyError(
                 f"Unsupported upstream status '{result.status}' from {result.agent_id}."
             )
         if not result.agent_id:
             raise InputConsistencyError("Each upstream result must include an agent_id.")
-        if result.agent_id in statuses:
-            raise InputConsistencyError(f"Duplicate upstream agent_id: {result.agent_id}")
-        statuses[result.agent_id] = result.status
+        statuses[input_name] = result.status
 
     evidence_ids = _unique(
         [
