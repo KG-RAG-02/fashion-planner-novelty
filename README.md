@@ -23,3 +23,7 @@ VOGUE 프로젝트의 3번 **New Product Planning Agent**를 구현하는 저장
 - [Project Overview](https://app.notion.com/p/40d3269b1acd809c98c5dc5de4f61d24)
 - [Project Workflow](https://app.notion.com/p/40f3269b1acd81378143f35b599ef9a0)
 - [저장소 분리 협업 가이드](https://app.notion.com/p/40e3269b1acd81489fecc1052e033b54)
+
+## 설계 상태
+
+구현 경계와 계약 공백은 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. 계약 스키마와 기술 스택이 합의되기 전까지는 이 문서를 제안 상태로 유지합니다.
