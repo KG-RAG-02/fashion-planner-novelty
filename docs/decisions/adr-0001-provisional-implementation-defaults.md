@@ -7,7 +7,7 @@
 
 ## 맥락
 
-Project Workflow는 3번 에이전트의 입력을 `PlanningRequest`, `TrendResult`, `InventoryProductResult`, 출력을 `ProductConcept`으로 정의합니다. 입력 근거를 보존하고, 확인된 사실·해석·가설을 구분하며, 경쟁상품·판매량 분석과 4번 에이전트의 상품성·실행 가능성 분석을 이 저장소에서 수행하지 않습니다.
+기본 워크플로우는 3번 에이전트의 입력을 `PlanningRequest`, `TrendResult`, `InventoryProductResult`, 출력을 `ProductConcept`으로 정의합니다. 이 ADR 작성 당시 경쟁상품·판매량 분석은 제외되어 있었습니다. 사용자는 이후 H&M 소속 MD 페르소나와 H&M Kaggle 자료를 확정하고, 로컬 데이터 수집·판매 실적 분석을 포함하도록 범위를 갱신했습니다. 현재 사용자 요청과 [H&M Kaggle 처리 계획](../design/hm-kaggle-data-pipeline.md)이 이 항목의 최신 결정입니다. 경쟁상품 조사 및 4번 에이전트의 원가·생산·조달·고객 피드백 분석은 여전히 제외합니다.
 
 API Design에서 최종 wire schema의 상세 필드, 전송, 인증, timeout/retry는 미정입니다. 공통 계약 파일은 모든 에이전트 저장소에 같은 경로·내용·버전으로 복제하고, 단일 기준 저장소를 만들지 않는다는 팀 결정이 있습니다. 이 때문에 구현을 멈추지 않으면서도 임의의 wire schema를 고착시키지 않을 내부 기본값이 필요합니다.
 
@@ -17,8 +17,8 @@ API Design에서 최종 wire schema의 상세 필드, 전송, 인증, timeout/re
 2. **도메인 경계:** 내부 dataclass 모델과 순수 함수로 입력 정합성, 콘텍스트 조립, 초안 생성 및 provenance shape 검사를 분리합니다.
 3. **초안 생성:** 첫 구현은 결정적 규칙 기반 생성기입니다. 요청에서 명시된 속성과 Evidence가 연결된 트렌드 속성을 정리해 검토용 콘셉트 초안을 만듭니다.
 4. **RAG/LLM 경계:** 프로젝트 전체에서 트렌드 검색/RAG 인덱스는 Query & Trend Agent 책임입니다. 이 Agent는 전달된 Evidence만 사용하며 `ConceptGenerator` 포트 뒤에 현재 규칙 생성기를 둡니다. 승인된 모델을 고른 뒤 해당 포트에 Evidence-grounded LLM 구현을 추가할 수 있습니다.
-5. **주장 정책:** 고객 니즈, 판매 수요, 차별화 사실, 가격, 원가, 생산 가능성을 추정해 사실처럼 채우지 않습니다. 입력에 없는 조건은 unknown 또는 검증 질문으로 남깁니다. 재고는 기준 시점 스냅샷으로 취급합니다.
-6. **통신/저장:** 네트워크 호출, 외부 모델 호출, 데이터 원천 연결, 지속 저장은 하지 않습니다. 실패·부분 상태는 도메인 결과와 검증 이슈로 호출자에게 보존합니다.
+5. **주장 정책:** 판매 집계는 Kaggle 원천의 관측 기간·필터·정의가 보존된 과거 관찰로 사용합니다. 이를 미래 수요나 인과적 고객 니즈로 확대하지 않습니다. 입력에 없는 가격 기준·반품·품절·생산 가능성은 unknown 또는 검증 질문으로 남깁니다. 재고는 기준 시점 스냅샷으로 취급합니다.
+6. **통신/저장:** live operational API와 외부 모델 호출은 하지 않습니다. 승인된 Kaggle competition 파일은 프로젝트의 Git-ignored `data/raw/`에 내려받고, 재현 가능한 로컬 배치 수집·처리 경계를 별도 설계합니다. 실패·부분 상태는 도메인 결과와 검증 이슈로 호출자에게 보존합니다.
 7. **입력 상태:** 상태는 에이전트 ID가 아니라 `planning_request`, `trend_result`, `inventory_product_result` 입력 슬롯별로 보존합니다. 같은 Query & Trend Agent가 요청 구조체와 트렌드 결과를 모두 만들 수 있기 때문입니다.
 8. **공통 계약:** 이 저장소에서 별도 `contracts/` 또는 public ProductConcept serializer를 만들지 않습니다. 합의된 동일 계약 파일이 준비되면 transport/contract adapter를 추가합니다.
 9. **후속 에이전트:** Product Feasibility Agent는 이후 별도 저장소에서 진행합니다. 이 저장소의 범위에 포함하지 않습니다.
