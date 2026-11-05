@@ -1,6 +1,6 @@
 # New Product Planning Agent 설계 제안
 
-- 상태: Proposed
+- 상태: 내부 구현 기준 · 공통 계약/transport 미확정
 - 작성 목적: 3번 New Product Planning Agent의 구현 경계와 계약 공백을 명확히 하고, 자료에 근거한 LLM 생성 및 복수 엔진 비교 목표를 팀과 검토합니다.
 - 적용 범위: `KG-RAG-02/new-product-planning-agent` 저장소
 - 후속 Product Feasibility Agent: 별도 신규 저장소에서 구현하기로 합의했으며, 이 저장소에는 포함하지 않습니다.
@@ -12,23 +12,27 @@
 
 | 구분 | 책임 |
 | --- | --- |
-| 입력 | `PlanningRequest`, `TrendResult`, `InventoryProductResult` |
-| 출력 | `ProductConcept` |
-| 수행 | 입력 정합성 확인, 기존 자사 상품과의 관계 검토, RAG 근거를 반영한 상품 콘셉트·속성 생성, claim-level 근거 연결 및 복수 생성 엔진 평가 |
+| 입력 | 필수 H&M 판매 분석 `SalesAnalysisResult`, `TrendResult`, `PlanningRequest`, `InventoryProductResult` |
+| 내부 출력 | `ProductConceptDraft`; 공통 `ProductConcept` adapter는 합의 후 연결 |
+| 수행 | H&M Kaggle 자료의 로컬 수집·정제·판매 실적 집계, 입력 정합성 확인, 자사 상품·실적 관계와 기회 분석, RAG 근거 기반 콘셉트 생성, claim-level Evidence 연결 및 복수 생성 엔진 평가 |
 | 보존 | `request_id`, 계약 버전, 입력 상태, Evidence 참조, 누락·불일치·제약 |
-| 제외 | 트렌드 검색/인덱스, 상품·재고 원천 조회, 판매량 분석, 경쟁상품 조사, 원가·마진/생산·조달/고객 피드백 분석, 최종 기획안 렌더링·MD 승인 기록 |
+| 제외 | 트렌드 원천 검색/인덱스, 실시간 상품·재고 API 소유, 경쟁상품 조사, 원가·마진/생산·조달/고객 피드백 분석, 최종 기획안 렌더링·MD 승인 기록 |
 
-근거 없는 고객 니즈는 가설로 표시합니다. 미입력 가격대·고객·소재·핏은 사실처럼 채우지 않습니다. 재고 스냅샷을 수요나 판매 추세로 해석하지 않으며, 상품 채택·가격·발주·외부 공개를 결정하거나 실행하지 않습니다.
+H&M 거래 집계는 데이터의 기간·채널·단위와 출처가 있는 과거 관찰로 사용합니다. 관측된 판매 패턴만으로 미래 수요나 인과적 고객 니즈를 단정하지 않습니다. 근거 없는 고객 니즈는 가설로, 미입력 가격대·소재·핏은 미정으로 표시합니다. 재고 스냅샷은 수요나 판매 추세와 구분하며, 상품 채택·가격·발주·외부 공개를 결정하거나 실행하지 않습니다.
 
 ## 2. 처리 흐름
 
 ```text
-PlanningRequest + TrendResult + InventoryProductResult
-  → 계약/필수 필드 검증
+SalesAnalysisResult + TrendResult + PlanningRequest + InventoryProductResult
+  → 네 입력의 구조·요청 ID·계약 버전·상태 검증
+  → H&M 상품·거래 데이터 manifest 및 집계 Evidence 로드
   → request_id 및 입력 계약 버전 정합성 확인
   → 시즌·시장·채널·카테고리·요청 속성 정합성 확인
   → 입력 상태와 Evidence 참조 보존
-  → 트렌드 근거와 자사 상품·현재 재고의 관계 분석
+  → 1순위 판매 관찰 분석
+  → 2순위 트렌드 Evidence 연결
+  → 3순위 쿼리 조건을 반영하고 충돌을 표시
+  → 4순위 자사 상품·재고 맥락을 보조적으로 참고
   → 기회, 대상 고객/착용 상황 가설, 상품 정의·속성 제안
   → ProductConcept 조립
 ```
@@ -39,6 +43,9 @@ PlanningRequest + TrendResult + InventoryProductResult
 - 시즌·시장·카테고리·속성이 다르면 충돌 필드를 기록하고, 충돌을 해소할 수 없는 주장은 콘셉트 근거로 사용하지 않습니다.
 - 입력 `partial`은 확보된 정보와 누락 사유를 함께 전달합니다.
 - 입력 `no_results`는 데이터 값 0과 구분합니다. 조회 실패, 자료 없음, 실제 0을 재해석하지 않습니다.
+- 네 입력은 모두 필수입니다. 판매 분석 결과, 트렌드, 요청, 상품·재고 입력 중 하나가 빠지면 유효 초안으로 가장하지 않고 입력 오류를 반환합니다. 다만 각 입력의 `partial`, `no_results`, `error` 상태는 계약상 가능한 제한 모드로 보존합니다.
+- 상품 속성과 재고 수량은 의미를 구분합니다. `InventoryProductResult`는 필수지만 개별 데이터에 재고 수량이 없으면 미확정으로 표시하고 상품 속성만 활용합니다. 수량은 `quantity`, `unit`, `inventory_definition`, `as_of`, Evidence를 함께 확인한 경우에만 스냅샷 사실로 기록합니다.
+- 데이터 우선순위는 판매 분석 → 트렌드 → 사용자 쿼리 → 자사 상품·재고입니다. 이는 산술 점수가 아니며, 쿼리 범위를 무시하는 권한도 아닙니다. 충돌은 숨기지 않고 영향받는 주장과 검토 질문을 표시합니다.
 - 사용 권한이 확인되지 않은 원문이나 이미지를 추가로 조회·저장·재배포하지 않습니다.
 - 각 제안 속성은 사용자 요청, 입력 근거 기반 관찰, 에이전트 제안, 미확정 중 하나로 출처 성격을 표시합니다.
 
@@ -50,14 +57,15 @@ PlanningRequest + TrendResult + InventoryProductResult
 | --- | --- | --- |
 | 입력 어댑터 | transport에서 입력을 읽고 공통 계약으로 변환 | API 경계에 한정 |
 | 계약 검증 | 버전, 공통 envelope, 필수 구조, enum 값 검증 | 없음 |
-| 정합성 검사 | 세 입력의 요청·기간·상품 식별·분류 기준 비교 | 없음 |
-| 기회 분석 | 트렌드 Evidence와 자사 상품/재고 근거에서 관찰 가능한 관계 정리 | 없음 |
+| 정합성 검사 | 네 입력의 요청·기간·상품 식별·분류 기준 비교 | 없음 |
+| 기회 분석 | 판매 관찰을 먼저 정리하고 트렌드 Evidence와 자사 상품/재고 관계를 순서대로 비교 | 없음 |
+| Kaggle 데이터 pipeline | H&M competition 원본 수집, 정제, 품질 요약, 기간·article·channel 집계 및 Evidence manifest | 파일 다운로드/로컬 처리. raw data는 Git/외부 전송 금지 |
 | 콘셉트 제안기 | 규칙 기반 기준선과 Evidence-grounded LLM 생성기를 같은 포트 뒤에서 실행 | 복수 엔진 비교는 허용 모델·자료 전송 범위 합의 후 실행 |
 | 실험 실행기 | 고정된 입력/Evidence를 각 생성 엔진에 재생하고 설정·출력을 기록 | API 키·민감 원문을 기록하지 않음 |
 | Evidence 연결기 | 출력의 각 주장·속성에 입력 Evidence ID 연결 | 없음 |
 | 응답 조립기 | `ProductConcept`, 상태, 제약, 오류를 공통 envelope로 반환 | 없음 |
 
-도메인 처리부는 입력을 수정하거나 원천 시스템에 쓰기 요청을 보내지 않는 순수 처리로 유지합니다. 저장소·모델·검색·API 어댑터는 결정 후 연결합니다.
+도메인 처리부는 원천 파일을 수정하지 않습니다. Kaggle 원본은 로컬 불변 입력으로 보관하며, 정제·집계는 별도 source adapter에서 수행합니다. 실시간 운영 API·재고 조회는 구현하지 않습니다.
 
 ## 4. `ProductConcept` 계약 초안
 
@@ -164,7 +172,7 @@ PlanningRequest + TrendResult + InventoryProductResult
 ## 8. MVP 인수 기준
 
 - 계약 버전, 요청 ID, 상태를 검증하거나 검증 불가 사유를 명확히 반환합니다.
-- 세 입력의 조건 불일치와 부분 상태를 숨기지 않습니다.
+- 네 입력의 조건 불일치와 부분 상태를 숨기지 않습니다.
 - 유효한 입력에서 내부 콘셉트 초안을 구성하고 핵심 주장마다 Evidence 또는 명시적 제안·미확정 표기를 연결합니다.
 - 사용자 요청, 근거 기반 관찰, 제안, 가설, 미확정을 구분합니다.
 - 판매량·경쟁상품 분석과 원가·생산·조달·고객 반응 분석을 수행하지 않습니다.
@@ -173,7 +181,7 @@ PlanningRequest + TrendResult + InventoryProductResult
 
 ## 9. 구현 전 팀 합의가 필요한 항목
 
-1. 다섯 에이전트의 공통 계약 저장소별 동기화 책임자와 변경 반영 절차
+1. 다섯 에이전트의 공통 계약 파일 동기화 책임자와 변경 반영 절차
 2. `ProductConcept`와 공통 envelope의 정확한 nesting 및 필수 필드
 3. 속성·기회·근거 분류 enum과 다중 콘셉트 허용 여부
 4. 팀 표준 언어/런타임 및 서비스 실행·배포 방식

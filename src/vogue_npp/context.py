@@ -3,7 +3,8 @@
 These types are internal domain models, not the shared wire contract. A transport
 adapter should map the agreed PlanningRequest, TrendResult, and
 InventoryProductResult schemas into these models after those schemas are
-available and synchronized across repositories.
+available and synchronized across repositories. Local H&M sales observations
+are deterministically adapted from the processed dataset.
 """
 
 from __future__ import annotations
@@ -81,6 +82,34 @@ class TrendResult:
 
 
 @dataclass(frozen=True)
+class SalesObservation:
+    """A deterministic, period-bounded sales aggregate with normalized category."""
+
+    category: str | None
+    purchase_rows: int
+    period_start: str
+    period_end: str
+    source_id: str
+    evidence_ids: tuple[str, ...]
+    product_code: str | None = None
+    product_group: str | None = None
+    season: str | None = None
+    attributes: tuple[AttributeSignal, ...] = ()
+    unit: str = "purchase_rows"
+    source_channel_code: str | None = None
+
+
+@dataclass(frozen=True)
+class SalesAnalysisResult:
+    """Sales analysis produced from the local, versioned source-data pipeline."""
+
+    result: AgentResult
+    observations: tuple[SalesObservation, ...] = ()
+    category_mapping_version: str = "unversioned"
+    dataset_label: str = "sales data"
+
+
+@dataclass(frozen=True)
 class InventoryProduct:
     style_id: str | None
     sku_ids: tuple[str, ...]
@@ -104,8 +133,11 @@ class InventoryProductResult:
 
 @dataclass(frozen=True)
 class PlanningInputs:
+    """All four required inputs, ordered by their role in concept generation."""
+
     request: PlanningRequest
     trend: TrendResult
+    sales: SalesAnalysisResult
     inventory: InventoryProductResult
 
 
@@ -128,6 +160,7 @@ class ProductPlanningContext:
     schema_version: str
     request: PlanningRequest
     trends: TrendResult
+    sales: SalesAnalysisResult
     inventory: InventoryProductResult
     input_statuses: Mapping[str, InputStatus]
     conflicts: tuple[ContextConflict, ...] = ()
@@ -159,6 +192,13 @@ def _comparable_context(inputs: PlanningInputs) -> Mapping[str, Mapping[str, obj
         values["market"]["request"] = request.market
     if request.channel:
         values["channel"]["request"] = request.channel
+
+    sales_seasons = _unique([item.season for item in inputs.sales.observations if item.season])
+    sales_categories = _unique([item.category for item in inputs.sales.observations if item.category])
+    if sales_seasons:
+        values["season"]["sales"] = sales_seasons
+    if sales_categories:
+        values["category"]["sales"] = sales_categories
 
     trend_seasons = _unique([candidate.season for candidate in trends if candidate.season])
     trend_categories = _unique(
@@ -218,6 +258,13 @@ def _comparable_context(inputs: PlanningInputs) -> Mapping[str, Mapping[str, obj
                 inventory_attributes.setdefault(signal.name.strip().casefold(), set()).add(
                     signal.value
                 )
+    sales_attributes: dict[str, set[object]] = {}
+    for observation in inputs.sales.observations:
+        for signal in observation.attributes:
+            if signal.value is not None:
+                sales_attributes.setdefault(signal.name.strip().casefold(), set()).add(
+                    signal.value
+                )
     for name, requested_values in request_attributes.items():
         field_name = f"attribute:{name}"
         values[field_name] = {
@@ -229,6 +276,8 @@ def _comparable_context(inputs: PlanningInputs) -> Mapping[str, Mapping[str, obj
             values[field_name]["inventory"] = tuple(
                 sorted(inventory_attributes[name], key=str)
             )
+        if name in sales_attributes:
+            values[field_name]["sales"] = tuple(sorted(sales_attributes[name], key=str))
     return values
 
 
@@ -270,11 +319,24 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
     schema. Those are separate decisions and responsibilities.
     """
 
-    results = (
-        inputs.request.result,
-        inputs.trend.result,
-        inputs.inventory.result,
-    )
+    if not isinstance(inputs.request, PlanningRequest):
+        raise InputConsistencyError("PlanningRequest is required and must be normalized.")
+    if not isinstance(inputs.trend, TrendResult):
+        raise InputConsistencyError("TrendResult is required and must be normalized.")
+    if not isinstance(inputs.sales, SalesAnalysisResult):
+        raise InputConsistencyError("SalesAnalysisResult is required and must be normalized.")
+    if not isinstance(inputs.inventory, InventoryProductResult):
+        raise InputConsistencyError("InventoryProductResult is required and must be normalized.")
+    if not isinstance(inputs.request.result, AgentResult):
+        raise InputConsistencyError("PlanningRequest must contain a normalized AgentResult.")
+    if not isinstance(inputs.trend.result, AgentResult):
+        raise InputConsistencyError("TrendResult must contain a normalized AgentResult.")
+    if not isinstance(inputs.sales.result, AgentResult):
+        raise InputConsistencyError("SalesAnalysisResult must contain a normalized AgentResult.")
+    if not isinstance(inputs.inventory.result, AgentResult):
+        raise InputConsistencyError("InventoryProductResult must contain a normalized AgentResult.")
+
+    results = [inputs.request.result, inputs.trend.result, inputs.sales.result, inputs.inventory.result]
     request_ids = {result.request_id for result in results}
     if len(request_ids) != 1 or not next(iter(request_ids), ""):
         raise InputConsistencyError("Inputs must share one non-empty request_id.")
@@ -289,6 +351,7 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
     named_results = (
         ("planning_request", inputs.request.result),
         ("trend_result", inputs.trend.result),
+        ("sales_analysis_result", inputs.sales.result),
         ("inventory_product_result", inputs.inventory.result),
     )
     for input_name, result in named_results:
@@ -304,11 +367,14 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         [
             *inputs.request.result.evidence_ids,
             *inputs.trend.result.evidence_ids,
+            *inputs.sales.result.evidence_ids,
             *inputs.inventory.result.evidence_ids,
+            *(evidence_id for observation in inputs.sales.observations for evidence_id in observation.evidence_ids),
             *(evidence_id for candidate in inputs.trend.candidates for evidence_id in candidate.evidence_ids),
             *(evidence_id for product in inputs.inventory.products for evidence_id in product.evidence_ids),
             *(evidence_id for attr in inputs.request.requested_attributes for evidence_id in attr.evidence_ids),
             *(evidence_id for candidate in inputs.trend.candidates for attr in candidate.attributes for evidence_id in attr.evidence_ids),
+            *(evidence_id for observation in inputs.sales.observations for attr in observation.attributes for evidence_id in attr.evidence_ids),
             *(evidence_id for product in inputs.inventory.products for attr in product.attributes for evidence_id in attr.evidence_ids),
         ]
     )
@@ -317,6 +383,7 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         [
             *inputs.request.result.limitations,
             *inputs.trend.result.limitations,
+            *inputs.sales.result.limitations,
             *inputs.inventory.result.limitations,
             *(
                 f"Upstream result from {result.agent_id} has status '{result.status}'."
@@ -347,6 +414,7 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         schema_version=next(iter(schema_versions)),
         request=inputs.request,
         trends=inputs.trend,
+        sales=inputs.sales,
         inventory=inputs.inventory,
         input_statuses=statuses,
         conflicts=conflicts,

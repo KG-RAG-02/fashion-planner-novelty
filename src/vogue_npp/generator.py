@@ -90,9 +90,19 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
             evidence_ids=evidence_ids,
         )
 
-    if _input_usable(context, "planning_request"):
-        for signal in context.request.requested_attributes:
-            add(signal)
+    # Preserve the configured analysis order in the prompt/context: sales,
+    # trend evidence, user constraints, then own-product/stock references.
+    if _input_usable(context, "sales_analysis_result"):
+        for observation in context.sales.observations:
+            if (
+                not context.request.category
+                or not observation.category
+                or context.request.category.strip().casefold() != observation.category.strip().casefold()
+                or (observation.season and context.request.season and observation.season.strip().casefold() != context.request.season.strip().casefold())
+            ):
+                continue
+            for signal in observation.attributes:
+                add(signal, trend_signal=True)
     candidates = (
         context.trends.candidates
         if _input_usable(context, "trend_result")
@@ -103,16 +113,14 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
         if dimension_mismatches(context.request, candidate):
             continue
         for signal in candidate.attributes:
-            requested_values = {
-                str(requested.value).strip().casefold()
-                for requested in context.request.requested_attributes
-                if requested.value is not None
-                and requested.name.strip().casefold() == signal.name.strip().casefold()
-                and requested.origin == "user_requested"
-            }
-            if requested_values and str(signal.value).strip().casefold() not in requested_values:
-                continue
             add(signal, trend_signal=True)
+    if _input_usable(context, "planning_request"):
+        for signal in context.request.requested_attributes:
+            add(signal)
+    if _input_usable(context, "inventory_product_result"):
+        for product in context.inventory.products:
+            for signal in product.attributes:
+                add(signal, trend_signal=True)
     return tuple(attributes)
 
 
@@ -127,7 +135,7 @@ def _inventory_relationships(context: ProductPlanningContext) -> tuple[SourcedCl
         if not product.style_id or not product.style_id.strip() or not product.evidence_ids:
             continue
         style_id = product.style_id.strip()
-        value = f"자사 상품 {style_id}가 재고 결과에 포함되어 있습니다."
+        value = f"자사 상품 {style_id}가 상품·재고 조회 결과에 포함되어 있습니다."
         if product.quantity is not None:
             value += (
                 f" 재고 스냅샷: {product.quantity} {product.unit or '(단위 미상)'}"
@@ -254,8 +262,10 @@ def _validation_questions(
         )
     ):
         questions.append("트렌드 후보를 뒷받침하는 Evidence 참조를 확인해 주세요.")
+    if not _input_usable(context, "sales_analysis_result") or not context.sales.observations:
+        questions.append("요청 카테고리에 적용할 수 있는 판매 분석 결과를 확인해 주세요.")
     if not _input_usable(context, "inventory_product_result") or not context.inventory.products:
-        questions.append("관련 자사 상품과 재고 자료의 조회 여부를 확인해 주세요.")
+        questions.append("자사 상품 및 재고 자료의 범위와 조회 상태를 확인해 주세요.")
     if not any(
         product.style_id and product.evidence_ids
         for product in (
@@ -287,11 +297,16 @@ def generate_concept_draft(
             for evidence_id in finding.statement.evidence_ids
         )
     )
+    sales_observation_count = sum(
+        finding.attribute_name == "purchase_rows" for finding in analysis.findings
+    )
+    relationship_count = len(analysis.findings) - sales_observation_count
     opportunity_summary = (
-        f"Evidence가 연결된 트렌드·자사 상품 속성 비교 {len(analysis.findings)}건을 "
-        "검토 대상으로 정리했습니다. 기획 기회 해석은 MD 검토가 필요합니다."
+        f"판매 데이터 관찰 {sales_observation_count}건을 우선 정리하고, "
+        f"트렌드·자사 상품 관계 {relationship_count}건을 검토 대상으로 구성했습니다. "
+        "이는 미래 수요나 상품 채택 결론이 아니며 MD 검토가 필요합니다."
         if analysis.findings
-        else "비교 가능한 입력 근거가 부족해 구체적인 기획 기회는 판단하지 않았습니다."
+        else "요청 범위에 적용할 수 있는 입력 근거가 부족해 구체적인 기획 기회를 판단하지 않았습니다."
     )
     draft = ProductConceptDraft(
         request_id=context.request_id,

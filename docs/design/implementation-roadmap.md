@@ -1,6 +1,6 @@
 # New Product Planning Agent 향후 작업 설계
 
-- 상태: 제안 · 팀 통합 및 공통 계약 합의 전
+- 상태: 로컬 프로토타입 구현 중 · H&M Kaggle 파일 수집·정제·집계 완료
 - 범위: VOGUE 3번 New Product Planning Agent
 - 기준일: 2026-11-05
 - 기준 문서: Notion Project Overview, Project Workflow, 저장소 분리 협업 가이드, API Design, Data & Knowledge, Experiments & Evaluation, Architecture & Technical Design, GitHub Workflow
@@ -8,9 +8,9 @@
 ## 1. 설계 원칙
 
 1. 5단계 파이프라인의 **3번 에이전트만** 구현합니다. 4번 Product Feasibility Agent는 이후 별도 저장소, 5번 Planning Review Agent는 별도 담당 경계입니다.
-   - Project Workflow의 `VOGUE 기획 파이프라인` 토글은 경쟁상품·판매량 분석이 포함된 검토용 과거 초안이므로 구현 기준으로 쓰지 않습니다.
-2. 확정 흐름은 `PlanningRequest + TrendResult + InventoryProductResult → ProductConcept`입니다.
-3. 경쟁상품/외부상품 시장 조사와 판매량 분석은 범위에서 제외합니다. 현재 재고는 기준 시점 스냅샷이며 수요·판매 추세의 대리 지표가 아닙니다.
+   - Project Workflow의 `VOGUE 기획 파이프라인` 토글은 과거 검토용 초안입니다. 경쟁상품 조사는 계속 제외합니다. H&M Kaggle 판매 집계는 사용자가 별도로 확정한 최신 범위이며 해당 과거 토글을 근거로 하지 않습니다.
+2. 내부 생성 흐름은 `SalesAnalysisResult + TrendResult + PlanningRequest + InventoryProductResult → ProductConceptDraft`입니다. 외부 `ProductConcept` 응답 adapter는 공통 계약 합의 후 연결합니다.
+3. 경쟁상품/외부상품 시장 조사는 범위에서 제외합니다. H&M Kaggle 거래 이력의 기간별 상품·채널 판매 집계는 추가된 분석 목표입니다. 현재 재고는 기준 시점 스냅샷이며 판매 추세와 구분합니다.
 4. 입력에서 확인한 사실, 해석, 제안, 가설, 미확정을 나눕니다. 고객 선호·시장 수요·가격·원가·생산 가능성을 만들어 사실처럼 쓰지 않습니다.
 5. 임시 구현 모델은 공통 계약이 아닙니다. 별도 `vogue-contracts` 저장소나 이 저장소 단독 기준 계약을 만들지 않습니다.
 6. 상품 콘셉트 생성은 자료에 근거한 LLM 사용을 목표로 합니다. 규칙 기반 생성기는 투명한 기준선이며, 복수 엔진을 같은 근거로 비교해 품질 개선을 평가합니다.
@@ -21,14 +21,14 @@
 
 | 영역 | 현재 상태 | 남은 핵심 공백 |
 | --- | --- | --- |
-| 입력 컨텍스트 | 세 입력의 request/schema 일치, 차원 충돌, 입력별 상태·Evidence·제한 보존 | 개별 결과의 원문 필드 검증, 비교 가능한 기간·상품 ID·단위 정의 |
+| 입력 컨텍스트 | 필수 판매 분석·TrendResult·PlanningRequest·InventoryProductResult의 request/schema 일치, 차원 충돌, 슬롯별 상태·Evidence·제한 보존 | 공통 wire payload adapter, H&M 분류 taxonomy 합의, 비교 가능한 기간·상품 ID·단위 정의 |
 | 콘셉트 초안 | 결정적 기준선, `ConceptGenerator` 포트, 입력 Evidence 기반 트렌드/자사 상품 속성 비교 | 복수 엔진 adapter, 고정 컨텍스트 비교 harness, claim-level grounding 및 MD blind evaluation |
 | 출처 검사 | Evidence ID 존재 여부, 일부 claim/attribute 출처 형식 검사 | Evidence 권한·최신성·의미적 뒷받침은 입력/별도 평가 영역 |
 | 서비스 연결 | 공통 wire adapter와 외부 API 없음. `.env`와 provider-neutral settings 마련 | 공통 계약 확정 후 입력·출력 adapter, 이후 전송/API |
-| 데이터 연결 | 없음. upstream 결과만 소비하도록 경계 설정 | Agent 1·2의 합의된 출력 예시와 승인 샘플 |
+| 데이터 연결 | H&M Kaggle 자료를 로컬에서 처리하고 별도 분석 화면에 표시. 원본·파생물은 Git 제외 | Agent 2 상품/재고 입력과의 ID·시즌·단위 매핑, 권한 검토 후 브리프 Evidence 연결 |
 | 평가 | 합성 데모와 평가 설계 제안(미실행) | 승인된 holdout 데이터셋, 기준선 대 복수 생성 엔진 비교, 별도 RAG end-to-end 평가 |
 
-현재 동작은 [임시 구현 기본값 ADR](../decisions/adr-0001-provisional-implementation-defaults.md), [설계 제안](new-product-planning-agent.md), [초안 생성 평가 계획](generator-evaluation-plan.md)에 기록되어 있습니다.
+현재 동작은 [임시 구현 기본값 ADR](../decisions/adr-0001-provisional-implementation-defaults.md), [설계 제안](new-product-planning-agent.md), [초안 생성 평가 계획](generator-evaluation-plan.md), [H&M Kaggle 파이프라인](hm-kaggle-data-pipeline.md)에 기록되어 있습니다. H&M 결과는 현재 합성 데모 및 브리프 생성과 분리되어 있으며 자동으로 LLM에 전달되지 않습니다.
 
 ## 3. 목표 아키텍처
 
@@ -37,6 +37,8 @@ flowchart LR
     A[PlanningRequest] --> N[입력 검증 및 정규화]
     B[TrendResult] --> N
     C[InventoryProductResult] --> N
+    K[H&M Kaggle files] --> I[manifest·정제·주간 판매 집계]
+    I --> X
     N --> X[조건 충돌·상태·Evidence 보존]
     X --> O[근거 기반 기획 기회 분석]
     O --> G[ConceptGenerator 포트: 규칙 기반 기준선 / 복수 Evidence-grounded LLM 엔진]
@@ -47,13 +49,14 @@ flowchart LR
     W -. 합의 후 serializer .-> R
 ```
 
-도메인 코어는 계약 어댑터가 만드는 정규화 입력만 처리합니다. Query & Trend Agent가 소유한 RAG 검색 결과가 `TrendResult`로 이 에이전트에 전달됩니다. 이 저장소는 자체 retriever나 vector/graph index를 만들지 않습니다. `ProductConceptDraft`는 내부 모델이고, 최종 `ProductConcept` 필드 구조와 공통 응답 envelope는 다섯 저장소의 계약 변경 절차가 끝난 뒤 연결합니다.
+도메인 코어는 계약 어댑터가 만드는 정규화 입력과 H&M pipeline의 집계 Evidence를 처리합니다. Kaggle pipeline은 이 저장소에서 로컬 파일 기반으로 수행하며 실시간 H&M API나 현재 재고를 대체하지 않습니다. Query & Trend Agent의 RAG 검색 결과도 `TrendResult`로 전달됩니다. 이 저장소는 별도 트렌드 검색기나 vector/graph index를 만들지 않습니다. `ProductConceptDraft`는 내부 모델이고, 최종 `ProductConcept` 필드 구조와 공통 응답 envelope는 다섯 저장소의 계약 변경 절차가 끝난 뒤 연결합니다.
 
 ## 4. 작업 단계
 
 | 순서 | 작업 | 주요 산출물 | 완료 조건 | 선행 조건 |
 | --- | --- | --- | --- | --- |
 | 0 | 계약 중립 코어 기반 마련 | 입력 정합성 검사, 내부 draft·출처 검사, 결정적 생성기, 합성 데모 | 현재 브랜치에 반영됨 | 없음 |
+| 0.5 | H&M Kaggle 수집·분석 pipeline | ignored raw data, manifest, 스키마/품질 요약, 주간 상품·채널 집계와 별도 UI | 실제 자료 처리와 분석을 완료했고, 합성 데모와 분리해 표시 | 완료 |
 | 1 | 충돌 인지형 입력 준비 | 입력 완전성 규칙, 충돌별 사용 가능 필드, 근거·미확정 분리 | 충돌한 시즌/카테고리 등을 제안 사실처럼 사용하지 않고 질문으로 보존 | 계약 없이 진행 가능 |
 | 2 | 기획 기회 분석 코어 | `OpportunityFinding` 내부 모델과 분석 규칙 | 트렌드 근거와 자사 상품 속성의 관계를 설명하되 데이터 공백을 수요·상품 공백으로 오해하지 않음 | 1단계, 입력 완전성 메타데이터 필요 |
 | 3 | 도메인 회귀 검증 | 단위·상태·출처·충돌 테스트와 합성 fixture | 평가 계획의 핵심 시나리오가 반복 실행 가능하고 실제 0/no_results/error를 구별 | 1·2단계 |
@@ -64,7 +67,7 @@ flowchart LR
 | 8 | 에이전트 간 통합 | Agent 1·2 결과 연결, 후속 단계 호환 검증 | 부분 결과·오류·Evidence가 손실 없이 전달되고 담당 경계를 넘지 않음 | 6단계; 4·7단계 적용 여부는 모델·전송 선택에 따름 |
 | 9 | 평가 및 릴리스 준비 | 데이터 버전·커밋·검색 컨텍스트·엔진 설정·claim 판정·MD 검토 결과 | 고정 컨텍스트의 엔진별 결과와 별도 end-to-end RAG 결과를 분리 보고. 품질/안전 기준 통과와 미측정 항목 명시 | 3·8단계, 평가 데이터 및 검토자 승인 |
 
-단계 1~3은 공통 API 결정 없이 진행할 수 있습니다. 4단계부터는 계약 변경을 단일 레포에서 먼저 확정하지 않고, 관련 레포 PR을 서로 연결합니다.
+H&M 파일 수집·정제·집계 및 별도 조회 화면(0.5)은 완료했습니다. 단계 1~3은 공통 API 결정 없이 진행할 수 있습니다. 4단계부터는 계약 변경을 단일 레포에서 먼저 확정하지 않고, 관련 레포 PR을 서로 연결합니다.
 
 ## 5. 다음 구현 단위: 충돌 인지형 기회 분석
 
@@ -78,15 +81,16 @@ flowchart LR
 
 ### 5.2 기회 분석 규칙
 
-기회 분석은 외부 시장이나 판매성과가 아닌 전달된 근거만으로 수행합니다.
+기회 분석은 경쟁상품 조사 없이 전달된 트렌드·자사 상품 근거와 H&M Kaggle의 관측 판매 집계를 함께 사용합니다. 거래 패턴은 관측 사실이며 미래 수요나 인과효과로 확대하지 않습니다.
 
 1. 요청 속성은 사용자 조건으로 보존합니다.
 2. Evidence가 연결된 트렌드 속성은 트렌드 입력에서 관찰된 후보로 연결합니다.
 3. Evidence가 연결된 자사 상품 속성과 현재 재고는 기존 상품 상태의 관찰로 기록합니다.
-4. 트렌드 후보와 자사 상품 속성이 맞는지, 다르거나 빠진 부분이 무엇인지 **입력 자료의 범위 안에서** 정리합니다.
-5. 카탈로그 범위/완전성이 확인되지 않으면 “자사 상품에 없다”, “상품 구성이 비었다”라고 단정하지 않습니다. `자료에서 확인되지 않음`과 `실제 부재`를 분리합니다.
-6. 재고량은 동시 코디 제안에 참고할 수 있는 스냅샷 정보입니다. 높거나 낮은 수량을 인기·과잉재고·판매속도로 해석하지 않습니다.
-7. 분석 결과는 `관찰`, `해석`, `가설`, `제안`, `미확정` 내부 유형으로 보존하고, 핵심 유형마다 근거 ID 또는 검증 질문을 연결합니다.
+4. Kaggle 거래행은 실제로 존재하고 의미를 확인한 날짜·상품 ID·채널·가격 필드로 기간×상품×채널 단위 집계를 만듭니다. 판매 수량과 가격 합계는 산식·단위/통화 의미를 Evidence에 남깁니다.
+5. 트렌드 후보와 자사 상품 속성이 맞는지, 다르거나 빠진 부분이 무엇인지 **입력 자료의 범위 안에서** 정리합니다.
+6. 카탈로그 범위/완전성이 확인되지 않으면 “자사 상품에 없다”, “상품 구성이 비었다”라고 단정하지 않습니다. `자료에서 확인되지 않음`과 `실제 부재`를 분리합니다.
+7. 재고량은 동시 코디 제안에 참고할 수 있는 스냅샷 정보입니다. 높거나 낮은 수량을 품절률이나 수요로 해석하지 않습니다.
+8. 분석 결과는 `관찰`, `해석`, `가설`, `제안`, `미확정` 내부 유형으로 보존하고, 핵심 유형마다 근거 ID 또는 검증 질문을 연결합니다.
 
 ### 5.3 산출물 경계
 
@@ -103,7 +107,7 @@ flowchart LR
 
 ### 5.4 RAG 기반 LLM 연결
 
-- Retrieval은 Query & Trend Agent의 책임입니다. 3번 에이전트에는 해당 에이전트가 반환한 검색 결과, 관계 경로와 Evidence만 전달합니다.
+- 트렌드 Retrieval은 Query & Trend Agent의 책임입니다. 3번 에이전트는 그 검색 결과와, H&M Kaggle pipeline에서 만든 버전 고정·기간 명시 상품/판매 집계 Evidence를 함께 사용합니다.
 - 규칙 기반 구현체는 설명 가능한 기준선으로 유지합니다. LLM은 콘셉트 생성의 목표 구현이며, 서로 다른 엔진은 동일한 `ConceptGenerator` 포트 뒤에 adapter로 연결해 비교합니다. provider/model 선정 전에는 외부 호출을 구현하지 않습니다.
 - 같은 엔진 비교 실험에서 prompt 버전·구조화 출력 계약·생성 설정을 고정하고, 맞출 수 없는 설정 차이는 통제 변수로 기록합니다. 한 번의 실험에서 엔진과 검색 결과를 동시에 바꾸지 않습니다.
 - 엔진 식별자는 추상 registry/config에서 관리하고, 자격 증명은 환경 변수 이름으로 참조합니다. 실제 키는 로컬 `.env` 또는 승인된 secret store에 두며 저장소에 넣지 않습니다. Provider SDK와 설정 필드는 엔진 선택 후 필요한 만큼만 추가합니다.
@@ -146,8 +150,8 @@ Experiments & Evaluation 원칙에 따라 데이터 버전, 코드 커밋, 평�
 
 ## 8. 이 에이전트가 하지 않을 일
 
-- 자체 트렌드/상품/재고 데이터베이스 또는 인덱스를 소유·복제하지 않습니다.
-- 경쟁상품·외부상품 조사와 판매량 분석을 추가하지 않습니다.
+- 자체 트렌드 검색 인덱스와 실시간 상품/재고 API를 소유하지 않습니다. H&M Kaggle 원본 및 파생 집계는 로컬 Git-ignored 데이터 pipeline에서 관리합니다.
+- 경쟁상품·외부상품 조사는 추가하지 않습니다. H&M 상품·판매 집계 분석은 포함합니다.
 - 원가·마진·생산·조달·고객 피드백 분석을 중복 구현하지 않습니다.
 - MD 검토 기록, 최종 기획안 렌더링/승인, 가격 확정, 발주, 외부 공개를 수행하지 않습니다.
 - 계약 미정 상태에서 이 저장소의 모델을 여러 레포의 기준 schema라고 부르지 않습니다.

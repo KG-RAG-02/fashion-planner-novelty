@@ -11,6 +11,7 @@ from .context import (
     InventoryProduct,
     PlanningRequest,
     ProductPlanningContext,
+    SalesObservation,
     TrendCandidate,
 )
 
@@ -77,6 +78,7 @@ def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysi
     questions: list[str] = []
     limitations: list[str] = []
     trend_status = context.input_statuses.get("trend_result")
+    sales_status = context.input_statuses.get("sales_analysis_result")
     inventory_status = context.input_statuses.get("inventory_product_result")
     request_status = context.input_statuses.get("planning_request")
 
@@ -86,6 +88,8 @@ def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysi
         )
     if trend_status in {"error", "no_results"}:
         limitations.append(f"TrendResult input status is '{trend_status}'; no trend claims were analyzed.")
+    if sales_status in {"error", "no_results"}:
+        limitations.append(f"SalesAnalysisResult status is '{sales_status}'; no sales observations were analyzed.")
     if inventory_status in {"error", "no_results"}:
         limitations.append(
             f"InventoryProductResult input status is '{inventory_status}'; "
@@ -93,6 +97,54 @@ def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysi
         )
 
     request_usable = request_status in {"ok", "partial"}
+    sales_findings: list[OpportunityFinding] = []
+    eligible_sales: list[SalesObservation] = []
+    if request_usable and sales_status in {"ok", "partial"}:
+        for observation in context.sales.observations:
+            if not context.request.category or not observation.category:
+                questions.append(
+                    "판매 집계의 상품 분류와 요청 카테고리 매핑을 확인할 수 없어 해당 판매 행을 콘셉트 근거에 사용하지 않았습니다."
+                )
+                continue
+            if _key(context.request.category) != _key(observation.category):
+                continue
+            if observation.season and context.request.season and _key(observation.season) != _key(context.request.season):
+                questions.append("판매 관찰의 시즌이 요청 시즌과 달라 해당 관찰을 기획 근거에서 제외했습니다.")
+                continue
+            if observation.purchase_rows < 0 or not observation.evidence_ids:
+                questions.append("유효한 구매 행 수 또는 Evidence가 없는 판매 관찰은 사용하지 않았습니다.")
+                continue
+            eligible_sales.append(observation)
+            product_label = (
+                f"상품 코드 {observation.product_code}"
+                if observation.product_code
+                else (observation.product_group or observation.category)
+            )
+            statement = (
+                f"{context.sales.dataset_label}에서 {observation.period_start}~{observation.period_end} 기간에 "
+                f"{product_label}의 구매 기록 {observation.purchase_rows:,} {observation.unit}가 관측됐습니다. "
+                "이는 해당 자료 기간의 관찰이며 미래 수요나 고객 선호를 뜻하지 않습니다."
+            )
+            sales_findings.append(
+                OpportunityFinding(
+                    statement=SourcedClaim(
+                        value=statement,
+                        kind="evidence_observation",
+                        evidence_ids=observation.evidence_ids,
+                    ),
+                    style_id=observation.product_code,
+                    attribute_name="purchase_rows",
+                    limitations=(
+                        f"판매 출처 {observation.source_id}; 기준 기간 {observation.period_start}–{observation.period_end}.",
+                        "과거 구매 기록은 미래 수요나 인과적 고객 니즈를 입증하지 않습니다.",
+                    ),
+                )
+            )
+    if not sales_findings:
+        limitations.append(
+            "요청 카테고리와 매핑된 유효 판매 관찰이 없어 판매 데이터 우선 분석을 수행할 수 없습니다."
+        )
+        questions.append("판매 데이터의 상품 분류 매핑과 적용 가능한 관측 기간을 확인해 주세요.")
     candidates = (
         context.trends.candidates
         if request_usable and trend_status in {"ok", "partial"}
@@ -100,9 +152,12 @@ def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysi
     )
     products = (
         context.inventory.products
-        if request_usable and inventory_status in {"ok", "partial"}
+        if request_usable
+        and context.inventory is not None
+        and inventory_status in {"ok", "partial"}
         else ()
     )
+    findings.extend(sales_findings)
     eligible_candidates: list[TrendCandidate] = []
     eligible_products: list[InventoryProduct] = []
 
@@ -131,6 +186,49 @@ def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysi
             questions.append("Style ID 또는 Evidence가 부족한 자사 상품은 비교에서 제외했습니다.")
             continue
         eligible_products.append(product)
+
+    # Sales is the primary signal; add its directly evidenced attribute
+    # relationships with trend inputs before the lower-priority own-stock view.
+    for observation in eligible_sales:
+        for candidate in eligible_candidates:
+            for sales_attribute in _evidence_attributes(observation.attributes):
+                for trend_attribute in _evidence_attributes(candidate.attributes):
+                    if _key(sales_attribute.name) != _key(trend_attribute.name):
+                        continue
+                    same_value = _key(sales_attribute.value) == _key(trend_attribute.value)
+                    relation = "같은 값" if same_value else "서로 다른 값"
+                    statement = (
+                        f"판매 관찰 상품 {observation.product_code or observation.product_group}의 "
+                        f"{sales_attribute.name}={sales_attribute.value}와 트렌드 후보 "
+                        f"'{candidate.name}'의 {trend_attribute.name}={trend_attribute.value}가 {relation}으로 확인됩니다. "
+                        f"판매 기록은 {observation.period_start}~{observation.period_end} 기간의 "
+                        f"{observation.purchase_rows:,} {observation.unit}입니다."
+                    )
+                    relation_questions = [
+                        "이 판매·트렌드 관계는 관찰 수준이며 인과나 미래 수요를 뜻하지 않습니다.",
+                        "이 관계를 신상품 콘셉트에 반영할지 MD 검토가 필요합니다.",
+                    ]
+                    findings.append(
+                        OpportunityFinding(
+                            statement=SourcedClaim(
+                                value=statement,
+                                kind="evidence_observation",
+                                evidence_ids=tuple(dict.fromkeys((
+                                    *observation.evidence_ids,
+                                    *sales_attribute.evidence_ids,
+                                    *trend_attribute.evidence_ids,
+                                ))),
+                            ),
+                            trend_name=candidate.name,
+                            style_id=observation.product_code,
+                            attribute_name=sales_attribute.name,
+                            questions=tuple(relation_questions),
+                            limitations=(
+                                "판매 집계는 과거 관찰이며 트렌드가 판매를 유발했다는 증거가 아닙니다.",
+                            ),
+                        )
+                    )
+                    questions.extend(relation_questions)
 
     requested_values = _requested_values(context.request)
     compared = 0
