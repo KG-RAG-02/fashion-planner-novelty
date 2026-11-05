@@ -19,10 +19,10 @@ from vogue_npp import (
     InventoryProductResult,
     PlanningInputs,
     PlanningRequest,
+    RuleBasedConceptGenerator,
     TrendCandidate,
     TrendResult,
     build_planning_context,
-    generate_concept_draft,
 )
 
 
@@ -109,6 +109,14 @@ def main() -> None:
                 unit="pieces",
                 inventory_definition="available_to_sell",
                 as_of="2026-11-05T00:00:00+09:00",
+                attributes=(
+                    AttributeSignal(
+                        name="silhouette",
+                        value="regular",
+                        origin="evidence_observation",
+                        evidence_ids=("inventory:E-SYN-003",),
+                    ),
+                ),
                 evidence_ids=("inventory:E-SYN-002",),
             ),
         ),
@@ -117,7 +125,8 @@ def main() -> None:
     context = build_planning_context(
         PlanningInputs(request=request, trend=trend, inventory=inventory)
     )
-    draft, validation_issues = generate_concept_draft(context)
+    generator = RuleBasedConceptGenerator()
+    draft, validation_issues = generator.generate(context)
     print("SYNTHETIC EXAMPLE ONLY — not project or business data")
     print(
         json.dumps(

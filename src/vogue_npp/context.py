@@ -236,30 +236,29 @@ def _conflicts(inputs: PlanningInputs) -> tuple[ContextConflict, ...]:
     conflicts: list[ContextConflict] = []
     for field_name, sources in _comparable_context(inputs).items():
         normalized = {key: value for key, value in sources.items() if value not in (None, (), [])}
-        if len(normalized) < 2:
+        if "request" not in normalized:
             continue
 
-        source_values = {
-            source: set(value if isinstance(value, tuple) else (value,))
-            for source, value in normalized.items()
-        }
-        source_names = tuple(source_values)
-        has_disjoint_pair = any(
-            source_values[left].isdisjoint(source_values[right])
-            for index, left in enumerate(source_names)
-            for right in source_names[index + 1 :]
-        )
-        if has_disjoint_pair:
-            conflicts.append(
-                ContextConflict(
-                    field=field_name,
-                    values=normalized,
-                    message=(
-                        f"Input {field_name} values differ; do not combine claims "
-                        "that depend on this field without resolving the mismatch."
-                    ),
+        def value_set(value: object) -> set[str]:
+            items = value if isinstance(value, tuple) else (value,)
+            return {str(item).strip().casefold() for item in items if item is not None}
+
+        request_values = value_set(normalized["request"])
+        for source, value in normalized.items():
+            if source == "request" or not value_set(value):
+                continue
+            if request_values.isdisjoint(value_set(value)):
+                conflicts.append(
+                    ContextConflict(
+                        field=field_name,
+                        values={"request": normalized["request"], source: value},
+                        message=(
+                            f"Request {field_name} does not match the {source} result. "
+                            "Keep both values and request review before using the "
+                            "mismatched result as support."
+                        ),
+                    )
                 )
-            )
     return tuple(conflicts)
 
 

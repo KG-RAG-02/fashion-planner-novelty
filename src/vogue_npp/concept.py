@@ -46,6 +46,18 @@ class ProposedAttribute:
 
 
 @dataclass(frozen=True)
+class OpportunityFinding:
+    """Evidence-linked comparison for human review, not a market-gap claim."""
+
+    statement: SourcedClaim
+    trend_name: str | None = None
+    style_id: str | None = None
+    attribute_name: str | None = None
+    questions: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class ProductConceptDraft:
     """Internal candidate shape for human review before wire serialization."""
 
@@ -64,6 +76,7 @@ class ProductConceptDraft:
     evidence_ids: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
     attributes: tuple[ProposedAttribute, ...] = ()
+    opportunity_findings: tuple[OpportunityFinding, ...] = ()
     relation_to_own_products: tuple[SourcedClaim, ...] = ()
     differentiation: tuple[SourcedClaim, ...] = ()
     risks: tuple[SourcedClaim, ...] = ()
@@ -193,6 +206,24 @@ def validate_concept_draft(
                     known_evidence_ids=known_evidence_ids,
                 )
             )
+
+    for index, finding in enumerate(draft.opportunity_findings):
+        issues.extend(
+            _check_claim(
+                finding.statement,
+                path=f"opportunity_findings[{index}].statement",
+                known_evidence_ids=known_evidence_ids,
+            )
+        )
+        for question_index, question in enumerate(finding.questions):
+            if not question.strip():
+                issues.append(
+                    ValidationIssue(
+                        path=f"opportunity_findings[{index}].questions[{question_index}]",
+                        code="EMPTY_VALIDATION_QUESTION",
+                        message="An opportunity review question must contain text.",
+                    )
+                )
 
     requested_attributes = {
         (signal.name.strip().casefold(), signal.value)
