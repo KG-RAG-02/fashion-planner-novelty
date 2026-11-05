@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import prototype_store as store
+from .prototype import analytics, fixtures, repository, retrieval
 
 
 WEB_ROOT = Path(__file__).resolve().parents[2] / "web" / "prototype"
@@ -54,16 +54,16 @@ class PrototypeHandler(BaseHTTPRequestHandler):
         path = unquote(parsed.path)
         try:
             if path == "/api/health":
-                store.initialize()
+                repository.initialize()
                 self._json(200, {"ok": True, "mode": "local-prototype-with-separate-hm-analysis"})
             elif path == "/api/bootstrap":
                 self._json(200, {
-                    "analysis": store.analyze(), "brief": store.get_brief(),
-                    "brief_versions": store.list_brief_versions(),
-                    "variants": store.list_variants(), "evaluations": store.list_evaluations(),
+                    "analysis": analytics.analyze(), "brief": repository.get_brief(),
+                    "brief_versions": repository.list_brief_versions(),
+                    "variants": repository.list_variants(), "evaluations": repository.list_evaluations(),
                 })
             elif path == "/api/hm-analysis":
-                analysis = store.get_hm_analysis()
+                analysis = fixtures.get_hm_analysis()
                 if analysis is None:
                     self._json(404, {"error": "H&M Kaggle 데이터 분석 산출물이 없습니다. 데이터 파이프라인을 먼저 실행해 주세요."})
                 else:
@@ -72,14 +72,14 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                 self._send(200, PIPELINE_DOC.read_bytes(), "text/markdown; charset=utf-8")
             elif path.startswith("/api/evidence/"):
                 record_id = path.removeprefix("/api/evidence/")
-                evidence = store.get_evidence(record_id)
+                evidence = retrieval.get_evidence(record_id)
                 self._json(200 if evidence else 404, evidence or {"error": "근거 기록을 찾을 수 없습니다."})
             elif path == "/api/search":
                 query = parse_qs(parsed.query).get("q", [""])[0][:300]
-                self._json(200, {"query": query, "results": store.search_documents(query)})
+                self._json(200, {"query": query, "results": retrieval.search_documents(query)})
             elif path.startswith("/api/variants/") and path.endswith(".svg"):
                 variant_id = path.removeprefix("/api/variants/").removesuffix(".svg")
-                image = store.get_variant_image(variant_id)
+                image = repository.get_variant_image(variant_id)
                 if image is None:
                     self._json(404, {"error": "시안을 찾을 수 없습니다."})
                 else:
@@ -106,15 +106,15 @@ class PrototypeHandler(BaseHTTPRequestHandler):
         try:
             payload = self._body()
             if path == "/api/brief":
-                self._json(201, store.save_brief(payload))
+                self._json(201, repository.save_brief(payload))
             elif path == "/api/variants":
-                brief = store.get_brief()
+                brief = repository.get_brief()
                 requested_version = payload.get("brief_version")
                 if requested_version != brief["version"]:
                     raise ValueError("브리프가 변경되었습니다. 최신 버전을 저장한 뒤 시안을 만들어 주세요.")
-                self._json(201, {"variants": store.generate_variant(payload, str(payload.get("image_type", "product")), int(payload.get("count", 3)))})
+                self._json(201, {"variants": repository.generate_variant(payload, str(payload.get("image_type", "product")), int(payload.get("count", 3)))})
             elif path == "/api/evaluations":
-                self._json(201, store.save_evaluation(payload))
+                self._json(201, repository.save_evaluation(payload))
             else:
                 self._json(404, {"error": "Not found"})
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
@@ -124,7 +124,7 @@ class PrototypeHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    store.initialize()
+    repository.initialize()
     host = os.getenv("VOGUE_HOST", "127.0.0.1")
     port = int(os.getenv("VOGUE_PORT", "8765"))
     server = ThreadingHTTPServer((host, port), PrototypeHandler)

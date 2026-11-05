@@ -38,6 +38,14 @@ Agent 3의 데이터 출처·Evidence 경계는 [데이터·Evidence 계획](doc
 
 가공된 H&M Style 판매 요약은 `load_hm_sales_analysis()`로 `SalesAnalysisResult`에 매핑할 수 있습니다. Kaggle 상품 분류를 요청 카테고리로 연결하는 `source_category_map`과 `category_mapping_version`은 프로젝트 taxonomy와 대조해 호출자가 명시해야 하며, 데이터에 없는 시즌이나 채널 의미를 자동 추정하지 않습니다.
 
+현재 처리 산출물의 데이터 품질과 Style 대표 분류의 유형별 편차는 아래 명령으로 재현할 수 있습니다. 결과 JSON에는 스키마·결측·중복·article 연결 상태, 판매 집계 행 수, 카탈로그 분류 충돌 및 Article 기준과 Style 대표 분류 기준의 유형별 차이가 기록됩니다.
+
+```bash
+PYTHONPATH=src python3 -m vogue_npp.hm_quality
+```
+
+기본 결과는 `data/processed/hm-personalized-fashion-recommendations/hm_quality_report.json`에 생성됩니다. 상품유형별 정확한 판매 집계는 `article_id`로 주간 판매 집계와 카탈로그를 연결한 기준을 사용해야 합니다. `style_sales_summary.csv`의 대표 분류는 스타일 내 상품유형이 복수인 경우 유형별 판매 분모로 사용할 수 없습니다.
+
 다운로드한 H&M competition ZIP 또는 압축 해제한 CSV를 `data/raw/hm-personalized-fashion-recommendations/`에 두고 아래 명령을 실행하면 상품 마스터·주간 구매 집계·Style/카테고리/색상/채널 분석까지 수행합니다. ZIP은 이미지 파일을 풀지 않고 필요한 CSV만 순차 처리합니다. 파이프라인은 표준 라이브러리로 동작하고 고객 식별자를 파생 파일에 쓰지 않습니다.
 
 ```bash
@@ -73,6 +81,14 @@ docker compose up --build -d
 에이전트 입력·출력 계약과 향후 통합 경계는 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. 도메인 코어는 기존 입력 정합성 검사, 기획 기회 비교, 내부 콘셉트 초안 생성과 출처 안전 검사를 유지합니다. 별도 로컬 웹 프로토타입은 가상 자료에서만 브리프·평가 흐름을 시연하며, 공통 에이전트 API나 운영용 LLM 생성기로 간주하지 않습니다.
 
 Notion 요구사항을 기준으로 한 다음 구현 순서와 통합 경계는 [향후 작업 설계](docs/design/implementation-roadmap.md)에 정리했습니다.
+
+### 코드 구성
+
+- `src/vogue_npp/context.py`, `analysis.py`, `concept.py`, `generator.py`: 입력 정합성, 근거 기반 기회 분석, 내부 콘셉트 모델과 생성 포트
+- `src/vogue_npp/hm_data.py`, `hm_analysis.py`, `hm_sales_adapter.py`: 로컬 H&M 자료 처리와 내부 분석 입력 변환
+- `src/vogue_npp/prototype/`: 로컬 시연 기능을 설정(`config`), fixture/source(`fixtures`), 합성 분석(`analytics`), 문서·근거 검색(`retrieval`), SQLite 저장(`repository`)으로 분리
+- `src/vogue_npp/prototype_server.py`: HTTP 진입점. 기존 import 호환을 위해 `prototype_store.py` facade를 유지합니다.
+- `web/prototype/`: 단일 페이지 시연 UI와 정적 자산
 
 ## 호출 형태
 
