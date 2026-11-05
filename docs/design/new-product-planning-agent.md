@@ -1,7 +1,7 @@
 # New Product Planning Agent 설계 제안
 
 - 상태: Proposed
-- 작성 목적: 3번 New Product Planning Agent의 구현 경계와 계약 공백을 명확히 해 팀 검토를 받습니다.
+- 작성 목적: 3번 New Product Planning Agent의 구현 경계와 계약 공백을 명확히 하고, 자료에 근거한 LLM 생성 및 복수 엔진 비교 목표를 팀과 검토합니다.
 - 적용 범위: `KG-RAG-02/new-product-planning-agent` 저장소
 - 후속 Product Feasibility Agent: 별도 신규 저장소에서 구현하기로 합의했으며, 이 저장소에는 포함하지 않습니다.
 - 구현 상태: 입력 정합성 검사, 컨텍스트 조립, 출처 검증과 결정적 규칙 기반 초안 생성기가 임시 기본값으로 추가되었습니다. 공통 wire schema와 API 어댑터는 미정입니다.
@@ -14,7 +14,7 @@
 | --- | --- |
 | 입력 | `PlanningRequest`, `TrendResult`, `InventoryProductResult` |
 | 출력 | `ProductConcept` |
-| 수행 | 입력 정합성 확인, 기존 자사 상품과의 중복·보완 검토, 기획 기회와 상품 콘셉트·속성 제안, 근거 연결 |
+| 수행 | 입력 정합성 확인, 기존 자사 상품과의 관계 검토, RAG 근거를 반영한 상품 콘셉트·속성 생성, claim-level 근거 연결 및 복수 생성 엔진 평가 |
 | 보존 | `request_id`, 계약 버전, 입력 상태, Evidence 참조, 누락·불일치·제약 |
 | 제외 | 트렌드 검색/인덱스, 상품·재고 원천 조회, 판매량 분석, 경쟁상품 조사, 원가·마진/생산·조달/고객 피드백 분석, 최종 기획안 렌더링·MD 승인 기록 |
 
@@ -44,7 +44,7 @@ PlanningRequest + TrendResult + InventoryProductResult
 
 ## 3. 모듈 경계 제안
 
-기술 스택과 기존 파일 구조가 아직 없습니다. 아래는 구현 책임의 논리적 분리이며 디렉터리·언어·프레임워크를 확정하는 안이 아닙니다.
+기존 저장소에는 Python 도메인 코어와 `ConceptGenerator` 포트가 있습니다. 아래는 구현 책임의 논리적 분리이며 운영 API·모델 제공자·프레임워크를 확정하는 안이 아닙니다.
 
 | 모듈 | 책임 | 외부 효과 |
 | --- | --- | --- |
@@ -52,7 +52,8 @@ PlanningRequest + TrendResult + InventoryProductResult
 | 계약 검증 | 버전, 공통 envelope, 필수 구조, enum 값 검증 | 없음 |
 | 정합성 검사 | 세 입력의 요청·기간·상품 식별·분류 기준 비교 | 없음 |
 | 기회 분석 | 트렌드 Evidence와 자사 상품/재고 근거에서 관찰 가능한 관계 정리 | 없음 |
-| 콘셉트 제안기 | 제안 생성. LLM 도입 시 공급자 추상화 뒤에서 사용 | 외부 모델 호출은 별도 선택·승인 필요 |
+| 콘셉트 제안기 | 규칙 기반 기준선과 Evidence-grounded LLM 생성기를 같은 포트 뒤에서 실행 | 복수 엔진 비교는 허용 모델·자료 전송 범위 합의 후 실행 |
+| 실험 실행기 | 고정된 입력/Evidence를 각 생성 엔진에 재생하고 설정·출력을 기록 | API 키·민감 원문을 기록하지 않음 |
 | Evidence 연결기 | 출력의 각 주장·속성에 입력 Evidence ID 연결 | 없음 |
 | 응답 조립기 | `ProductConcept`, 상태, 제약, 오류를 공통 envelope로 반환 | 없음 |
 
@@ -137,9 +138,9 @@ PlanningRequest + TrendResult + InventoryProductResult
 | --- | --- | --- |
 | 언어·런타임 | 임시 기본값: Python 표준 라이브러리 기반 도메인 코어 | 팀 표준과 다르면 도메인 계층을 이전하거나 어댑터를 재작성 |
 | 계약 검증 | 임시 기본값: 내부 dataclass 검증. 공통 JSON Schema/wire validator는 미작성 | 필드·envelope 합의 후 저장소별 동일 계약 파일과 어댑터 추가 |
-| 생성 방식 | 임시 기본값: 투명한 결정적 규칙으로 검토용 초안 구성 | LLM·랭킹 도입은 별도 품질·비용·보안 결정 후 generator 뒤에서 교체 |
+| 생성 방식 | 현재 기준선: 투명한 결정적 규칙. 목표: 근거 기반 LLM 생성 및 복수 엔진 비교 | 허용 엔진·자료 전송·평가 기준을 정한 뒤 같은 generator 포트에 어댑터 연결 |
 | API 전송 | 임시 기본값: 순수 함수 경계, 네트워크 호출 없음 | HTTP/gRPC/메시지 큐 결정 후 얇은 transport adapter 추가 |
-| 모델/외부 API | 임시 기본값: 호출하지 않음 | 제공자·모델·권한·데이터 처리 합의 후 adapter로 연결 |
+| 모델/외부 API | 현재 기본값: 호출하지 않음. 엔진/제공자 미선정 | 평가 대상 엔진, 권한·자료 처리·자격 증명 관리 합의 후 adapter로 연결 |
 | 상태 저장 | 임시 기본값: 무상태 처리, 원천/결과 저장 없음 | 재현·이력 요구와 보존/삭제/접근 통제가 합의되면 별도 저장 어댑터 추가 |
 
 이 임시 구현은 팀 통합 시 `internal models → agreed ProductConcept schema` 변환 경계에서 계약 차이를 흡수하도록 둡니다. 통합 시 내부 모델 자체를 공통 wire schema라고 간주하지 않습니다. 다섯 저장소에 공통 계약 파일을 반영하기로 한 Notion 결정을 따르며, 이 저장소 단독으로 `contracts/` 기준본을 만들지 않습니다.
@@ -176,8 +177,9 @@ PlanningRequest + TrendResult + InventoryProductResult
 2. `ProductConcept`와 공통 envelope의 정확한 nesting 및 필수 필드
 3. 속성·기회·근거 분류 enum과 다중 콘셉트 허용 여부
 4. 팀 표준 언어/런타임 및 서비스 실행·배포 방식
-5. LLM을 도입할지, 도입한다면 허용 모델·데이터 전송 범위·평가 기준
-6. 입력 중 하나가 `no_results`일 때 결과를 계속 생성할지에 대한 정책
+5. 복수 엔진 평가에 사용할 허용 모델·자료 전송 범위·자격 증명 관리 방식
+6. 비교 지표, 최소 근거성/제약 준수 기준, MD 평가 루브릭·검토자
+7. 입력 중 하나가 `no_results`일 때 결과를 계속 생성할지에 대한 정책
 
 ## 참고 문서
 
