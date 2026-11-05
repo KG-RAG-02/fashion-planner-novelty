@@ -1,6 +1,6 @@
 """Internal, contract-neutral core for VOGUE's New Product Planning Agent."""
 
-from .context import (
+from .domain.context import (
     AgentResult,
     AttributeSignal,
     InventoryProduct,
@@ -12,7 +12,7 @@ from .context import (
     TrendCandidate,
     build_planning_context,
 )
-from .concept import (
+from .domain.concept import (
     OpportunityFinding,
     ProductConceptDraft,
     ProposedAttribute,
@@ -20,9 +20,9 @@ from .concept import (
     ValidationIssue,
     validate_concept_draft,
 )
-from .analysis import OpportunityAnalysis, analyze_opportunities
-from .generator import ConceptGenerator, RuleBasedConceptGenerator, generate_concept_draft
-from .hm_sales_adapter import load_hm_sales_analysis
+from .domain.analysis import OpportunityAnalysis, analyze_opportunities
+from .domain.generator import ConceptGenerator, RuleBasedConceptGenerator, generate_concept_draft
+from .sources.hm.hm_sales_adapter import load_hm_sales_analysis
 from .settings import Settings, load_settings
 
 __all__ = [

@@ -329,7 +329,7 @@ def list_hm_planning_reviews() -> list[dict[str, Any]]:
 def save_hm_planning_brief(payload: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any]:
     """Build and version a deterministic brief from one H&M candidate."""
     initialize()
-    from ..planning_workflow import build_review_brief
+    from ..workflows.planning import build_review_brief
 
     brief = build_review_brief(payload, analysis)
     brief_id = "HM-BRIEF-" + uuid.uuid4().hex[:12].upper()

@@ -29,13 +29,13 @@ Kaggle source의 중복 거래 행은 여러 번의 구매일 수 있으므로 �
 원본 CSV를 풀어 두거나 Kaggle ZIP 파일을 `data/raw/hm-personalized-fashion-recommendations/` 바로 아래에 놓는다. ZIP은 이미지 전체를 별도 압축 해제하지 않고 필요한 CSV만 순차적으로 읽는다.
 
 ```bash
-PYTHONPATH=src python3 -m vogue_npp.hm_data
+PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_data
 ```
 
 다른 원본 또는 출력 위치를 지정할 수 있다.
 
 ```bash
-PYTHONPATH=src python3 -m vogue_npp.hm_data \
+PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_data \
   --source data/raw/hm-personalized-fashion-recommendations/h-and-m-data.zip \
   --output data/processed/hm-personalized-fashion-recommendations
 ```
@@ -57,7 +57,7 @@ PYTHONPATH=src python3 -m vogue_npp.hm_data \
 | `monthly_product_group_sales.csv` | Monday 주차 집계를 주 시작일의 월에 귀속해 만든 상품군별 월간 관측 추이 |
 | `channel_sales_summary.csv` | 채널 코드별 구매 행·평균 원천 price·고유 article/Style 수 |
 | `hm_analysis.json` | 데이터 범위, 집계 수치, 상위 상품군·Style·색상, source ID와 사용 한계 요약 |
-| `hm_quality_report.json` | 처리 데이터의 스키마·결측·중복 키·카탈로그 매칭·상품 분류 충돌·Article/Style 유형별 집계 차이 진단. `python -m vogue_npp.hm_quality`로 생성 |
+| `hm_quality_report.json` | 처리 데이터의 스키마·결측·중복 키·카탈로그 매칭·상품 분류 충돌·Article/Style 유형별 집계 차이 진단. `python -m vogue_npp.sources.hm.hm_quality`로 생성 |
 | `hm_planning_analysis.json` | 기본 ingest 이후 생성되는 Article 기준 상품유형 집계, 주별 시계열, 연도·월 추이, 색상·상대 원천 가격대·채널, 스타일 집중도, 근거 연결 기획 후보 및 이미지 브리프 템플릿 |
 | `manifest.json` | 파이프라인 버전, 원천 위치·SHA-256, 컬럼, 행 검증 건수, 관측 시작/종료일, 출력 행 수·SHA-256, 알려진 한계를 기록한다. |
 
@@ -91,13 +91,13 @@ SQLite 임시 집계 DB는 `data/interim/` 아래 생성 후 성공·실패와 �
 
 ### 품질 감사와 카테고리 집계 기준
 
-`PYTHONPATH=src python3 -m vogue_npp.hm_quality` 실행으로 현재 처리 결과를 점검했다. 카탈로그 105,542행에서 빈/중복 `article_id`는 0건이고 `detail_desc` 결측은 416건이다. 상품 코드 47,224개 중 315개가 복수 상품군 또는 상품유형에 연결된다. 주간 집계 2,814,421행은 31,788,324 구매 행을 나타내며, 중복 주간×상품×채널 키, 상품 마스터 미매칭, 음수/비정상 집계 행은 각각 0건이다.
+`PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_quality` 실행으로 현재 처리 결과를 점검했다. 카탈로그 105,542행에서 빈/중복 `article_id`는 0건이고 `detail_desc` 결측은 416건이다. 상품 코드 47,224개 중 315개가 복수 상품군 또는 상품유형에 연결된다. 주간 집계 2,814,421행은 31,788,324 구매 행을 나타내며, 중복 주간×상품×채널 키, 상품 마스터 미매칭, 음수/비정상 집계 행은 각각 0건이다.
 
 스타일별 요약은 첫 카탈로그 행을 대표 속성으로 사용한다. 따라서 한 `product_code`가 여러 유형을 포함하면 유형별 판매량이 대표 유형으로 귀속된다. 현재 품질 감사에서 314개 판매 스타일 행에 복수 분류 충돌이 있었고, Article 기준과 Style 대표 속성 기준의 상품군×유형 판매량이 86개 분류에서 달랐다. 정확한 카테고리 분석은 `weekly_sales_by_article_channel.csv`를 `article_catalog.csv`와 `article_id`로 연결해야 한다. Style 요약은 스타일 수준 분석에만 사용한다. 상세 진단은 로컬 산출물 `hm_quality_report.json`에 저장한다.
 
 ### 상품기획 분석
 
-`PYTHONPATH=src python3 -m vogue_npp.hm_planning_analysis`는 Article 기준으로 판매 전체를 재분류한다. 현재 산출에서는 구매 행 31,788,324건, 주간×상품×채널 집계 2,814,421행, 상품유형 131개, 미매칭 0건이다. 상품유형별로 상품 수/스타일 수, 주간 시계열, 달력 월 패턴, 이용 가능한 연도의 단순 변화, 색상 점유, 원천 가격 상대 5분위, 원천 채널 코드 점유, 상위 1/5 스타일 집중도를 기록한다. 색상·가격 지표는 기사-주-채널 단위 주간 평균가와 해당 행의 구매 수량을 사용한다.
+`PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_planning_analysis`는 Article 기준으로 판매 전체를 재분류한다. 현재 산출에서는 구매 행 31,788,324건, 주간×상품×채널 집계 2,814,421행, 상품유형 131개, 미매칭 0건이다. 상품유형별로 상품 수/스타일 수, 주간 시계열, 달력 월 패턴, 이용 가능한 연도의 단순 변화, 색상 점유, 원천 가격 상대 5분위, 원천 채널 코드 점유, 상위 1/5 스타일 집중도를 기록한다. 색상·가격 지표는 기사-주-채널 단위 주간 평균가와 해당 행의 구매 수량을 사용한다.
 
 계절 분석은 주 시작일의 달력 월로만 표기하며 상품기획 시즌으로 추정하지 않는다. 첫 해와 마지막 해 비교는 비연속 연도 또는 0 판매 분모면 생략하고, 완전 연도 및 상품별 판매 노출기간 보정은 하지 않는다. 색상 표본 기준 100건은 기술적 표시 기준이지 통계적 유의성 임계값이 아니다. 상대 가격 5분위는 유형 내부 article-week-channel 관측의 비가중 분위 경계이며 통화·정가·매출로 해석하지 않는다. 판매 행은 주문 수/고객 수가 아니며 상품 출시일이 없어 스타일 집중도도 출시 기회로 해석할 수 없다.
 

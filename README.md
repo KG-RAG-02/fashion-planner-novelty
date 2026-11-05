@@ -41,7 +41,7 @@ Agent 3의 데이터 출처·Evidence 경계는 [데이터·Evidence 계획](doc
 현재 처리 산출물의 데이터 품질과 Style 대표 분류의 유형별 편차는 아래 명령으로 재현할 수 있습니다. 결과 JSON에는 스키마·결측·중복·article 연결 상태, 판매 집계 행 수, 카탈로그 분류 충돌 및 Article 기준과 Style 대표 분류 기준의 유형별 차이가 기록됩니다.
 
 ```bash
-PYTHONPATH=src python3 -m vogue_npp.hm_quality
+PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_quality
 ```
 
 기본 결과는 `data/processed/hm-personalized-fashion-recommendations/hm_quality_report.json`에 생성됩니다. 상품유형별 정확한 판매 집계는 `article_id`로 주간 판매 집계와 카탈로그를 연결한 기준을 사용해야 합니다. `style_sales_summary.csv`의 대표 분류는 스타일 내 상품유형이 복수인 경우 유형별 판매 분모로 사용할 수 없습니다.
@@ -49,13 +49,13 @@ PYTHONPATH=src python3 -m vogue_npp.hm_quality
 다운로드한 H&M competition ZIP 또는 압축 해제한 CSV를 `data/raw/hm-personalized-fashion-recommendations/`에 두고 아래 명령을 실행하면 상품 마스터·주간 구매 집계·Style/카테고리/색상/채널 분석까지 수행합니다. ZIP은 이미지 파일을 풀지 않고 필요한 CSV만 순차 처리합니다. 파이프라인은 표준 라이브러리로 동작하고 고객 식별자를 파생 파일에 쓰지 않습니다.
 
 ```bash
-PYTHONPATH=src python3 -m vogue_npp.hm_data
+PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_data
 ```
 
 이 명령은 처리·기본 분석에 더해 131개 상품유형의 Article 기준 시즌성·연도별 추세·색상·상대 원천 가격대·채널·스타일 집중도와 근거 연결 기획 후보도 생성합니다. 기존 처리 결과만 다시 분석하려면 다음 명령을 실행할 수 있습니다.
 
 ```bash
-PYTHONPATH=src python3 -m vogue_npp.hm_planning_analysis
+PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_planning_analysis
 ```
 
 결과 `hm_planning_analysis.json`은 UI의 **상품유형 전체 분석**에 제공됩니다. MD가 후보 선택 근거를 저장하거나 선택 후보의 결정적 브리프 초안을 생성하면 합성 데모 브리프와 분리된 `hm_planning_reviews`/`hm_planning_briefs` 테이블에 보존됩니다. 브리프는 Evidence 사실, MD 가설, unknown을 구분하고 이미지 생성 입력 JSON을 만듭니다. 실제 LLM·이미지 생성 API 호출은 하지 않습니다. 판매 월은 월요일 시작 주의 시작월이며, 실제 MD 시즌으로 추정하지 않습니다. 연도별 변화는 불완전한 연도와 상품 노출 기간을 보정하지 않은 서술 통계입니다. 상대 가격 구간은 원천 수치 분위 구간으로, 통화나 판매가 제안이 아닙니다. 기획 후보는 과거 판매 규모를 탐색하는 용도입니다.
@@ -67,7 +67,7 @@ PYTHONPATH=src python3 -m vogue_npp.hm_planning_analysis
 별도의 설치 없이 저장소 루트에서 실행하세요.
 
 ```bash
-PYTHONPATH=src python3 -m vogue_npp.prototype_server
+PYTHONPATH=src python3 -m vogue_npp.prototype.server
 ```
 
 브라우저에서 [http://127.0.0.1:8765](http://127.0.0.1:8765)을 열면 카테고리·시즌 선택, 수치 기반 기회 탐색, 문서 검색과 근거 확인, 브리프 편집/버전 관리, 이미지 시안 비교, MD/디자이너 평가 이력을 한 흐름으로 시연할 수 있습니다. 생성 모델로 만든 실제 의류 콘셉트 사진 1개가 포함되며, 추가 시안은 API 키 없이 로컬 SVG 목업으로 생성됩니다. 서버는 이 컴퓨터 내부 주소에만 바인딩합니다. 중지하려면 실행 터미널에서 `Ctrl+C`를 누르세요.
@@ -94,13 +94,40 @@ docker compose up --build -d
 
 Notion 요구사항을 기준으로 한 다음 구현 순서와 통합 경계는 [향후 작업 설계](docs/design/implementation-roadmap.md)에 정리했습니다.
 
-### 코드 구성
+### 폴더 구조
 
-- `src/vogue_npp/context.py`, `analysis.py`, `concept.py`, `generator.py`: 입력 정합성, 근거 기반 기회 분석, 내부 콘셉트 모델과 생성 포트
-- `src/vogue_npp/hm_data.py`, `hm_analysis.py`, `hm_sales_adapter.py`: 로컬 H&M 자료 처리와 내부 분석 입력 변환
-- `src/vogue_npp/prototype/`: 로컬 시연 기능을 설정(`config`), fixture/source(`fixtures`), 합성 분석(`analytics`), 문서·근거 검색(`retrieval`), SQLite 저장(`repository`)으로 분리
-- `src/vogue_npp/prototype_server.py`: HTTP 진입점. 기존 import 호환을 위해 `prototype_store.py` facade를 유지합니다.
-- `web/prototype/`: 단일 페이지 시연 UI와 정적 자산
+경계 설명과 canonical 명령은 [프로젝트 구조 가이드](docs/design/project-structure.md)를 참고하세요.
+
+```text
+project_06/
+├── data/                         # 원본·가공 산출물·로컬 상태 (대용량/개인 상태는 Git 제외)
+│   ├── raw/hm-personalized-fashion-recommendations/
+│   ├── processed/hm-personalized-fashion-recommendations/
+│   └── local/
+├── docs/
+│   ├── design/                   # 시스템 및 데이터 흐름 설계
+│   └── decisions/                # 구현 결정 기록
+├── examples/                     # 실행 가능한 합성 데모와 fixture
+├── src/vogue_npp/
+│   ├── domain/                   # 입력 계약, 분석, 콘셉트, 생성 규칙
+│   ├── sources/hm/               # H&M 원천 처리·품질 점검·분석·adapter
+│   ├── workflows/                # 상품기획 브리프 및 의사결정 흐름
+│   ├── prototype/                # 로컬 웹 서버, UI 지원 API, 저장소, 검색
+│   ├── settings.py                # 공통 실행 설정
+│   └── *.py                      # 패키지 공개 API 및 이전 경로 호환 진입점
+├── tests/                        # 회귀 및 데이터 경계 검증
+└── web/prototype/                # 로컬 프로토타입 UI와 정적 이미지
+```
+
+새 코드는 `domain`, `sources.hm`, `workflows`, `prototype`의 경계를 따릅니다. 기존 `vogue_npp.hm_data`, `vogue_npp.prototype_server` 같은 import 및 CLI는 호환 wrapper로 유지합니다. 로컬 실행 명령은 위의 canonical package 경로를 사용합니다.
+
+### 주요 코드 위치
+
+- `src/vogue_npp/domain/`: 정규화 입력 계약, 근거 기반 분석, 내부 콘셉트 모델과 생성기
+- `src/vogue_npp/sources/hm/`: Kaggle 로컬 데이터 처리·품질 감사·상품유형 분석·판매 adapter
+- `src/vogue_npp/workflows/`: 후보 검토에서 버전형 기획 브리프까지의 업무 흐름
+- `src/vogue_npp/prototype/`: HTTP 서버, API, fixture, SQLite 저장 및 근거 검색
+- `web/prototype/`: 로컬 UI. API 서버와 분리된 화면 자산
 
 ## 호출 형태
 

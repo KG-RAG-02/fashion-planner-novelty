@@ -1,0 +1,58 @@
+# Project structure
+
+This repository is organized by responsibility. The dependency direction is
+`domain` ← data adapters and workflows ← the local prototype interface.
+Domain code does not depend on the web app or local persistence.
+
+```text
+project_06/
+├── data/
+│   ├── raw/                         Downloaded source files (ignored by Git)
+│   ├── processed/                   Reproducible analysis outputs (ignored)
+│   └── local/                       Prototype SQLite state (ignored)
+├── docs/
+│   ├── decisions/                   Architecture decision records
+│   └── design/                      Requirements, data contracts, and runbooks
+├── examples/
+│   └── fixtures/                    Clearly labeled synthetic demo data
+├── src/vogue_npp/
+│   ├── domain/                      Planning contracts and pure business logic
+│   ├── sources/hm/                  H&M ingestion, audit, analysis, and adapter
+│   ├── workflows/                   Human review and brief assembly
+│   ├── prototype/                   Local HTTP app and supporting components
+│   ├── settings.py                  Shared runtime settings
+│   └── compatibility modules        Previous import and command paths
+├── tests/                            Automated behavior and boundary checks
+└── web/prototype/                    Browser UI and static assets
+```
+
+## Package responsibilities
+
+- `domain/` contains normalized planning inputs, evidence-aware analysis,
+  concept models, and generation interfaces. It should remain independent of
+  Kaggle file paths, SQLite, HTTP, and UI code.
+- `sources/hm/` reads local H&M competition files and writes derived reports.
+  It adapts source observations into domain contracts but does not manufacture
+  inventory, returns, customer preference, currency, or future demand.
+- `workflows/` composes evidence and human decisions into reviewable planning
+  artifacts. It does not call an external LLM or image service.
+- `prototype/` serves the local interface and owns fixture access, persistence,
+  and evidence lookup. The synthetic demo and H&M analysis remain separate.
+- `web/prototype/` is static browser code; it calls the local prototype API.
+- `data/` is runtime state. Source downloads, generated reports, and SQLite
+  files stay out of Git; `data/README.md` documents how to recreate them.
+
+## Canonical commands
+
+Run these from the repository root:
+
+```bash
+PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_data
+PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_quality
+PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_planning_analysis
+PYTHONPATH=src python3 -m vogue_npp.prototype.server
+```
+
+The old top-level paths such as `vogue_npp.hm_data` and
+`vogue_npp.prototype_server` remain as compatibility wrappers. New code and
+documentation should use the package paths above.

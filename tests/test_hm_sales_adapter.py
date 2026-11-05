@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from vogue_npp.hm_sales_adapter import load_hm_sales_analysis
+from vogue_npp.sources.hm.hm_sales_adapter import load_hm_sales_analysis
 from vogue_npp.prototype.retrieval import get_evidence
 
 
@@ -27,7 +27,7 @@ class HmSalesAdapterTests(unittest.TestCase):
         self.assertTrue(all(item.evidence_ids for item in result.observations))
 
     def test_category_evidence_resolves_with_source_period_and_version(self) -> None:
-        from vogue_npp.hm_planning_analysis import analyze
+        from vogue_npp.sources.hm.hm_planning_analysis import analyze
 
         analysis = analyze(DATA)
         trousers = next(item for item in analysis["product_types"] if item["product_type_name"] == "Trousers")

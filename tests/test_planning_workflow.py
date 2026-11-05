@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from vogue_npp.planning_workflow import build_review_brief
+from vogue_npp.workflows.planning import build_review_brief
 from vogue_npp.prototype.repository import (
     list_hm_brief_reviews, list_hm_planning_briefs, save_hm_brief_review,
     save_hm_planning_brief,

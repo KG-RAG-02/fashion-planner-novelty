@@ -5,7 +5,7 @@
 프로젝트 루트에서 Python 3.10 이상으로 실행합니다. 외부 Python 패키지 설치는 필요하지 않습니다.
 
 ```bash
-PYTHONPATH=src python3 -m vogue_npp.prototype_server
+PYTHONPATH=src python3 -m vogue_npp.prototype.server
 ```
 
 브라우저에서 `http://127.0.0.1:8765`를 엽니다. 서버는 loopback 주소에만 바인딩합니다. 종료할 때 터미널에서 `Ctrl+C`를 누릅니다.

@@ -26,4 +26,4 @@ USER vogue
 
 EXPOSE 8765
 
-CMD ["python3", "-m", "vogue_npp.prototype_server"]
+CMD ["python3", "-m", "vogue_npp.prototype.server"]

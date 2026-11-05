@@ -25,7 +25,7 @@ The competition archive is large (Kaggle currently lists about 34.56 GB). The pr
 브라우저에서 받은 ZIP을 이 디렉터리에 둘 수 있습니다. 파이프라인은 이미지 압축 파일을 풀지 않고 필요한 CSV 두 개만 읽습니다. 압축 해제 CSV도 지원합니다. 데이터 갱신 시 저장소 루트에서 실행하세요:
 
 ```bash
-PYTHONPATH=src python3 -m vogue_npp.hm_data
+PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_data
 ```
 
 The pipeline produces `article_catalog.csv`, `weekly_sales_by_article_channel.csv`, Style/category/color/channel/monthly analysis CSVs, `hm_analysis.json`, and `manifest.json` under `data/processed/hm-personalized-fashion-recommendations/`. All remain local/ignored. The current dataset inspection and metrics are recorded in [the pipeline plan](../docs/design/hm-kaggle-data-pipeline.md).
