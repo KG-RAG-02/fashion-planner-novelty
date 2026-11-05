@@ -113,13 +113,13 @@ project_06/
 │   ├── sources/hm/               # H&M 원천 처리·품질 점검·분석·adapter
 │   ├── workflows/                # 상품기획 브리프 및 의사결정 흐름
 │   ├── prototype/                # 로컬 웹 서버, UI 지원 API, 저장소, 검색
-│   ├── settings.py                # 공통 실행 설정
-│   └── *.py                      # 패키지 공개 API 및 이전 경로 호환 진입점
+│   ├── settings.py               # 공통 실행 설정
+│   └── __init__.py               # 외부에서 사용할 도메인 API 공개
 ├── tests/                        # 회귀 및 데이터 경계 검증
 └── web/prototype/                # 로컬 프로토타입 UI와 정적 이미지
 ```
 
-새 코드는 `domain`, `sources.hm`, `workflows`, `prototype`의 경계를 따릅니다. 기존 `vogue_npp.hm_data`, `vogue_npp.prototype_server` 같은 import 및 CLI는 호환 wrapper로 유지합니다. 로컬 실행 명령은 위의 canonical package 경로를 사용합니다.
+새 코드는 `domain`, `sources.hm`, `workflows`, `prototype`의 경계를 따릅니다. 패키지 루트는 공개 API와 공통 설정만 제공합니다. 모든 모듈 및 실행 경로는 한 곳에만 두고, README와 데이터 파이프라인 문서의 실행 명령은 canonical package 경로를 사용합니다.
 
 ### 주요 코드 위치
 

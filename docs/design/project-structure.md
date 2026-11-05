@@ -21,7 +21,7 @@ project_06/
 │   ├── workflows/                   Human review and brief assembly
 │   ├── prototype/                   Local HTTP app and supporting components
 │   ├── settings.py                  Shared runtime settings
-│   └── compatibility modules        Previous import and command paths
+│   └── __init__.py                  Public package API
 ├── tests/                            Automated behavior and boundary checks
 └── web/prototype/                    Browser UI and static assets
 ```
@@ -53,6 +53,6 @@ PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_planning_analysis
 PYTHONPATH=src python3 -m vogue_npp.prototype.server
 ```
 
-The old top-level paths such as `vogue_npp.hm_data` and
-`vogue_npp.prototype_server` remain as compatibility wrappers. New code and
-documentation should use the package paths above.
+Each module has one canonical location. Older flat module paths were removed
+after all in-repository callers and run commands moved to the package paths
+above; the package-level public API in `vogue_npp` remains available.
