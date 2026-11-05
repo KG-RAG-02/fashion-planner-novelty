@@ -28,6 +28,8 @@ VOGUE 프로젝트의 3번 **New Product Planning Agent**를 구현하는 저장
 
 구현 경계와 계약 공백은 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. `src/vogue_npp`에는 입력 정합성 검사, 기획 컨텍스트 조립, 내부 콘셉트 초안 생성과 출처 안전 검사가 있습니다. 생성기는 입력으로 받은 사용자 조건과 Evidence를 정리하는 검토용 뼈대이며, 운영용 생성 모델이나 외부 API가 아닙니다.
 
+Notion 요구사항을 기준으로 한 다음 구현 순서와 통합 경계는 [향후 작업 설계](docs/design/implementation-roadmap.md)에 정리했습니다.
+
 ## 호출 형태
 
 아래는 도메인 함수의 호출 형태를 보여주는 축약 예시입니다. `...`는 사전에 정규화한 입력 객체를 뜻하며 실행 가능한 코드는 아래 합성 데모입니다. 실제 공통 wire payload 어댑터는 계약 합의 후 추가합니다.
