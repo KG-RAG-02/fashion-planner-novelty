@@ -1,0 +1,261 @@
+"""Internal concept-draft model and provenance safety checks.
+
+This is an internal review model, not the shared ProductConcept wire schema.
+It can validate a candidate produced by a future generator without selecting a
+model provider or committing the team to a public payload layout.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+from .context import ProductPlanningContext
+
+
+ClaimKind = Literal[
+    "user_requested",
+    "evidence_observation",
+    "interpretation",
+    "hypothesis",
+    "proposal",
+    "to_validate",
+    "unknown",
+]
+
+
+@dataclass(frozen=True)
+class SourcedClaim:
+    value: str | None
+    kind: ClaimKind
+    evidence_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ProposedAttribute:
+    name: str
+    value: str | int | float | bool | None
+    kind: ClaimKind
+    evidence_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ProductConceptDraft:
+    """Internal candidate shape for human review before wire serialization."""
+
+    request_id: str
+    season: str | None
+    category: str | None
+    opportunity: SourcedClaim
+    target_customer: SourcedClaim
+    product_definition: SourcedClaim
+    attributes: tuple[ProposedAttribute, ...] = ()
+    relation_to_own_products: tuple[SourcedClaim, ...] = ()
+    differentiation: tuple[SourcedClaim, ...] = ()
+    risks: tuple[SourcedClaim, ...] = ()
+    questions_for_validation: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ValidationIssue:
+    path: str
+    code: str
+    message: str
+
+
+def _check_claim(
+    claim: SourcedClaim,
+    *,
+    path: str,
+    known_evidence_ids: set[str],
+) -> list[ValidationIssue]:
+    issues: list[ValidationIssue] = []
+    if claim.kind not in {
+        "user_requested",
+        "evidence_observation",
+        "interpretation",
+        "hypothesis",
+        "proposal",
+        "to_validate",
+        "unknown",
+    }:
+        issues.append(
+            ValidationIssue(
+                path=path,
+                code="UNSUPPORTED_CLAIM_KIND",
+                message="The claim kind is not recognized by this internal model.",
+            )
+        )
+    if claim.value is not None and not claim.value.strip():
+        issues.append(
+            ValidationIssue(
+                path=path,
+                code="EMPTY_CLAIM_VALUE",
+                message="A claim value must contain text or be null.",
+            )
+        )
+    if claim.kind == "unknown" and claim.value is not None:
+        issues.append(
+            ValidationIssue(
+                path=path,
+                code="UNKNOWN_HAS_VALUE",
+                message="An unknown claim must not carry an asserted value.",
+            )
+        )
+    if claim.kind == "evidence_observation" and not claim.evidence_ids:
+        issues.append(
+            ValidationIssue(
+                path=path,
+                code="OBSERVATION_WITHOUT_EVIDENCE",
+                message="An evidence observation must cite at least one input Evidence ID.",
+            )
+        )
+    for evidence_id in claim.evidence_ids:
+        if evidence_id not in known_evidence_ids:
+            issues.append(
+                ValidationIssue(
+                    path=path,
+                    code="UNKNOWN_EVIDENCE_ID",
+                    message=f"Evidence ID '{evidence_id}' is not present in the inputs.",
+                )
+            )
+    return issues
+
+
+def validate_concept_draft(
+    context: ProductPlanningContext,
+    draft: ProductConceptDraft,
+) -> tuple[ValidationIssue, ...]:
+    """Check provenance and user-request fidelity for an internal draft.
+
+    This does not validate a public schema, infer whether evidence is licensed,
+    decide whether a concept is commercially viable, or approve the concept.
+    """
+
+    issues: list[ValidationIssue] = []
+    if draft.request_id != context.request_id:
+        issues.append(
+            ValidationIssue(
+                path="request_id",
+                code="REQUEST_ID_MISMATCH",
+                message="The concept draft must retain the input request_id.",
+            )
+        )
+
+    known_evidence_ids = set(context.evidence_ids)
+    for path, claim in (
+        ("opportunity", draft.opportunity),
+        ("target_customer", draft.target_customer),
+        ("product_definition", draft.product_definition),
+    ):
+        issues.extend(
+            _check_claim(
+                claim,
+                path=path,
+                known_evidence_ids=known_evidence_ids,
+            )
+        )
+
+    for collection_name, claims in (
+        ("relation_to_own_products", draft.relation_to_own_products),
+        ("differentiation", draft.differentiation),
+        ("risks", draft.risks),
+    ):
+        for index, claim in enumerate(claims):
+            issues.extend(
+                _check_claim(
+                    claim,
+                    path=f"{collection_name}[{index}]",
+                    known_evidence_ids=known_evidence_ids,
+                )
+            )
+
+    requested_attributes = {
+        (signal.name.strip().casefold(), signal.value)
+        for signal in context.request.requested_attributes
+        if signal.value is not None
+    }
+    for index, attribute in enumerate(draft.attributes):
+        path = f"attributes[{index}]"
+        if not attribute.name.strip():
+            issues.append(
+                ValidationIssue(
+                    path=path,
+                    code="EMPTY_ATTRIBUTE_NAME",
+                    message="An attribute must have a non-empty name.",
+                )
+        if attribute.kind not in {
+            "user_requested",
+            "evidence_observation",
+            "interpretation",
+            "hypothesis",
+            "proposal",
+            "to_validate",
+            "unknown",
+        }:
+            issues.append(
+                ValidationIssue(
+                    path=path,
+                    code="UNSUPPORTED_CLAIM_KIND",
+                    message="The attribute kind is not recognized by this internal model.",
+                )
+            )
+        if isinstance(attribute.value, str) and not attribute.value.strip():
+            issues.append(
+                ValidationIssue(
+                    path=path,
+                    code="EMPTY_ATTRIBUTE_VALUE",
+                    message="An attribute value must contain text or be null.",
+                )
+            )
+            )
+        if attribute.kind == "unknown" and attribute.value is not None:
+            issues.append(
+                ValidationIssue(
+                    path=path,
+                    code="UNKNOWN_ATTRIBUTE_HAS_VALUE",
+                    message="An unknown attribute must not carry an asserted value.",
+                )
+            )
+        if attribute.kind == "evidence_observation" and not attribute.evidence_ids:
+            issues.append(
+                ValidationIssue(
+                    path=path,
+                    code="OBSERVATION_WITHOUT_EVIDENCE",
+                    message="An observed attribute must cite input Evidence IDs.",
+                )
+            )
+        if attribute.kind == "user_requested" and attribute.value is not None:
+            key = (attribute.name.strip().casefold(), attribute.value)
+            if key not in requested_attributes:
+                issues.append(
+                    ValidationIssue(
+                        path=path,
+                        code="UNREQUESTED_VALUE_MARKED_AS_USER_INPUT",
+                        message=(
+                            "A user_requested attribute must match a non-empty "
+                            "attribute in the original planning request."
+                        ),
+                    )
+                )
+        for evidence_id in attribute.evidence_ids:
+            if evidence_id not in known_evidence_ids:
+                issues.append(
+                    ValidationIssue(
+                        path=path,
+                        code="UNKNOWN_EVIDENCE_ID",
+                        message=f"Evidence ID '{evidence_id}' is not present in the inputs.",
+                    )
+                )
+
+    for index, question in enumerate(draft.questions_for_validation):
+        if not question.strip():
+            issues.append(
+                ValidationIssue(
+                    path=f"questions_for_validation[{index}]",
+                    code="EMPTY_VALIDATION_QUESTION",
+                    message="A validation question must contain text.",
+                )
+            )
+
+    return tuple(issues)

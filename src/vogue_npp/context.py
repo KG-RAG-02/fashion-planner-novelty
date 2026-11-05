@@ -65,6 +65,7 @@ class TrendCandidate:
     qualification: str
     season: str | None = None
     market: tuple[str, ...] = ()
+    channel: tuple[str, ...] = ()
     category: str | None = None
     attributes: tuple[AttributeSignal, ...] = ()
     evidence_ids: tuple[str, ...] = ()
@@ -82,6 +83,8 @@ class InventoryProduct:
     sku_ids: tuple[str, ...]
     season: str | None = None
     category: str | None = None
+    market: tuple[str, ...] = ()
+    channel: tuple[str, ...] = ()
     attributes: tuple[AttributeSignal, ...] = ()
     quantity: int | float | None = None
     unit: str | None = None
@@ -143,6 +146,7 @@ def _comparable_context(inputs: PlanningInputs) -> Mapping[str, Mapping[str, obj
         "season": {},
         "category": {},
         "market": {},
+        "channel": {},
     }
     if request.season is not None:
         values["season"]["request"] = request.season
@@ -150,6 +154,8 @@ def _comparable_context(inputs: PlanningInputs) -> Mapping[str, Mapping[str, obj
         values["category"]["request"] = request.category
     if request.market:
         values["market"]["request"] = request.market
+    if request.channel:
+        values["channel"]["request"] = request.channel
 
     trend_seasons = _unique([candidate.season for candidate in trends if candidate.season])
     trend_categories = _unique(
@@ -158,9 +164,18 @@ def _comparable_context(inputs: PlanningInputs) -> Mapping[str, Mapping[str, obj
     trend_markets = _unique(
         [market for candidate in trends for market in candidate.market]
     )
+    trend_channels = _unique(
+        [channel for candidate in trends for channel in candidate.channel]
+    )
     inventory_seasons = _unique([product.season for product in products if product.season])
     inventory_categories = _unique(
         [product.category for product in products if product.category]
+    )
+    inventory_markets = _unique(
+        [market for product in products for market in product.market]
+    )
+    inventory_channels = _unique(
+        [channel for product in products for channel in product.channel]
     )
 
     if trend_seasons:
@@ -173,6 +188,44 @@ def _comparable_context(inputs: PlanningInputs) -> Mapping[str, Mapping[str, obj
         values["category"]["inventory"] = inventory_categories
     if trend_markets:
         values["market"]["trend"] = trend_markets
+    if inventory_markets:
+        values["market"]["inventory"] = inventory_markets
+    if trend_channels:
+        values["channel"]["trend"] = trend_channels
+    if inventory_channels:
+        values["channel"]["inventory"] = inventory_channels
+
+    request_attributes: dict[str, set[object]] = {}
+    for signal in request.requested_attributes:
+        if signal.value is not None:
+            request_attributes.setdefault(signal.name.strip().casefold(), set()).add(
+                signal.value
+            )
+    trend_attributes: dict[str, set[object]] = {}
+    for candidate in trends:
+        for signal in candidate.attributes:
+            if signal.value is not None:
+                trend_attributes.setdefault(signal.name.strip().casefold(), set()).add(
+                    signal.value
+                )
+    inventory_attributes: dict[str, set[object]] = {}
+    for product in products:
+        for signal in product.attributes:
+            if signal.value is not None:
+                inventory_attributes.setdefault(signal.name.strip().casefold(), set()).add(
+                    signal.value
+                )
+    for name, requested_values in request_attributes.items():
+        field_name = f"attribute:{name}"
+        values[field_name] = {
+            "request": tuple(sorted(requested_values, key=str))
+        }
+        if name in trend_attributes:
+            values[field_name]["trend"] = tuple(sorted(trend_attributes[name], key=str))
+        if name in inventory_attributes:
+            values[field_name]["inventory"] = tuple(
+                sorted(inventory_attributes[name], key=str)
+            )
     return values
 
 

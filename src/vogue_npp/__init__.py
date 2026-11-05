@@ -10,6 +10,13 @@ from .context import (
     TrendCandidate,
     build_planning_context,
 )
+from .concept import (
+    ProductConceptDraft,
+    ProposedAttribute,
+    SourcedClaim,
+    ValidationIssue,
+    validate_concept_draft,
+)
 
 __all__ = [
     "AgentResult",
@@ -18,6 +25,11 @@ __all__ = [
     "PlanningInputs",
     "PlanningRequest",
     "ProductPlanningContext",
+    "ProductConceptDraft",
+    "ProposedAttribute",
+    "SourcedClaim",
     "TrendCandidate",
+    "ValidationIssue",
     "build_planning_context",
+    "validate_concept_draft",
 ]
