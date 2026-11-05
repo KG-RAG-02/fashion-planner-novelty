@@ -30,10 +30,11 @@
     <nav class="step-nav" aria-label="프로토타입 단계">
       <button class="step active" data-target="opportunities"><span>01</span> 합성 데모</button>
       <button class="step" data-target="hm-analysis"><span>02</span> H&M 데이터</button>
-      <button class="step" data-target="documents"><span>03</span> 문서 근거</button>
-      <button class="step" data-target="brief"><span>04</span> 상품 브리프</button>
-      <button class="step" data-target="concepts"><span>05</span> 이미지 시안</button>
-      <button class="step" data-target="reviews"><span>06</span> 검토 기록</button>
+      <button class="step" data-target="planning-ops"><span>03</span> 기획·운영 데이터</button>
+      <button class="step" data-target="documents"><span>04</span> 문서 근거</button>
+      <button class="step" data-target="brief"><span>05</span> 상품 브리프</button>
+      <button class="step" data-target="concepts"><span>06</span> 이미지 시안</button>
+      <button class="step" data-target="reviews"><span>07</span> 검토 기록</button>
     </nav>
 
     <section class="section-block" id="opportunities">
@@ -71,9 +72,25 @@
       <div class="method-note" id="hmLimitations"></div>
     </section>
 
+    <section class="section-block alt planning-ops-section" id="planning-ops">
+      <div class="section-heading">
+        <div><div class="eyebrow">03 / PLANNING &amp; OPERATIONS DATA</div><h2>상품기획·운영 데이터</h2><p>실제 Kaggle 과거 자료와 시연용 목데이터, 아직 연결되지 않은 내부 자료를 분리해 확인합니다.</p></div>
+        <span class="mock-mode">운영 시스템 미연결</span>
+      </div>
+      <div class="notice ops-notice"><span class="notice-icon">i</span><div><b>실제 라인 플랜·목표·마크다운·캠페인 결과는 연결되지 않았습니다.</b><span>목데이터는 UI와 데이터 계약 시연용이며, 실제 H&amp;M 성과나 기획 원칙이 아닙니다.</span></div><span class="notice-tag">SOURCE STATUS</span></div>
+      <div id="planningDataStatus" class="ops-status-list" aria-live="polite"></div>
+      <div class="ops-grid">
+        <article class="hm-panel"><div class="panel-heading"><div><h3>시즌 라인 플랜</h3><p>가상 스타일 수와 상품 구성 원칙</p></div></div><div id="opsLinePlans" class="ops-record-list"></div></article>
+        <article class="hm-panel"><div class="panel-heading"><div><h3>판매·마크다운 리뷰</h3><p>실제 Kaggle 판매 분석과 가상 markdown 가격 시나리오를 구분</p></div></div><div id="opsMarkdownReviews" class="ops-record-list"></div></article>
+        <article class="hm-panel"><div class="panel-heading"><div><h3>가격대 목표·KPI 정의</h3><p>예시 산식만 제공하며 회사 승인 목표·측정값은 미연결</p></div></div><div id="opsKpiDefinitions" class="ops-record-list"></div></article>
+        <article class="hm-panel"><div class="panel-heading"><div><h3>상품 설명·소재·관리·사이즈</h3><p>합성 상품 상세와 실제 Kaggle 카탈로그를 각각 조회</p></div></div><div id="opsProductDetails" class="ops-record-list"></div><form id="opsProductLookupForm" class="ops-lookup-form"><label>실제 Kaggle article ID 또는 product_code<input name="product_id" placeholder="예: 0999991001 또는 0108775" required></label><button class="secondary-button" type="submit">카탈로그 조회</button></form><div id="opsProductLookupResult" class="ops-record-list"></div></article>
+        <article class="hm-panel"><div class="panel-heading"><div><h3>프로모션·캠페인 결과</h3><p>시연 시나리오만 존재하며 측정 성과는 미연결</p></div></div><div id="opsCampaigns" class="ops-record-list"></div></article>
+      </div>
+    </section>
+
     <section class="section-block alt" id="documents">
       <div class="section-heading">
-        <div><div class="eyebrow">02 / EVIDENCE SEARCH</div><h2>문서에서 근거 찾기</h2><p>가상 기획 가이드와 시즌 메모를 키워드로 검색합니다. 판매 수치 분석과 별도 결과입니다.</p></div>
+        <div><div class="eyebrow">04 / EVIDENCE SEARCH</div><h2>문서에서 근거 찾기</h2><p>가상 기획 가이드와 시즌 메모를 키워드로 검색합니다. 판매 수치 분석과 별도 결과입니다.</p></div>
       </div>
       <form id="searchForm" class="search-form"><label class="sr-only" for="searchQuery">검색어</label><input id="searchQuery" placeholder="예: 통기성, 색상, 소재, 판매 수량 정의" autocomplete="off"><button class="primary-button" type="submit">문서 검색 <span>→</span></button></form>
       <div id="searchStatus" class="search-status">카테고리와 시즌에 맞는 문서를 검색해 보세요.</div>
@@ -82,7 +99,7 @@
 
     <section class="section-block" id="brief">
       <div class="section-heading">
-        <div><div class="eyebrow">03 / PRODUCT BRIEF</div><h2>상품 브리프</h2><p>제안 내용을 수정하고 저장하세요. 저장할 때마다 브리프 버전을 남깁니다.</p></div>
+        <div><div class="eyebrow">05 / PRODUCT BRIEF</div><h2>상품 브리프</h2><p>제안 내용을 수정하고 저장하세요. 저장할 때마다 브리프 버전을 남깁니다.</p></div>
         <div class="version-badge">현재 버전 <b id="briefVersion">v0</b></div>
       </div>
       <div class="brief-layout">
@@ -111,7 +128,7 @@
 
     <section class="section-block alt" id="concepts">
       <div class="section-heading">
-        <div><div class="eyebrow">04 / VISUAL EXPLORATION</div><h2>이미지 시안</h2><p>로컬 SVG 목업으로 여러 방향을 비교합니다. 실제 생성 모델 연결 없이 동작합니다.</p></div>
+        <div><div class="eyebrow">06 / VISUAL EXPLORATION</div><h2>이미지 시안</h2><p>로컬 SVG 목업으로 여러 방향을 비교합니다. 실제 생성 모델 연결 없이 동작합니다.</p></div>
         <span class="mock-mode">✦ ImageGen 실사 시안 1개 포함 · 추가 생성은 로컬 SVG 목업</span>
       </div>
       <div class="generation-bar">
@@ -129,7 +146,7 @@
 
     <section class="section-block" id="reviews">
       <div class="section-heading">
-        <div><div class="eyebrow">05 / HUMAN REVIEW</div><h2>평가와 수정 기록</h2><p>시안마다 브랜드 적합성부터 생산 검토까지 기록합니다. 기록은 자동 재학습에 사용되지 않습니다.</p></div>
+        <div><div class="eyebrow">07 / HUMAN REVIEW</div><h2>평가와 수정 기록</h2><p>시안마다 브랜드 적합성부터 생산 검토까지 기록합니다. 기록은 자동 재학습에 사용되지 않습니다.</p></div>
       </div>
       <div class="subheading"><div><h3>브리프 버전 기록</h3><p>과거 버전을 불러오면 현재 버전은 보존되고, 수정본을 새 버전으로 저장할 수 있습니다.</p></div></div>
       <div id="briefHistory" class="history-list"></div>

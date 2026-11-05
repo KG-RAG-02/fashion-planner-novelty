@@ -74,6 +74,10 @@ PYTHONPATH=src python3 -m vogue_npp.prototype.server
 
 브라우저 결과와 데이터 흐름·fixture 스키마·지표 산식·제한사항은 [프로토타입 실행·설계 안내](docs/design/prototype-runbook.md)에 문서화했습니다. 화면의 브리프·시안·평가는 로컬 Git 제외 SQLite 파일 `data/local/prototype.sqlite3`에 기록됩니다. 실제 Kaggle의 과거 상품·거래 분석은 별도 섹션에서 조회하며, 합성 재고/리뷰/트렌드 또는 기획 브리프와 자동 병합하지 않습니다. 포함된 ImageGen 사진은 프로젝트에 고정된 콘셉트 예시이며 앱에서 외부 이미지 API를 실시간 호출하지 않습니다.
 
+상품기획·운영 자료의 가용성 조사, 합성 fixture, 응답 계약과 로컬 조회 화면은 [상품기획·운영 데이터 계약](docs/design/planning-operations-data-contract.md)에 정리했습니다. `03 기획·운영 데이터` 메뉴에서는 합성 라인 플랜·마크다운 시나리오·KPI 정의·상품 상세·캠페인과 연결 상태를 볼 수 있습니다. 미연결 KPI/캠페인 결과는 null로 남기며, 실제 Kaggle 상품 카탈로그 조회는 관측 데이터로 별도 표시합니다.
+
+주요 조회 API는 `/api/data-status`, `/api/planning/line-plans`, `/api/planning/markdown-reviews`, `/api/planning/kpi-definitions`, `/api/planning/campaigns`, `/api/products`, `/api/products/{id}`입니다. 현재는 로컬 읽기 전용이며 실제 PLM/PIM/ERP·분석 계정 연결은 포함하지 않습니다.
+
 ### Docker로 실행
 
 Docker Compose를 설치한 뒤 저장소 루트에서 실행합니다.

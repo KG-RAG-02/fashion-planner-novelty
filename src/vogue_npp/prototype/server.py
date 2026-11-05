@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import analytics, fixtures, repository, retrieval
+from . import analytics, fixtures, planning_operations, repository, retrieval
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
@@ -81,6 +81,22 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                 self._json(200, {"briefs": repository.list_hm_planning_briefs()})
             elif path == "/api/hm-brief-reviews":
                 self._json(200, {"reviews": repository.list_hm_brief_reviews()})
+            elif path == "/api/data-status":
+                self._json(200, planning_operations.get_data_status())
+            elif path == "/api/planning/line-plans":
+                self._json(200, planning_operations.list_records("line_plans"))
+            elif path == "/api/planning/markdown-reviews":
+                self._json(200, planning_operations.list_records("markdown_reviews"))
+            elif path == "/api/planning/kpi-definitions":
+                self._json(200, planning_operations.list_records("kpi_definitions"))
+            elif path == "/api/planning/campaigns":
+                self._json(200, planning_operations.list_records("campaigns"))
+            elif path == "/api/products":
+                self._json(200, planning_operations.list_products())
+            elif path.startswith("/api/products/"):
+                style_id = path.removeprefix("/api/products/")
+                product = planning_operations.get_product(style_id)
+                self._json(200 if product else 404, product or {"error": "상품을 찾을 수 없습니다."})
             elif path == "/docs/hm-kaggle-data-pipeline.md":
                 self._send(200, PIPELINE_DOC.read_bytes(), "text/markdown; charset=utf-8")
             elif path.startswith("/api/evidence/"):

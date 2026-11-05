@@ -164,6 +164,42 @@ async function loadHmAnalysis() {
   }
 }
 
+const dataStatusLabel = status => ({ observed: '실제 관측 자료', synthetic: '목데이터', user_input: '사용자 입력', not_connected: '미연결', unknown: '미확인' }[status] || status);
+
+async function loadPlanningOperations() {
+  try {
+    const [availability, linePlans, markdownReviews, kpis, products, campaigns] = await Promise.all([
+      request('/api/data-status'), request('/api/planning/line-plans'), request('/api/planning/markdown-reviews'),
+      request('/api/planning/kpi-definitions'), request('/api/products'), request('/api/planning/campaigns'),
+    ]);
+    $('#planningDataStatus').innerHTML = availability.datasets.map(item => `<article class="ops-status-card"><b>${escapeHtml(item.dataset || item.system)}</b><span class="data-status-tag status-${escapeHtml(item.data_status)}">${escapeHtml(dataStatusLabel(item.data_status))}</span><small>${escapeHtml(item.period || item.limitation || item.note || '')}</small></article>`).join('');
+    $('#opsLinePlans').innerHTML = linePlans.records.map(plan => `<article class="ops-record"><header><b>${escapeHtml(plan.season_label)} · ${escapeHtml(plan.market)}</b><span class="data-status-tag status-synthetic">목데이터 · 초안 예시</span></header><small>${escapeHtml(plan.line_plan_id)} · ${escapeHtml(plan.valid_from)}–${escapeHtml(plan.valid_to)} · ${escapeHtml(plan.currency)}</small>${plan.product_groups.map(group => `<div class="ops-subrecord"><b>${escapeHtml(group.product_group_name)}</b><span>${group.target_style_count}개 스타일 예시 · 구성 비중 ${(group.target_assortment_share*100).toFixed(0)}%</span><small>가격 티어(가상): ${group.price_ladder.map(tier=>`${escapeHtml(tier.tier)} ₩${Number(tier.min_price).toLocaleString()}–₩${Number(tier.max_price).toLocaleString()} (${(tier.target_share*100).toFixed(0)}%)`).join(' · ')}</small><small>${group.principles.map(escapeHtml).join(' · ')}</small></div>`).join('')}<small class="ops-limit">${plan.limitations.map(escapeHtml).join(' ')}</small></article>`).join('');
+    $('#opsMarkdownReviews').innerHTML = markdownReviews.records.map(item => {
+      const discount = (1 - item.markdown_price / item.list_price) * 100;
+      return `<article class="ops-record"><header><b>${escapeHtml(item.product_name)}</b><span class="data-status-tag status-synthetic">목데이터 시나리오</span></header><small>${escapeHtml(item.review_id)} · ${escapeHtml(item.scope.season)} · ${escapeHtml(item.effective_from)}–${escapeHtml(item.effective_to)}</small><p>가상 정상가 ${Number(item.list_price).toLocaleString()} → 가상 markdown 가격 ${Number(item.markdown_price).toLocaleString()} ${escapeHtml(item.currency)} (${discount.toFixed(1)}% 가격 차이)</p><small>성과 리뷰: 미제공 · 실제 판매 상승/효과를 의미하지 않음</small><small class="ops-limit">${item.limitations.map(escapeHtml).join(' ')}</small></article>`;
+    }).join('');
+    $('#opsKpiDefinitions').innerHTML = kpis.records.map(item => `<article class="ops-record"><header><b>${escapeHtml(item.name)}</b><span class="data-status-tag status-not_connected">측정 미연결</span></header><p>${escapeHtml(item.formula)}</p><small>단위 ${escapeHtml(item.unit)} · 집계 ${escapeHtml(item.aggregation_grain)} · 기간 ${escapeHtml(item.period_basis)}</small><small>가상 목표: ${item.illustrative_target == null ? '제시 안 됨' : `${item.illustrative_target}${item.unit === 'percent' ? '%' : ''}`} · 실측값: 미연결</small><small>필요 필드: ${item.missing_fields.map(escapeHtml).join(', ')}</small></article>`).join('');
+    $('#opsProductDetails').innerHTML = products.products.map(item => `<article class="ops-record"><header><b>${escapeHtml(item.product_name)}</b><span class="data-status-tag status-synthetic">목데이터</span></header><small>${escapeHtml(item.style_id)} · ${escapeHtml(item.scope.season)} · ${escapeHtml(item.fit)}</small><p>${escapeHtml(item.description)}</p><small>소재 예시: ${item.material_composition.map(material => `${escapeHtml(material.share_percent)}% ${escapeHtml(material.material)}`).join(' · ')}</small><small>관리 예시: ${item.care_instructions.map(escapeHtml).join(' ')}</small><small>사이즈: ${item.size_guide.sizes.map(size=>escapeHtml(size.size)).join(' / ')} · 실측값은 미연결</small><small class="ops-limit">${item.limitations.map(escapeHtml).join(' ')}</small></article>`).join('');
+    $('#opsCampaigns').innerHTML = campaigns.records.map(item => `<article class="ops-record"><header><b>${escapeHtml(item.campaign_name)}</b><span class="data-status-tag status-synthetic">가상 시나리오</span></header><small>${escapeHtml(item.campaign_id)} · ${escapeHtml(item.start_date)}–${escapeHtml(item.end_date)} · ${escapeHtml(item.scope.channel)}</small><small>연결 상품 예시: ${item.product_style_ids.map(escapeHtml).join(', ')}</small><small>노출·클릭·구매·매출·광고비: 미연결</small><small>필요: ${item.missing_fields.map(escapeHtml).join(', ')}</small><small class="ops-limit">${item.limitations.map(escapeHtml).join(' ')}</small></article>`).join('');
+    $('#planningDataStatus').dataset.loaded = 'true';
+  } catch (error) {
+    $('#planningDataStatus').innerHTML = `<div class="empty-result">기획·운영 데이터 상태를 불러오지 못했습니다: ${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function lookupPlanningProduct(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const productId = new FormData(form).get('product_id').trim();
+  const output = $('#opsProductLookupResult');
+  output.innerHTML = '<div class="loading">로컬 카탈로그 검색 중…</div>';
+  try {
+    const result = await request(`/api/products/${encodeURIComponent(productId)}`);
+    const item = result.product;
+    output.innerHTML = `<article class="ops-record"><header><b>${escapeHtml(item.prod_name || item.product_name || item.product_code || productId)}</b><span class="data-status-tag status-${escapeHtml(result.data_status)}">${escapeHtml(dataStatusLabel(result.data_status))}</span></header><small>${escapeHtml(result.source_id || item.source_id)} · ${escapeHtml(result.version || item.version || '')} · ${escapeHtml(result.as_of || item.as_of || '')}</small>${result.data_status === 'observed' ? `<small>${escapeHtml(item.article_id)} · ${escapeHtml(item.product_code)} · ${escapeHtml(item.product_group_name)} / ${escapeHtml(item.product_type_name)}</small><p>${escapeHtml(item.detail_desc || '원천 설명 미제공')}</p><small>색상 분류: ${escapeHtml(item.colour_group_name || '미제공')} · 소재 조성/관리법/사이즈표는 Kaggle에서 확인되지 않음</small><small>검색 결과 ${result.matched_article_count}개 중 첫 article · ${escapeHtml(result.source_file)}</small>` : `<p>${escapeHtml(item.description)}</p><small>소재·핏·관리·사이즈 정보는 시연용 목데이터입니다.</small>`}<small class="ops-limit">${(result.limitations || item.limitations || []).map(escapeHtml).join(' ')}</small></article>`;
+  } catch (error) { output.innerHTML = `<div class="empty-result">${escapeHtml(error.message)}</div>`; }
+}
+
 function renderHmPlanningAnalysis(report) {
   state.hmPlanningAnalysis = report;
   const colors = new Map();
@@ -324,6 +360,7 @@ async function bootstrap() {
     renderDocuments(search.results, search.query);
     $('#searchStatus').textContent = `${search.results.length}개 구절 · 합성 문서 · 로컬 키워드 검색`;
     await loadHmAnalysis();
+    await loadPlanningOperations();
   } catch (error) {
     $('#opportunityGrid').innerHTML = `<div class="empty-result">앱 초기화 실패: ${escapeHtml(error.message)}. 서버가 실행 중인지 확인하고 페이지를 새로고침하세요.</div>`;
   }
@@ -413,6 +450,7 @@ function bindUI() {
   $('#generateButton').addEventListener('click', generateVariants);
   $('#hmPlanningForm')?.addEventListener('submit', saveHmPlanningReview);
   $('#hmBriefGenerateButton')?.addEventListener('click', generateHmBrief);
+  $('#opsProductLookupForm')?.addEventListener('submit', lookupPlanningProduct);
   $('#searchForm').addEventListener('submit', searchDocuments);
   $('#compareButton').addEventListener('click', () => {
     const panel = $('#comparePanel');
