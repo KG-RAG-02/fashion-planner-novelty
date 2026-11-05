@@ -68,6 +68,12 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                     self._json(404, {"error": "H&M Kaggle 데이터 분석 산출물이 없습니다. 데이터 파이프라인을 먼저 실행해 주세요."})
                 else:
                     self._json(200, analysis)
+            elif path == "/api/hm-planning-analysis":
+                analysis = fixtures.get_hm_planning_analysis()
+                if analysis is None:
+                    self._json(404, {"error": "Article 기준 상품기획 분석이 없습니다. 분석 단계를 먼저 실행해 주세요."})
+                else:
+                    self._json(200, analysis)
             elif path == "/docs/hm-kaggle-data-pipeline.md":
                 self._send(200, PIPELINE_DOC.read_bytes(), "text/markdown; charset=utf-8")
             elif path.startswith("/api/evidence/"):

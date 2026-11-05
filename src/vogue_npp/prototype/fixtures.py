@@ -27,6 +27,14 @@ def get_hm_analysis() -> dict[str, Any] | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def get_hm_planning_analysis() -> dict[str, Any] | None:
+    """Return article-level category planning analysis when generated locally."""
+    path = hm_analysis_path().with_name("hm_planning_analysis.json")
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def _source_map(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {row["source_id"]: row for row in data["sources"]}
 

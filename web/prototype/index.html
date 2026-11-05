@@ -64,6 +64,9 @@
       </div>
       <div class="subheading"><div><h3>구매 수량 상위 Style</h3><p>product_code로 묶은 상품 마스터와 거래 구매 행 집계입니다.</p></div><span class="subtle" id="hmSourceLine"></span></div>
       <div class="table-wrap"><table><thead><tr><th>PRODUCT CODE</th><th>대표 상품명</th><th>상품군 · 유형</th><th>대표 색상</th><th>구매 행</th><th>평균 price* (원천수치)</th><th>우세 채널 코드</th></tr></thead><tbody id="hmStyleRows"></tbody></table></div>
+      <div class="subheading"><div><h3>상품유형 전체 분석</h3><p>상품 article 분류를 기준으로 계산한 과거 관측입니다. 기획 시즌이나 미래 수요 예측이 아닙니다.</p></div><span class="subtle" id="hmPlanningStatus"></span></div>
+      <div class="table-wrap"><table><thead><tr><th>상품군</th><th>상품유형</th><th>구매 행</th><th>전체 비중</th><th>스타일 수</th><th>상품 수</th><th>TOP 색상</th><th>관측 월</th><th>상위 5 스타일 비중</th></tr></thead><tbody id="hmTypeRows"></tbody></table></div>
+      <div class="hm-insight-grid"><article class="hm-panel"><div class="panel-heading"><div><h3>기획 검토 후보</h3><p>과거 판매 규모 기준 탐색 후보이며, 수요·수익성 판단은 아닙니다.</p></div></div><div id="hmOpportunityCards" class="hm-opportunity-list"></div></article><article class="hm-panel"><div class="panel-heading"><div><h3>이미지 생성 입력 템플릿</h3><p>관측 근거와 창의적 가정을 분리한 JSON 입력입니다.</p></div></div><pre id="hmPromptTemplate" class="hm-prompt-template"></pre></article></div>
       <div class="method-note" id="hmLimitations"></div>
     </section>
 

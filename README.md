@@ -52,6 +52,14 @@ PYTHONPATH=src python3 -m vogue_npp.hm_quality
 PYTHONPATH=src python3 -m vogue_npp.hm_data
 ```
 
+이 명령은 처리·기본 분석에 더해 131개 상품유형의 Article 기준 시즌성·연도별 추세·색상·상대 원천 가격대·채널·스타일 집중도와 근거 연결 기획 후보도 생성합니다. 기존 처리 결과만 다시 분석하려면 다음 명령을 실행할 수 있습니다.
+
+```bash
+PYTHONPATH=src python3 -m vogue_npp.hm_planning_analysis
+```
+
+결과 `hm_planning_analysis.json`은 UI의 **상품유형 전체 분석**에 제공됩니다. 판매 월은 월요일 시작 주의 시작월이며, 실제 MD 시즌으로 추정하지 않습니다. 연도별 변화는 불완전한 연도와 상품 노출 기간을 보정하지 않은 서술 통계입니다. 상대 가격 구간은 원천 수치 분위 구간으로, 통화나 판매가 제안이 아닙니다. 기획 후보는 과거 판매 규모를 탐색하는 용도입니다.
+
 결과는 Git에서 제외되는 `data/processed/hm-personalized-fashion-recommendations/` 아래 상품 카탈로그, 주간 거래 집계, Style·상품군·색상·채널·월별 분석 CSV, `hm_analysis.json`, `manifest.json`으로 생성됩니다. 완료된 실제 파일 점검과 제한은 [H&M Kaggle 처리 계획](docs/design/hm-kaggle-data-pipeline.md)에 기록했습니다. 분석 산출물은 아래 웹 앱의 **H&M 데이터** 섹션에 합성 데모와 분리해 표시합니다.
 
 ## MD용 로컬 프로토타입 실행

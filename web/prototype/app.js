@@ -156,10 +156,38 @@ async function loadHmAnalysis() {
   try {
     const report = await request('/api/hm-analysis');
     renderHmAnalysis(report);
+    const planning = await request('/api/hm-planning-analysis');
+    renderHmPlanningAnalysis(planning);
   } catch (error) {
     $('#hmAnalysisStatus').textContent = error.message;
     $('#hmKpiGrid').innerHTML = `<div class="empty-result">H&amp;M 요약 산출물이 아직 없습니다. 문서의 수집·처리 명세를 실행하면 이 영역이 채워집니다.</div>`;
   }
+}
+
+function renderHmPlanningAnalysis(report) {
+  state.hmPlanningAnalysis = report;
+  const colors = new Map();
+  for (const row of report.color_mix) {
+    const key = `${row.product_group_name}\u0000${row.product_type_name}`;
+    const values = colors.get(key) || [];
+    values.push(row);
+    colors.set(key, values);
+  }
+  const seasonality = new Map(report.seasonality_and_growth.map(row => [`${row.product_group_name}\u0000${row.product_type_name}`, row]));
+  const concentration = new Map(report.style_concentration.map(row => [`${row.product_group_name}\u0000${row.product_type_name}`, row]));
+  $('#hmTypeRows').innerHTML = report.product_types.slice(0, 131).map(row => {
+    const key = `${row.product_group_name}\u0000${row.product_type_name}`;
+    const topColors = (colors.get(key) || []).slice(0, 3).map(item => `${item.colour_group_name} ${(item.share_within_type * 100).toFixed(0)}%`).join(' · ');
+    const months = (seasonality.get(key)?.monthly_peak_week_start_months || []).map(month => `${month}월`).join(' · ');
+    const top5 = concentration.get(key)?.top_5_style_share;
+    return `<tr><td>${escapeHtml(row.product_group_name)}</td><td>${escapeHtml(row.product_type_name)}</td><td class="number">${row.purchase_rows.toLocaleString()}</td><td>${(row.share_of_joined_purchase_rows * 100).toFixed(2)}%</td><td>${row.unique_product_code_count.toLocaleString()}</td><td>${row.unique_article_count.toLocaleString()}</td><td>${escapeHtml(topColors)}</td><td>${escapeHtml(months)}</td><td>${top5 == null ? '—' : `${(top5 * 100).toFixed(1)}%`}</td></tr>`;
+  }).join('');
+  $('#hmOpportunityCards').innerHTML = report.opportunity_candidates.slice(0, 10).map(item => `<article class="hm-opportunity-card"><b>${escapeHtml(item.category.product_group_name)} · ${escapeHtml(item.category.product_type_name)}</b><span>${Number(item.observations.observed_purchase_rows).toLocaleString()} 구매 행 · 과거 규모 기준</span><small>${(item.observations.top_observed_colors || []).map(color => `${escapeHtml(color.name)} ${(color.share * 100).toFixed(0)}%`).join(' · ')}</small><small>관측 월 ${escapeHtml((item.observations.observed_month_peaks_by_week_start || []).join(', '))} · 상위 스타일 집중도 ${item.observations.top_5_style_share == null ? '미확인' : `${(item.observations.top_5_style_share * 100).toFixed(1)}%`}</small><small class="hm-caveat">${escapeHtml(item.limits.join(' '))}</small></article>`).join('');
+  $('#hmPromptTemplate').textContent = JSON.stringify({
+    brief: report.planning_brief_template,
+    selected_opportunity_example: report.opportunity_candidates[0] || null,
+  }, null, 2);
+  $('#hmPlanningStatus').textContent = `${report.product_types.length}개 유형 · ${report.purchase_rows.toLocaleString()} 구매 행 · Article 기준 · 미매칭 ${report.unmatched_weekly_rows}`;
 }
 
 function wireImageFallbacks(container) {
