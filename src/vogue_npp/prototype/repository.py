@@ -53,6 +53,12 @@ def initialize() -> None:
                 price_feasibility INTEGER NOT NULL, production_feasibility INTEGER NOT NULL,
                 adopted INTEGER NOT NULL, feedback TEXT NOT NULL, created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS hm_planning_reviews (
+                review_id TEXT PRIMARY KEY, opportunity_id TEXT NOT NULL,
+                request_payload TEXT NOT NULL, decision_payload TEXT NOT NULL,
+                analysis_version TEXT NOT NULL, source_period TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
         """)
         version = db.execute("SELECT value FROM app_meta WHERE key='fixture_version'").fetchone()
         fixture = load_fixture()
@@ -251,3 +257,57 @@ def list_evaluations() -> list[dict[str, Any]]:
         if item["variant_id"] == IMAGEGEN_VARIANT_ID:
             item["image_url"] = IMAGEGEN_ASSET
     return results
+
+
+def save_hm_planning_review(payload: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any]:
+    """Persist an actual-H&M planning decision separately from synthetic briefs."""
+    initialize()
+    opportunity_id = str(payload.get("opportunity_id", "")).strip()
+    opportunity = next((row for row in analysis.get("opportunity_candidates", []) if row.get("opportunity_id") == opportunity_id), None)
+    if opportunity is None:
+        raise ValueError("선택한 기획 후보를 현재 분석 결과에서 찾을 수 없습니다.")
+    request = payload.get("request") if isinstance(payload.get("request"), dict) else {}
+    decision = payload.get("decision") if isinstance(payload.get("decision"), dict) else {}
+    reason = str(decision.get("selection_reason", "")).strip()
+    if not reason:
+        raise ValueError("후보 선택 근거를 입력해 주세요.")
+    clean_request = {
+        "target_season": str(request.get("target_season", "")).strip()[:100] or None,
+        "market": str(request.get("market", "")).strip()[:200] or None,
+        "channel": str(request.get("channel", "")).strip()[:100] or None,
+        "product_group_name": opportunity["category"]["product_group_name"],
+        "product_type_name": opportunity["category"]["product_type_name"],
+        "price_hypothesis": str(request.get("price_hypothesis", "")).strip()[:300] or None,
+        "design_constraints": str(request.get("design_constraints", "")).strip()[:1000] or None,
+        "missing_fields": ["trend_evidence", "inventory_and_returns", "cost_and_margin", "customer_segments"],
+    }
+    clean_decision = {
+        "selection_reason": reason[:2000],
+        "counter_evidence": str(decision.get("counter_evidence", "")).strip()[:2000] or None,
+        "unknowns_to_validate": str(decision.get("unknowns_to_validate", "")).strip()[:2000] or None,
+        "opportunity_snapshot": opportunity,
+    }
+    review_id = "HM-REVIEW-" + uuid.uuid4().hex[:12].upper()
+    created_at = utc_now()
+    period = analysis.get("observation_period", {})
+    source_period = f"{period.get('start', '')}–{period.get('end', '')}"
+    with connect() as db:
+        db.execute("INSERT INTO hm_planning_reviews VALUES(?,?,?,?,?,?,?)", (
+            review_id, opportunity_id, json.dumps(clean_request, ensure_ascii=False),
+            json.dumps(clean_decision, ensure_ascii=False), str(analysis.get("analysis_version", "unknown")),
+            source_period, created_at,
+        ))
+    return {"review_id": review_id, "opportunity_id": opportunity_id, "request": clean_request,
+            "decision": clean_decision, "analysis_version": analysis.get("analysis_version"),
+            "source_period": source_period, "created_at": created_at}
+
+
+def list_hm_planning_reviews() -> list[dict[str, Any]]:
+    """List actual-data planning reviews, separate from synthetic brief records."""
+    initialize()
+    with connect() as db:
+        rows = db.execute("SELECT * FROM hm_planning_reviews ORDER BY created_at DESC LIMIT 100").fetchall()
+    return [{"review_id": row["review_id"], "opportunity_id": row["opportunity_id"],
+             "request": json.loads(row["request_payload"]), "decision": json.loads(row["decision_payload"]),
+             "analysis_version": row["analysis_version"], "source_period": row["source_period"],
+             "created_at": row["created_at"]} for row in rows]

@@ -45,6 +45,8 @@ def _safe_rate(numerator: float, denominator: float) -> float | None:
 def analyze(processed_dir: Path = DEFAULT_DIR) -> dict[str, Any]:
     root = processed_dir.expanduser().resolve()
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    sales_fingerprint = str(manifest.get("source_transactions", {}).get("container_sha256", "unknown"))[:12]
+    catalog_fingerprint = str(manifest.get("source_articles", {}).get("container_sha256", "unknown"))[:12]
     catalog_rows = _read(root / "article_catalog.csv")
     weekly_rows = _read(root / "weekly_sales_by_article_channel.csv")
     catalog = {row["article_id"].strip(): row for row in catalog_rows if row.get("article_id", "").strip()}
@@ -113,6 +115,7 @@ def analyze(processed_dir: Path = DEFAULT_DIR) -> dict[str, Any]:
     category_denominator = sum(metric["units"] for metric in category.values())
     for key, metric in sorted(category.items(), key=lambda item: item[1]["units"], reverse=True):
         units = metric["units"]
+        category_token = hashlib.sha256(f"{key[0]}\0{key[1]}".encode("utf-8")).hexdigest()[:12]
         type_rows.append({
             "product_group_name": key[0], "product_type_name": key[1],
             "purchase_rows": units, "share_of_joined_purchase_rows": _safe_rate(units, total),
@@ -120,6 +123,7 @@ def analyze(processed_dir: Path = DEFAULT_DIR) -> dict[str, Any]:
             "unique_article_count": len(metric["articles"]), "unique_product_code_count": len(metric["styles"]),
             "weighted_mean_price_source_units": round(metric["price_weighted_sum"] / units, 10) if units else None,
             "source_ids": [SOURCE_SALES, SOURCE_CATALOG],
+            "evidence_id": f"E-HM-CAT-{sales_fingerprint}-{catalog_fingerprint}-{category_token}",
         })
     running = 0
     for row in type_rows:
@@ -221,8 +225,8 @@ def analyze(processed_dir: Path = DEFAULT_DIR) -> dict[str, Any]:
             "planning_interpretation": "대규모 과거 구매 관측을 기반으로 후속 시즌·색상·가격대 기획 검토 후보로 삼을 수 있습니다.",
             "hypotheses_to_validate": ["최근 시장 트렌드와 내부 시즌 기획 방향을 대조", "재고·반품·원가·마진 자료로 사업성 확인", "고객/시장 데이터가 확보되면 타깃 적합성 확인"],
             "confidence": "historical_volume_only", "evidence": [
-                {"source_id": SOURCE_SALES, "dataset": manifest.get("dataset"), "period": manifest.get("observation_period"), "aggregation": "article_id x week_start x source channel, reclassified by article catalog"},
-                {"source_id": SOURCE_CATALOG, "aggregation": "article_id to product group/type/color/product_code"},
+                {"evidence_id": metric["evidence_id"], "source_id": SOURCE_SALES, "dataset": manifest.get("dataset"), "period": manifest.get("observation_period"), "aggregation": "article_id x week_start x source channel, reclassified by article catalog"},
+                {"evidence_id": f"E-HM-TAX-{catalog_fingerprint}-{hashlib.sha256((key[0]+'\\0'+key[1]).encode('utf-8')).hexdigest()[:12]}", "source_id": SOURCE_CATALOG, "aggregation": "article_id to product group/type/color/product_code"},
             ],
             "limits": ["과거 판매 규모는 미래 수요나 시장 성장의 증거가 아닙니다.", "재고·반품·고객 특성·명시적 시즌은 포함되지 않았습니다."],
         })

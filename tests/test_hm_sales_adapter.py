@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from vogue_npp.hm_sales_adapter import load_hm_sales_analysis
+from vogue_npp.prototype.retrieval import get_evidence
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +25,17 @@ class HmSalesAdapterTests(unittest.TestCase):
         self.assertEqual(result.result.status, "ok")
         self.assertEqual(sum(item.purchase_rows for item in result.observations), 4_217_017)
         self.assertTrue(all(item.evidence_ids for item in result.observations))
+
+    def test_category_evidence_resolves_with_source_period_and_version(self) -> None:
+        from vogue_npp.hm_planning_analysis import analyze
+
+        analysis = analyze(DATA)
+        trousers = next(item for item in analysis["product_types"] if item["product_type_name"] == "Trousers")
+        evidence = get_evidence(trousers["evidence_id"])
+        self.assertEqual(evidence["kind"], "hm_article_level_category_sales")
+        self.assertEqual(evidence["record"]["purchase_rows"], 4_217_017)
+        self.assertEqual(evidence["source"]["period"]["start"], "2018-09-20")
+        self.assertEqual(evidence["analysis_version"], analysis["analysis_version"])
 
     def test_observation_limit_is_explicitly_partial(self) -> None:
         result = load_hm_sales_analysis(

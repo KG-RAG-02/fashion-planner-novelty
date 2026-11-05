@@ -182,12 +182,42 @@ function renderHmPlanningAnalysis(report) {
     const top5 = concentration.get(key)?.top_5_style_share;
     return `<tr><td>${escapeHtml(row.product_group_name)}</td><td>${escapeHtml(row.product_type_name)}</td><td class="number">${row.purchase_rows.toLocaleString()}</td><td>${(row.share_of_joined_purchase_rows * 100).toFixed(2)}%</td><td>${row.unique_product_code_count.toLocaleString()}</td><td>${row.unique_article_count.toLocaleString()}</td><td>${escapeHtml(topColors)}</td><td>${escapeHtml(months)}</td><td>${top5 == null ? '—' : `${(top5 * 100).toFixed(1)}%`}</td></tr>`;
   }).join('');
-  $('#hmOpportunityCards').innerHTML = report.opportunity_candidates.slice(0, 10).map(item => `<article class="hm-opportunity-card"><b>${escapeHtml(item.category.product_group_name)} · ${escapeHtml(item.category.product_type_name)}</b><span>${Number(item.observations.observed_purchase_rows).toLocaleString()} 구매 행 · 과거 규모 기준</span><small>${(item.observations.top_observed_colors || []).map(color => `${escapeHtml(color.name)} ${(color.share * 100).toFixed(0)}%`).join(' · ')}</small><small>관측 월 ${escapeHtml((item.observations.observed_month_peaks_by_week_start || []).join(', '))} · 상위 스타일 집중도 ${item.observations.top_5_style_share == null ? '미확인' : `${(item.observations.top_5_style_share * 100).toFixed(1)}%`}</small><small class="hm-caveat">${escapeHtml(item.limits.join(' '))}</small></article>`).join('');
+  $('#hmOpportunityCards').innerHTML = report.opportunity_candidates.slice(0, 10).map(item => `<article class="hm-opportunity-card"><b>${escapeHtml(item.category.product_group_name)} · ${escapeHtml(item.category.product_type_name)}</b><span>${Number(item.observations.observed_purchase_rows).toLocaleString()} 구매 행 · 과거 규모 기준</span><small>${(item.observations.top_observed_colors || []).map(color => `${escapeHtml(color.name)} ${(color.share * 100).toFixed(0)}%`).join(' · ')}</small><small>관측 월 ${escapeHtml((item.observations.observed_month_peaks_by_week_start || []).join(', '))} · 상위 스타일 집중도 ${item.observations.top_5_style_share == null ? '미확인' : `${(item.observations.top_5_style_share * 100).toFixed(1)}%`}</small><small class="hm-caveat">${escapeHtml(item.limits.join(' '))}</small><div class="hm-evidence-links">${item.evidence.map(ev => `<button type="button" data-record-id="${escapeHtml(ev.evidence_id)}">${escapeHtml(ev.source_id)} 근거 보기 ↗</button>`).join('')}</div><button type="button" class="secondary-button" data-hm-opportunity="${escapeHtml(item.opportunity_id)}">이 후보 선택</button></article>`).join('');
+  $$('[data-hm-opportunity]').forEach(button => button.addEventListener('click', () => {
+    $('#hmPlanningForm').elements.namedItem('opportunity_id').value = button.dataset.hmOpportunity;
+    $('#hmPlanningForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
   $('#hmPromptTemplate').textContent = JSON.stringify({
     brief: report.planning_brief_template,
     selected_opportunity_example: report.opportunity_candidates[0] || null,
   }, null, 2);
   $('#hmPlanningStatus').textContent = `${report.product_types.length}개 유형 · ${report.purchase_rows.toLocaleString()} 구매 행 · Article 기준 · 미매칭 ${report.unmatched_weekly_rows}`;
+  loadHmPlanningReviews();
+}
+
+async function loadHmPlanningReviews() {
+  try {
+    const { reviews } = await request('/api/hm-planning-reviews');
+    $('#hmPlanningReviews').innerHTML = reviews.length ? reviews.map(item => `<article class="hm-opportunity-card"><b>${escapeHtml(item.request.product_group_name)} · ${escapeHtml(item.request.product_type_name)}</b><span>${escapeHtml(item.review_id)} · ${escapeHtml(item.created_at)}</span><small>시즌 ${escapeHtml(item.request.target_season || '미입력')} · 시장 ${escapeHtml(item.request.market || '미입력')} · 채널 ${escapeHtml(item.request.channel || '미입력')}</small><small>선택 근거: ${escapeHtml(item.decision.selection_reason)}</small><small>반대 근거: ${escapeHtml(item.decision.counter_evidence || '미입력')}</small><small>확인 사항: ${escapeHtml(item.decision.unknowns_to_validate || item.request.missing_fields.join(', '))}</small><small>${escapeHtml(item.analysis_version)} · ${escapeHtml(item.source_period)}</small></article>`).join('') : '<div class="empty-result">아직 실제 데이터 후보 선택 기록이 없습니다.</div>';
+  } catch (error) { $('#hmPlanningReviews').textContent = error.message; }
+}
+
+async function saveHmPlanningReview(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = Object.fromEntries(new FormData(form).entries());
+  const status = $('#hmPlanningSaveStatus');
+  status.textContent = '저장 중…';
+  try {
+    const saved = await request('/api/hm-planning-reviews', { method: 'POST', body: JSON.stringify({
+      opportunity_id: data.opportunity_id,
+      request: { target_season: data.target_season, market: data.market, channel: data.channel, price_hypothesis: data.price_hypothesis, design_constraints: data.design_constraints },
+      decision: { selection_reason: data.selection_reason, counter_evidence: data.counter_evidence, unknowns_to_validate: data.unknowns_to_validate },
+    }) });
+    status.textContent = `저장 완료 · ${saved.review_id}`;
+    form.reset();
+    await loadHmPlanningReviews();
+  } catch (error) { status.textContent = error.message; }
 }
 
 function wireImageFallbacks(container) {
@@ -328,6 +358,7 @@ function bindUI() {
     $('#briefStatus').textContent = '저장하지 않은 수정사항이 있습니다.';
   });
   $('#generateButton').addEventListener('click', generateVariants);
+  $('#hmPlanningForm')?.addEventListener('submit', saveHmPlanningReview);
   $('#searchForm').addEventListener('submit', searchDocuments);
   $('#compareButton').addEventListener('click', () => {
     const panel = $('#comparePanel');

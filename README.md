@@ -58,7 +58,7 @@ PYTHONPATH=src python3 -m vogue_npp.hm_data
 PYTHONPATH=src python3 -m vogue_npp.hm_planning_analysis
 ```
 
-결과 `hm_planning_analysis.json`은 UI의 **상품유형 전체 분석**에 제공됩니다. 판매 월은 월요일 시작 주의 시작월이며, 실제 MD 시즌으로 추정하지 않습니다. 연도별 변화는 불완전한 연도와 상품 노출 기간을 보정하지 않은 서술 통계입니다. 상대 가격 구간은 원천 수치 분위 구간으로, 통화나 판매가 제안이 아닙니다. 기획 후보는 과거 판매 규모를 탐색하는 용도입니다.
+결과 `hm_planning_analysis.json`은 UI의 **상품유형 전체 분석**에 제공됩니다. MD가 후보를 선택해 사유·반대 근거·확인할 미지 항목을 기록하면 합성 데모의 브리프와 분리된 `hm_planning_reviews` 테이블에 저장됩니다. 판매 월은 월요일 시작 주의 시작월이며, 실제 MD 시즌으로 추정하지 않습니다. 연도별 변화는 불완전한 연도와 상품 노출 기간을 보정하지 않은 서술 통계입니다. 상대 가격 구간은 원천 수치 분위 구간으로, 통화나 판매가 제안이 아닙니다. 기획 후보는 과거 판매 규모를 탐색하는 용도입니다.
 
 결과는 Git에서 제외되는 `data/processed/hm-personalized-fashion-recommendations/` 아래 상품 카탈로그, 주간 거래 집계, Style·상품군·색상·채널·월별 분석 CSV, `hm_analysis.json`, `manifest.json`으로 생성됩니다. 완료된 실제 파일 점검과 제한은 [H&M Kaggle 처리 계획](docs/design/hm-kaggle-data-pipeline.md)에 기록했습니다. 분석 산출물은 아래 웹 앱의 **H&M 데이터** 섹션에 합성 데모와 분리해 표시합니다.
 
