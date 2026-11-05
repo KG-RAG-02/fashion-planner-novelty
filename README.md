@@ -26,4 +26,4 @@ VOGUE 프로젝트의 3번 **New Product Planning Agent**를 구현하는 저장
 
 ## 설계 상태
 
-구현 경계와 계약 공백은 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. 계약 스키마와 기술 스택이 합의되기 전까지는 이 문서를 제안 상태로 유지합니다.
+구현 경계와 계약 공백은 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. `src/vogue_npp`에는 외부 계약과 분리된 입력 정합성 검사 및 기획 컨텍스트 조립 코어가 있습니다. Python은 현재 이 코어의 프로토타입 언어이며, 서비스 런타임·API·모델 스택이 확정된 것은 아닙니다.
