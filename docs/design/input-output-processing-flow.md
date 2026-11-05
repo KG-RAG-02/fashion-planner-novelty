@@ -39,6 +39,22 @@
 | `InventoryProductResult` | `result`, `products[]` | 입력 객체는 필수다. 개별 상품의 `quantity`, `unit`, `inventory_definition`, `as_of` 누락은 상위 result status 및 제한사항과 함께 보존한다. |
 | `ProductConceptDraft` | 요청 조건, 속성, 기회 관찰, 자사 상품 관계, 상태, 제한, 질문, Evidence ID | 내부 검토 출력이다. 합의 전 공통 `ProductConcept` wire payload로 부르지 않는다. |
 
+## 실제 데이터 필드 계약과 현재 연결 상태
+
+이 표는 저장소 내부 adapter 계약이다. 각 upstream 팀과 합의한 외부 wire schema가 아니므로 API 필드명으로 복사하지 않는다.
+
+| 흐름 | 내부 필드/식별자 | 버전·기준 시점 | 누락·충돌 처리 | 현재 연결 |
+| --- | --- | --- | --- | --- |
+| 기획 요청 | `request_id`, `schema_version`, `original_query`, `season`, `market[]`, `channel[]`, `category`, `requested_attributes[]`, `constraints[]`, `missing_fields[]`, `field_origins{}` | request별 식별자·schema version 필수 | 미입력 값은 `None`/빈 값과 `missing_fields`로 보존; taxonomy 임의 변환 금지 | 내부 dataclass; 외부 transport 미연결 |
+| 트렌드 | `AgentResult` + `TrendCandidate{name, qualification, season, market[], channel[], category, attributes[], evidence_ids[]}` | 공급자 결과의 schema version 및 각 Evidence의 문서 버전/기준일 | `no_results`, `partial`, `error`를 값 0/부재 사실로 치환하지 않음 | 내부 dataclass; Agent 1 연결 미확정 |
+| 판매 | `SalesObservation{category, purchase_rows, period_start/end, product_group, attributes[], source_channel_code, evidence_ids[]}` | Kaggle manifest `pipeline_version`, 원천 SHA-256, 관측기간; 매핑 버전은 호출자가 전달 | 미매칭 article은 제한사항으로 알림; 원천 분류와 요청 taxonomy 명시 map 없이는 결과를 매핑하지 않음 | 로컬 Article 집계 adapter |
+| 상품·재고 | `InventoryProduct{style_id, sku_ids[], season, category, market[], channel[], quantity, unit, inventory_definition, as_of, evidence_ids[]}` | 스냅샷 `as_of`, upstream schema version | 속성과 수량 결측을 구분; 실제 0만 0으로 유지; 단위/정의 충돌은 결합하지 않음 | 내부 dataclass; Agent 2 연결 미확정 |
+| 콘셉트 초안 | `ProductConceptDraft` 및 claim별 `kind`, `evidence_ids[]`, 상태·제약 | request/schema version, source Evidence IDs | 미근거 사실은 검증 오류; 해석·가설·제안·미확정으로 낮추거나 제거 | 결정적 generator 연결; LLM adapter 미연결 |
+
+### H&M 판매 adapter의 집계 경계
+
+`load_hm_sales_analysis()`는 `weekly_sales_by_article_channel.csv`의 `article_id`를 `article_catalog.csv`의 `article_id`와 결합하고, 실제 article의 `product_group_name`·`product_type_name` 분류로 요청 category에 매핑한 뒤 기간 전체 구매 행을 합산한다. 한 product_code의 article이 여러 상품유형에 연결되면 각 article을 해당 유형에 귀속한다. 스타일 대표값 파일을 카테고리 집계 원천으로 사용하지 않는다. 기본값은 관측을 자르지 않으며 `observation_limit`을 명시한 경우 반환 관측이 일부로 제한되었다는 제한사항을 결과에 추가한다.
+
 ## 상태별 동작
 
 | 상황 | 동작 |
