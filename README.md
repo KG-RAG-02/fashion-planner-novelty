@@ -30,7 +30,7 @@ VOGUE 전체 흐름은 RAG 기반 LLM 에이전트 시스템입니다. 이 저�
 - [Project Workflow](https://app.notion.com/p/40f3269b1acd81378143f35b599ef9a0)
 - [저장소 분리 협업 가이드](https://app.notion.com/p/40e3269b1acd81489fecc1052e033b54)
 
-Agent 3의 데이터 출처·Evidence 경계와 공개/H&M 데이터 후보는 [데이터·Evidence 계획](docs/design/data-source-and-evidence-plan.md)에 정리했습니다. H&M Kaggle 자료는 사용 조건을 확인한 기술 검증 후보이며, 자사 상품·재고의 대체 데이터가 아닙니다.
+Agent 3의 데이터 출처·Evidence 경계와 공개/H&M 데이터 후보는 [데이터·Evidence 계획](docs/design/data-source-and-evidence-plan.md)에 정리했습니다. H&M 소속 MD 페르소나에 따라 Kaggle의 상품 자료는 자사 상품 근거 후보로 취급합니다. 구매 기록의 분석은 기존 판매량 분석 제외 결정과 Kaggle 사용 조건을 확인한 뒤 범위를 정합니다.
 
 ## 설계 상태
 
