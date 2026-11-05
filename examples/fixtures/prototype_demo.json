@@ -1,0 +1,131 @@
+{
+  "schema_version": "vogue-demo-1",
+  "scope": {
+    "category": "Light Outerwear",
+    "season": "27SS",
+    "source_id": "SRC-DEMO-CATALOG-01",
+    "catalog_scope_complete": true,
+    "assortment_checks": [
+      {"field":"color","values":["Sage","Dusty Blue"],"passage_id":"DOC-27SS-TREND-01-P1","source_id":"SRC-DEMO-TREND-01"}
+    ],
+    "disclaimer": "완전성 표시는 아래 가상 카탈로그 범위에만 적용됩니다. 실제 브랜드 구색을 뜻하지 않습니다."
+  },
+  "sources": [
+    {
+      "source_id": "SRC-DEMO-CATALOG-01",
+      "name": "Synthetic Light Outerwear Catalog",
+      "kind": "synthetic_product_catalog",
+      "period": "26SS sample assortment",
+      "version": "demo-1.0",
+      "permission": "가상 시연 데이터; 실제 회사 자료 아님",
+      "as_of": "2026-02-20"
+    },
+    {
+      "source_id": "SRC-DEMO-SALES-01",
+      "name": "Synthetic Weekly Sales Sample",
+      "kind": "synthetic_sales_aggregate",
+      "period": "2025-12-01 to 2026-02-22 (12 illustrative weeks)",
+      "version": "demo-1.0",
+      "permission": "가상 시연 데이터; 실제 회사 자료 아님",
+      "as_of": "2026-02-22"
+    },
+    {
+      "source_id": "SRC-DEMO-INVENTORY-01",
+      "name": "Synthetic Inventory Snapshot",
+      "kind": "synthetic_inventory_snapshot",
+      "period": "snapshot",
+      "version": "demo-1.0",
+      "permission": "가상 시연 데이터; 실제 회사 자료 아님",
+      "as_of": "2026-02-23"
+    },
+    {
+      "source_id": "SRC-DEMO-VOICE-01",
+      "name": "Synthetic Customer Voice Sample",
+      "kind": "synthetic_feedback",
+      "period": "2026-01 to 2026-02",
+      "version": "demo-1.0",
+      "permission": "가상 시연 데이터; 실제 회사 자료 아님; PII 없음",
+      "as_of": "2026-02-20"
+    },
+    {
+      "source_id": "SRC-DEMO-TREND-01",
+      "name": "Synthetic 27SS Trend Brief",
+      "kind": "synthetic_document",
+      "period": "27SS",
+      "version": "demo-1.0",
+      "permission": "가상 시연 문서; 실제 회사 자료 아님",
+      "as_of": "2026-02-18"
+    },
+    {
+      "source_id": "SRC-DEMO-KPI-01",
+      "name": "Synthetic KPI Definitions",
+      "kind": "synthetic_document",
+      "period": "Prototype definitions",
+      "version": "demo-1.0",
+      "permission": "가상 시연 문서; 실제 회사 자료 아님",
+      "as_of": "2026-02-18"
+    },
+    {
+      "source_id": "SRC-DEMO-GUIDE-01",
+      "name": "Synthetic Design Review Guide",
+      "kind": "synthetic_document",
+      "period": "27SS",
+      "version": "demo-1.0",
+      "permission": "가상 시연 문서; 실제 회사 자료 아님",
+      "as_of": "2026-02-18"
+    }
+  ],
+  "products": [
+    {"style_id":"LW-2601","name":"Packable Hood Shell","category":"Light Outerwear","season":"26SS","color":"Black","material":"Recycled nylon (demo)","fit":"Relaxed","price_krw":89900,"size_range":"XS–XL","source_id":"SRC-DEMO-CATALOG-01"},
+    {"style_id":"LW-2602","name":"City Coach Jacket","category":"Light Outerwear","season":"26SS","color":"Stone","material":"Cotton nylon (demo)","fit":"Regular","price_krw":109900,"size_range":"XS–XL","source_id":"SRC-DEMO-CATALOG-01"},
+    {"style_id":"LW-2603","name":"Air Mesh Windbreaker","category":"Light Outerwear","season":"26SS","color":"Navy","material":"Air mesh (demo)","fit":"Relaxed","price_krw":79900,"size_range":"XS–XL","source_id":"SRC-DEMO-CATALOG-01"},
+    {"style_id":"LW-2604","name":"Utility Zip Blouson","category":"Light Outerwear","season":"26SS","color":"Olive","material":"Cotton blend (demo)","fit":"Boxy","price_krw":129900,"size_range":"XS–XL","source_id":"SRC-DEMO-CATALOG-01"},
+    {"style_id":"LW-2605","name":"Packable Anorak","category":"Light Outerwear","season":"26SS","color":"Cream","material":"Recycled polyester (demo)","fit":"Relaxed","price_krw":99900,"size_range":"XS–XL","source_id":"SRC-DEMO-CATALOG-01"}
+  ],
+  "sales_profiles": [
+    {"style_id":"LW-2601","weekly_units":[42,46,49,51,55,61,66,70,74,78,75,69],"discount_rate":0.10,"return_units":19,"stockout_days":5,"source_id":"SRC-DEMO-SALES-01","channel":"Online"},
+    {"style_id":"LW-2602","weekly_units":[34,35,37,39,40,42,45,46,49,48,46,43],"discount_rate":0.05,"return_units":14,"stockout_days":1,"source_id":"SRC-DEMO-SALES-01","channel":"Store"},
+    {"style_id":"LW-2603","weekly_units":[27,29,31,30,34,36,39,42,45,47,48,46],"discount_rate":0.08,"return_units":31,"stockout_days":2,"source_id":"SRC-DEMO-SALES-01","channel":"Online"},
+    {"style_id":"LW-2604","weekly_units":[23,24,25,27,28,31,33,34,36,35,32,30],"discount_rate":0.12,"return_units":18,"stockout_days":0,"source_id":"SRC-DEMO-SALES-01","channel":"Store"},
+    {"style_id":"LW-2605","weekly_units":[19,22,24,26,30,33,38,42,48,52,55,53],"discount_rate":0.07,"return_units":11,"stockout_days":4,"source_id":"SRC-DEMO-SALES-01","channel":"Online"}
+  ],
+  "inventory": [
+    {"style_id":"LW-2601","on_hand_units":188,"inbound_units":80,"lead_time_days":42,"source_id":"SRC-DEMO-INVENTORY-01"},
+    {"style_id":"LW-2602","on_hand_units":520,"inbound_units":0,"lead_time_days":38,"source_id":"SRC-DEMO-INVENTORY-01"},
+    {"style_id":"LW-2603","on_hand_units":610,"inbound_units":0,"lead_time_days":45,"source_id":"SRC-DEMO-INVENTORY-01"},
+    {"style_id":"LW-2604","on_hand_units":940,"inbound_units":0,"lead_time_days":50,"source_id":"SRC-DEMO-INVENTORY-01"},
+    {"style_id":"LW-2605","on_hand_units":205,"inbound_units":60,"lead_time_days":40,"source_id":"SRC-DEMO-INVENTORY-01"}
+  ],
+  "feedback": [
+    {"feedback_id":"FB-001","style_id":"LW-2601","date":"2026-01-14","rating":3,"theme":"packability","text":"가방에 넣기 편하지만 접은 자국이 오래 남아요.","source_id":"SRC-DEMO-VOICE-01"},
+    {"feedback_id":"FB-002","style_id":"LW-2601","date":"2026-02-02","rating":2,"theme":"packability","text":"휴대는 좋은데 꺼낸 뒤 구김이 눈에 띄어요.","source_id":"SRC-DEMO-VOICE-01"},
+    {"feedback_id":"FB-003","style_id":"LW-2603","date":"2026-01-19","rating":2,"theme":"breathability","text":"가벼운데 활동하면 안쪽이 답답하게 느껴집니다.","source_id":"SRC-DEMO-VOICE-01"},
+    {"feedback_id":"FB-004","style_id":"LW-2603","date":"2026-02-05","rating":2,"theme":"breathability","text":"통풍이 조금 더 되면 좋겠어요.","source_id":"SRC-DEMO-VOICE-01"},
+    {"feedback_id":"FB-005","style_id":"LW-2603","date":"2026-02-08","rating":3,"theme":"fit","text":"소매가 손목에서 조금 짧게 느껴졌어요.","source_id":"SRC-DEMO-VOICE-01"},
+    {"feedback_id":"FB-006","style_id":"LW-2602","date":"2026-01-27","rating":4,"theme":"pocket","text":"주머니가 실용적이고 출퇴근에 무난해요.","source_id":"SRC-DEMO-VOICE-01"},
+    {"feedback_id":"FB-007","style_id":"LW-2605","date":"2026-02-11","rating":4,"theme":"weight","text":"가벼워서 환절기에 자주 입게 됩니다.","source_id":"SRC-DEMO-VOICE-01"}
+  ],
+  "documents": [
+    {
+      "document_id":"DOC-27SS-TREND-01","title":"27SS Light Utility Trend Note","source_id":"SRC-DEMO-TREND-01","version":"demo-1.0","season":"27SS","date":"2026-02-18",
+      "passages":[
+        {"passage_id":"DOC-27SS-TREND-01-P1","section":"Color direction","text":"가상 27SS 조사 메모: 라이트 세이지와 먼지 낀 블루를 가벼운 아우터의 색상 탐색 방향으로 검토한다. 이 문장은 실수요나 판매 성과를 뜻하지 않는다."},
+        {"passage_id":"DOC-27SS-TREND-01-P2","section":"Product direction","text":"가상 27SS 조사 메모: 도심 이동과 짧은 야외 활동을 함께 고려한 경량 유틸리티 실루엣을 콘셉트 가설로 검토한다. 발수·통기 성능은 시험 자료가 필요하다."}
+      ]
+    },
+    {
+      "document_id":"DOC-KPI-01","title":"Prototype KPI Definitions","source_id":"SRC-DEMO-KPI-01","version":"demo-1.0","season":"All","date":"2026-02-18",
+      "passages":[
+        {"passage_id":"DOC-KPI-01-P1","section":"Sales units","text":"이 가상 프로토타입에서 판매 수량은 주별 집계된 판매 units의 합으로 계산한다. 관측 기간과 채널 범위를 함께 표시하며, 미래 판매량으로 해석하지 않는다."},
+        {"passage_id":"DOC-KPI-01-P2","section":"Return rate","text":"반품률 시연 지표는 반품 units 합계를 판매 units 합계로 나눈 값이다. 실제 조직 KPI와 분모 정의를 확인하기 전에는 운영 지표로 사용하지 않는다."},
+        {"passage_id":"DOC-KPI-01-P3","section":"Stock cover","text":"재고 커버 주수 시연값은 현재고 units를 최근 12개 관측 주의 평균 주간 판매 units로 나눈 값이다. 입고 예정과 품절 기록을 반영한 발주 권고가 아니다."}
+      ]
+    },
+    {
+      "document_id":"DOC-GUIDE-01","title":"Synthetic Design Review Guide","source_id":"SRC-DEMO-GUIDE-01","version":"demo-1.0","season":"27SS","date":"2026-02-18",
+      "passages":[
+        {"passage_id":"DOC-GUIDE-01-P1","section":"Review questions","text":"가상 검토 가이드: 기획 근거, 착용 상황, 활동성, 관리 편의, 소재 시험 필요성을 나누어 기록한다. 생성 이미지의 색상과 소재는 양산 확정 정보가 아니다."}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#16382e">
+  <title>VOGUE · MD Concept Studio</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#overview" aria-label="VOGUE 홈">
+      <span class="brand-mark">V</span><span><b>VOGUE</b><small>MD CONCEPT STUDIO</small></span>
+    </a>
+    <div class="top-meta"><span class="local-pill"><i></i> LOCAL · H&amp;M + SYNTHETIC</span><button id="helpButton" class="text-button">프로토타입 안내</button></div>
+  </header>
+
+  <main class="shell">
+    <section class="hero" id="overview">
+      <div>
+        <div class="eyebrow">MERCHANDISING WORKSPACE <span>·</span> 27SS</div>
+        <h1>데이터에서 <em>상품 기회</em>를 찾고<br>브리프와 시안으로 발전시켜 보세요.</h1>
+        <p>분석 근거와 MD의 판단을 분리해 기록하는 내부 검토용 작업 공간입니다.</p>
+      </div>
+      <div class="hero-state"><span class="state-dot"></span><div><b>검토용 초안</b><small>최종 상품 결정은 MD가 합니다</small></div></div>
+    </section>
+
+    <nav class="step-nav" aria-label="프로토타입 단계">
+      <button class="step active" data-target="opportunities"><span>01</span> 합성 데모</button>
+      <button class="step" data-target="hm-analysis"><span>02</span> H&M 데이터</button>
+      <button class="step" data-target="documents"><span>03</span> 문서 근거</button>
+      <button class="step" data-target="brief"><span>04</span> 상품 브리프</button>
+      <button class="step" data-target="concepts"><span>05</span> 이미지 시안</button>
+      <button class="step" data-target="reviews"><span>06</span> 검토 기록</button>
+    </nav>
+
+    <section class="section-block" id="opportunities">
+      <div class="section-heading">
+        <div><div class="eyebrow">01 / OPPORTUNITY SCAN</div><h2>기회 탐색</h2><p>숫자는 고정된 합성 데이터에 대해 코드로 계산합니다. 문서 검색 결과와 구분해 확인하세요.</p></div>
+        <div class="scope-selects"><label>카테고리<select id="categorySelect"></select></label><label>시즌<select id="seasonSelect"></select></label></div>
+      </div>
+      <div class="notice"><span class="notice-icon">i</span><div><b>가상 시연 자료</b><span id="fixtureNotice">실제 회사 데이터와 혼합하지 마세요.</span></div><span class="notice-tag">SYNTHETIC</span></div>
+      <div class="kpi-grid" id="kpiGrid" aria-live="polite"></div>
+      <div class="subheading"><div><h3>발견된 검토 신호</h3><p>각 카드의 근거를 열어 원천·기간·버전을 확인할 수 있습니다.</p></div><span class="subtle" id="periodLabel"></span></div>
+      <div class="opportunity-grid" id="opportunityGrid" aria-live="polite"><div class="loading">분석 결과를 불러오는 중…</div></div>
+      <div class="subheading table-heading"><div><h3>상품별 비교</h3><p>가격·판매·반품·재고 지표의 정의는 KPI 문서와 함께 확인하세요.</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>STYLE</th><th>상품 / 속성</th><th>12주 판매</th><th>매출 참고값</th><th>할인율</th><th>반품률</th><th>판매 채널</th><th>현재고</th><th>입고 예정</th><th>커버</th><th>리드타임</th><th>품절 일수</th><th>근거</th></tr></thead><tbody id="productRows"></tbody></table></div>
+      <div class="method-note" id="analysisNotes"></div>
+    </section>
+
+    <section class="section-block hm-analysis-section" id="hm-analysis">
+      <div class="section-heading">
+        <div><div class="eyebrow">02 / H&amp;M KAGGLE · REAL SOURCE</div><h2>다운로드한 H&amp;M 데이터 분석</h2><p>실제 Kaggle 파일의 과거 상품·구매 집계입니다. 위의 합성 데모와 결합하지 않으며 브리프 생성 입력으로 자동 전달하지 않습니다.</p></div>
+        <a class="secondary-button source-doc-link" href="/docs/hm-kaggle-data-pipeline.md" target="_blank" rel="noreferrer">수집·처리 명세 ↗</a>
+      </div>
+      <div class="notice hm-notice"><span class="notice-icon">!</span><div><b>과거 Kaggle competition 자료 · H&amp;M 실시간 내부 시스템 아님</b><span>관측 기간과 출처를 함께 확인하세요. 가격은 원천 정규화 수치이며 원화 매출로 해석하지 않습니다.</span></div><span class="notice-tag">KAGGLE · LOCAL</span></div>
+      <div id="hmAnalysisStatus" class="search-status">분석 산출물을 불러오는 중…</div>
+      <div id="hmKpiGrid" class="kpi-grid"></div>
+      <div class="hm-insight-grid">
+        <article class="hm-panel"><div class="panel-heading"><div><h3>구매 행이 많은 상품군</h3><p>분류 기준: Kaggle product_group_name</p></div></div><div id="hmGroups" class="group-chart"></div></article>
+        <article class="hm-panel"><div class="panel-heading"><div><h3>채널 코드별 관측</h3><p>숫자 코드는 원천 그대로 표시하며 온라인/매장으로 해석하지 않습니다.</p></div></div><div id="hmChannels" class="channel-cards"></div></article>
+      </div>
+      <div class="subheading"><div><h3>구매 수량 상위 Style</h3><p>product_code로 묶은 상품 마스터와 거래 구매 행 집계입니다.</p></div><span class="subtle" id="hmSourceLine"></span></div>
+      <div class="table-wrap"><table><thead><tr><th>PRODUCT CODE</th><th>대표 상품명</th><th>상품군 · 유형</th><th>대표 색상</th><th>구매 행</th><th>평균 price* (원천수치)</th><th>우세 채널 코드</th></tr></thead><tbody id="hmStyleRows"></tbody></table></div>
+      <div class="method-note" id="hmLimitations"></div>
+    </section>
+
+    <section class="section-block alt" id="documents">
+      <div class="section-heading">
+        <div><div class="eyebrow">02 / EVIDENCE SEARCH</div><h2>문서에서 근거 찾기</h2><p>가상 기획 가이드와 시즌 메모를 키워드로 검색합니다. 판매 수치 분석과 별도 결과입니다.</p></div>
+      </div>
+      <form id="searchForm" class="search-form"><label class="sr-only" for="searchQuery">검색어</label><input id="searchQuery" placeholder="예: 통기성, 색상, 소재, 판매 수량 정의" autocomplete="off"><button class="primary-button" type="submit">문서 검색 <span>→</span></button></form>
+      <div id="searchStatus" class="search-status">카테고리와 시즌에 맞는 문서를 검색해 보세요.</div>
+      <div id="searchResults" class="search-results"></div>
+    </section>
+
+    <section class="section-block" id="brief">
+      <div class="section-heading">
+        <div><div class="eyebrow">03 / PRODUCT BRIEF</div><h2>상품 브리프</h2><p>제안 내용을 수정하고 저장하세요. 저장할 때마다 브리프 버전을 남깁니다.</p></div>
+        <div class="version-badge">현재 버전 <b id="briefVersion">v0</b></div>
+      </div>
+      <div class="brief-layout">
+        <form id="briefForm" class="brief-form">
+          <label class="field wide"><span>브리프 제목</span><input name="title" required></label>
+          <label class="field"><span>타깃 고객 <i>가설 구분</i></span><textarea name="target_customer" rows="3"></textarea></label>
+          <label class="field"><span>착용 상황</span><textarea name="wearing_situation" rows="3"></textarea></label>
+          <label class="field"><span>카테고리 · 시즌</span><input name="category_season"></label>
+          <label class="field"><span>가격대 / 목표 판매가</span><textarea name="price_range" rows="2"></textarea></label>
+          <label class="field"><span>실루엣 · 핏</span><textarea name="silhouette_fit" rows="3"></textarea></label>
+          <label class="field"><span>소재 · 기능</span><textarea name="material_function" rows="3"></textarea></label>
+          <label class="field"><span>색상 · 패턴</span><textarea name="color_pattern" rows="3"></textarea></label>
+          <label class="field"><span>차별화 방향</span><textarea name="differentiation" rows="3"></textarea></label>
+          <label class="field"><span>고객 피드백 반영</span><textarea name="feedback_application" rows="3"></textarea></label>
+          <label class="field"><span>생산 · 공급 제약</span><textarea name="supply_constraints" rows="3"></textarea></label>
+          <label class="field"><span>데이터로 확인된 사실</span><textarea name="facts" rows="3"></textarea></label>
+          <label class="field"><span>MD 판단</span><textarea name="md_judgment" rows="3"></textarea></label>
+          <label class="field wide"><span>미확인 가정 · 추가 검토</span><textarea name="assumptions" rows="3"></textarea></label>
+          <div class="form-actions wide"><span id="briefStatus" class="inline-status"></span><button class="primary-button" type="submit">브리프 버전 저장 <span>→</span></button></div>
+        </form>
+        <aside class="brief-evidence">
+          <div class="sticky-card"><div class="eyebrow">EVIDENCE MAP</div><h3>연결된 근거</h3><p>브리프 제안과 함께 참고할 수 있는 현재 분석 근거입니다.</p><div id="briefEvidence"></div><div class="divider"></div><div class="guardrail"><b>검토 경계</b><p>가격·원가·조달 가능성과 고객 니즈는 승인된 자료로 확인하기 전까지 확정 사실로 쓰지 않습니다.</p></div></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section-block alt" id="concepts">
+      <div class="section-heading">
+        <div><div class="eyebrow">04 / VISUAL EXPLORATION</div><h2>이미지 시안</h2><p>로컬 SVG 목업으로 여러 방향을 비교합니다. 실제 생성 모델 연결 없이 동작합니다.</p></div>
+        <span class="mock-mode">✦ ImageGen 실사 시안 1개 포함 · 추가 생성은 로컬 SVG 목업</span>
+      </div>
+      <div class="generation-bar">
+        <label>이미지 유형<select id="imageType"><option value="product">상품 단독 콘셉트</option><option value="lookbook">착장 콘셉트</option></select></label>
+        <label>시안 수<select id="variantCount"><option>2</option><option selected>3</option><option>4</option></select></label>
+        <div class="generation-copy"><b>현재 브리프 <span id="generationVersion">v0</span></b><small>먼저 브리프를 저장하면 해당 버전에 시안이 연결됩니다.</small></div>
+        <button id="generateButton" class="primary-button">시안 생성 <span>✦</span></button>
+      </div>
+      <div id="variantStatus" class="inline-status"></div>
+      <div class="comparison-toolbar"><span id="selectedCount">비교할 시안을 선택하세요</span><button id="compareButton" class="secondary-button" disabled>선택 시안 비교</button></div>
+      <div id="comparePanel" class="compare-panel" hidden></div>
+      <div id="variantGrid" class="variant-grid"><div class="empty-card"><span>✧</span><b>아직 시안이 없습니다</b><p>브리프를 확인한 뒤 여러 방향을 생성해 비교해 보세요.</p></div></div>
+      <p class="image-disclaimer">시안은 초기 아이디어 탐색용입니다. 실제 소재·색상·핏·제작 가능성을 보증하지 않습니다.</p>
+    </section>
+
+    <section class="section-block" id="reviews">
+      <div class="section-heading">
+        <div><div class="eyebrow">05 / HUMAN REVIEW</div><h2>평가와 수정 기록</h2><p>시안마다 브랜드 적합성부터 생산 검토까지 기록합니다. 기록은 자동 재학습에 사용되지 않습니다.</p></div>
+      </div>
+      <div class="subheading"><div><h3>브리프 버전 기록</h3><p>과거 버전을 불러오면 현재 버전은 보존되고, 수정본을 새 버전으로 저장할 수 있습니다.</p></div></div>
+      <div id="briefHistory" class="history-list"></div>
+      <div class="subheading"><div><h3>시안 평가 · 수정 의견</h3><p>평가 이력은 모델을 자동 재학습하는 데 사용되지 않습니다.</p></div></div>
+      <div id="evaluationList" class="evaluation-list"><div class="empty-card"><span>◷</span><b>아직 검토 기록이 없습니다</b><p>이미지 시안 카드에서 평가를 남겨 보세요.</p></div></div>
+    </section>
+
+    <footer class="footer"><span>VOGUE · NEW PRODUCT PLANNING PROTOTYPE</span><span>LOCAL ONLY · SYNTHETIC FIXTURE · HUMAN REVIEW</span></footer>
+  </main>
+
+  <dialog id="helpDialog"><button class="dialog-close" id="closeHelp" aria-label="안내 닫기">×</button><div class="eyebrow">PROTOTYPE NOTE</div><h2>이 화면은 로컬 목업입니다</h2><ul><li>표시된 모든 데이터와 문서는 합성 시연 자료입니다.</li><li>수치는 Python 분석 로직으로 계산하고, 문서 검색은 로컬 키워드 검색으로 처리합니다.</li><li>외부 LLM·이미지 API로 데이터를 보내지 않습니다. 시안은 로컬 SVG입니다.</li><li>브리프, 시안, 평가 기록은 이 컴퓨터의 Git 제외 SQLite 파일에 저장됩니다.</li><li>실제 업무 적용 전 권한·KPI·보안·브랜드 검토 기준을 확정해야 합니다.</li></ul></dialog>
+  <dialog id="evidenceDialog"><button class="dialog-close" id="closeEvidence" aria-label="근거 닫기">×</button><div class="eyebrow">SOURCE EVIDENCE</div><h2 id="evidenceTitle">근거 기록</h2><div id="evidenceContent"></div></dialog>
+</body>
+</html>

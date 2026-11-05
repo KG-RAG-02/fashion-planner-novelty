@@ -4,10 +4,12 @@ VOGUE 프로젝트의 3번 **New Product Planning Agent**를 구현하는 저장
 
 ## 범위
 
-- 현재 작업: 요청, 근거 기반 트렌드 결과, 자사 상품·현재 재고 결과를 바탕으로 검토 가능한 신상품 콘셉트를 제안합니다.
-- 입력 계약: `PlanningRequest`, `TrendResult`, `InventoryProductResult`
-- 출력 계약: `ProductConcept`
-- 경쟁상품 조사와 판매량 분석은 현재 MVP 범위에서 제외합니다.
+- 현재 작업: 상품·판매 자료와 트렌드·고객 의견·재고 근거를 활용해 MD/디자이너가 검토하고 수정할 수 있는 신상품 브리프와 이미지 시안 흐름을 프로토타입으로 구현합니다.
+- 로컬 UI의 기회 분석·문서·재고·고객 의견 자료는 모두 가상 fixture이며 Kaggle 데이터 또는 실제 회사 데이터와 혼합하지 않습니다.
+- H&M Kaggle 파이프라인은 실제로 내려받은 상품 마스터와 거래 이력을 로컬 처리하고, 결과를 합성 데모와 분리된 **H&M 데이터** 화면에 표시합니다.
+- 내부 입력 모델: 필수 `SalesAnalysisResult`, `TrendResult`, `PlanningRequest`, `InventoryProductResult`
+- 내부 출력: `ProductConceptDraft`; 공통 `ProductConcept` adapter는 계약 합의 후 연결
+- H&M 내부 상품·판매 실적 분석을 포함합니다. 경쟁상품 조사는 현재 범위에서 제외합니다.
 - 원가·마진, 생산·조달, 고객 피드백 분석은 이 에이전트에서 구현하지 않습니다.
 
 ## 저장소 경계
@@ -20,7 +22,7 @@ VOGUE 프로젝트의 3번 **New Product Planning Agent**를 구현하는 저장
 
 ## RAG·LLM 경계와 설정
 
-VOGUE 전체 흐름은 RAG 기반 LLM 에이전트 시스템입니다. 이 저장소의 3번 에이전트는 1번 Query & Trend Agent가 검색해 전달한 `TrendResult` Evidence와 2번 에이전트의 자사 상품·재고 결과를 사용합니다. 트렌드/상품 인덱스와 원천 데이터 조회는 소유하지 않습니다. 현재 `ConceptGenerator` 포트에는 결정적 기준선이 연결되어 있습니다. 향후 같은 정규화 입력과 Evidence를 여러 허용 엔진에 제공하고, Evidence 근거성·요청 준수·MD 유용성 등을 별도로 평가합니다. 검색 설정까지 바뀌는 실험은 생성 엔진 비교와 분리합니다.
+VOGUE 전체 흐름은 RAG 기반 LLM 에이전트 시스템입니다. 이 저장소의 3번 에이전트는 1번 Query & Trend Agent의 `TrendResult`, 2번 에이전트의 상품·재고 결과, 그리고 H&M Kaggle 파일에서 만든 버전·기간이 명시된 상품/판매 Evidence를 사용합니다. Kaggle 데이터는 로컬 배치 처리로 수집하며 실시간 운영 API로 취급하지 않습니다. 현재 `ConceptGenerator` 포트에는 결정적 기준선이 연결되어 있습니다. 향후 같은 정규화 입력과 Evidence를 여러 허용 엔진에 제공하고, 근거성·요청 준수·MD 유용성 등을 별도로 평가합니다.
 
 로컬 API 키 파일은 `.env`이며 현재 `LLM_API_KEY` 값은 비어 있습니다. `.env`는 Git에서 제외됩니다. 복제한 팀원이 참고할 수 있는 [`.env.example`](.env.example)도 제공합니다. 여러 엔진 연결 시 사용할 환경 변수 별칭과 설정은 엔진 선택 후 정하며, 실제 키를 Git에 올리지 않습니다. `requirements.txt`에는 `.env`를 읽기 위한 `python-dotenv`만 넣었으며, 모델 제공자가 결정되기 전까지 LLM SDK는 설치하지 않습니다. 설정을 읽는 [load_settings](src/vogue_npp/settings.py)는 키를 출력하거나 네트워크 요청을 보내지 않습니다.
 
@@ -30,11 +32,35 @@ VOGUE 전체 흐름은 RAG 기반 LLM 에이전트 시스템입니다. 이 저�
 - [Project Workflow](https://app.notion.com/p/40f3269b1acd81378143f35b599ef9a0)
 - [저장소 분리 협업 가이드](https://app.notion.com/p/40e3269b1acd81489fecc1052e033b54)
 
-Agent 3의 데이터 출처·Evidence 경계와 공개/H&M 데이터 후보는 [데이터·Evidence 계획](docs/design/data-source-and-evidence-plan.md)에 정리했습니다. H&M 소속 MD 페르소나에 따라 Kaggle의 상품 자료는 자사 상품 근거 후보로 취급합니다. 구매 기록의 분석은 기존 판매량 분석 제외 결정과 Kaggle 사용 조건을 확인한 뒤 범위를 정합니다.
+Agent 3의 데이터 출처·Evidence 경계는 [데이터·Evidence 계획](docs/design/data-source-and-evidence-plan.md)에, Kaggle 원본의 수집·정제·집계 설계는 [H&M Kaggle 처리 계획](docs/design/hm-kaggle-data-pipeline.md)에 정리했습니다. 원본과 파생 데이터는 `data/` 아래에 저장하고 Git에서 제외합니다.
+
+네 입력의 중요도 순서(판매 분석 → 트렌드 → 사용자 쿼리 → 자사 상품·재고), 내부 모델 매핑과 실패 동작은 [입력·출력 처리 흐름](docs/design/input-output-processing-flow.md)을 참고하세요. 네 입력은 모두 필수이며, `InventoryProductResult`에서 재고 필드가 부분적으로 비면 상태와 제한을 보존합니다. 외부 공통 계약 어댑터는 합의 후 연결합니다.
+
+가공된 H&M Style 판매 요약은 `load_hm_sales_analysis()`로 `SalesAnalysisResult`에 매핑할 수 있습니다. Kaggle 상품 분류를 요청 카테고리로 연결하는 `source_category_map`과 `category_mapping_version`은 프로젝트 taxonomy와 대조해 호출자가 명시해야 하며, 데이터에 없는 시즌이나 채널 의미를 자동 추정하지 않습니다.
+
+다운로드한 H&M competition ZIP 또는 압축 해제한 CSV를 `data/raw/hm-personalized-fashion-recommendations/`에 두고 아래 명령을 실행하면 상품 마스터·주간 구매 집계·Style/카테고리/색상/채널 분석까지 수행합니다. ZIP은 이미지 파일을 풀지 않고 필요한 CSV만 순차 처리합니다. 파이프라인은 표준 라이브러리로 동작하고 고객 식별자를 파생 파일에 쓰지 않습니다.
+
+```bash
+PYTHONPATH=src python3 -m vogue_npp.hm_data
+```
+
+결과는 Git에서 제외되는 `data/processed/hm-personalized-fashion-recommendations/` 아래 상품 카탈로그, 주간 거래 집계, Style·상품군·색상·채널·월별 분석 CSV, `hm_analysis.json`, `manifest.json`으로 생성됩니다. 완료된 실제 파일 점검과 제한은 [H&M Kaggle 처리 계획](docs/design/hm-kaggle-data-pipeline.md)에 기록했습니다. 분석 산출물은 아래 웹 앱의 **H&M 데이터** 섹션에 합성 데모와 분리해 표시합니다.
+
+## MD용 로컬 프로토타입 실행
+
+별도의 설치 없이 저장소 루트에서 실행하세요.
+
+```bash
+PYTHONPATH=src python3 -m vogue_npp.prototype_server
+```
+
+브라우저에서 [http://127.0.0.1:8765](http://127.0.0.1:8765)을 열면 카테고리·시즌 선택, 수치 기반 기회 탐색, 문서 검색과 근거 확인, 브리프 편집/버전 관리, 이미지 시안 비교, MD/디자이너 평가 이력을 한 흐름으로 시연할 수 있습니다. 생성 모델로 만든 실제 의류 콘셉트 사진 1개가 포함되며, 추가 시안은 API 키 없이 로컬 SVG 목업으로 생성됩니다. 서버는 이 컴퓨터 내부 주소에만 바인딩합니다. 중지하려면 실행 터미널에서 `Ctrl+C`를 누르세요.
+
+브라우저 결과와 데이터 흐름·fixture 스키마·지표 산식·제한사항은 [프로토타입 실행·설계 안내](docs/design/prototype-runbook.md)에 문서화했습니다. 화면의 브리프·시안·평가는 로컬 Git 제외 SQLite 파일 `data/local/prototype.sqlite3`에 기록됩니다. 실제 Kaggle의 과거 상품·거래 분석은 별도 섹션에서 조회하며, 합성 재고/리뷰/트렌드 또는 기획 브리프와 자동 병합하지 않습니다. 포함된 ImageGen 사진은 프로젝트에 고정된 콘셉트 예시이며 앱에서 외부 이미지 API를 실시간 호출하지 않습니다.
 
 ## 설계 상태
 
-구현 경계와 계약 공백은 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. `src/vogue_npp`에는 입력 정합성 검사, 기획 기회 비교, 내부 콘셉트 초안 생성과 출처 안전 검사가 있습니다. 현재 generator는 입력으로 받은 사용자 조건과 Evidence를 정리하는 검토용 뼈대이며, 운영용 LLM 생성기나 외부 API가 아닙니다.
+에이전트 입력·출력 계약과 향후 통합 경계는 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. 도메인 코어는 기존 입력 정합성 검사, 기획 기회 비교, 내부 콘셉트 초안 생성과 출처 안전 검사를 유지합니다. 별도 로컬 웹 프로토타입은 가상 자료에서만 브리프·평가 흐름을 시연하며, 공통 에이전트 API나 운영용 LLM 생성기로 간주하지 않습니다.
 
 Notion 요구사항을 기준으로 한 다음 구현 순서와 통합 경계는 [향후 작업 설계](docs/design/implementation-roadmap.md)에 정리했습니다.
 
