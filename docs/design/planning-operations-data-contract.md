@@ -14,6 +14,10 @@
 | 상품 설명·소재·관리·사이즈 | Kaggle 설명 `observed`, 상세 속성 `synthetic` | 실제 `prod_name`, taxonomy, 색상, `detail_desc`; UI 예시의 소재·관리·핏·사이즈 | 승인된 PIM/PLM product/article/SKU, 조성비, care label, size chart, fit note, 적용 시장/시즌 |
 | 캠페인·프로모션 결과 | scenario `synthetic`, 실제 결과 `not_connected` | 가상 캠페인과 상품 매핑; 지표는 null | 승인된 analytics/ad 계정, promotion ID·item ID tagging, attribution window, spend 및 outcome |
 
+`examples/fixtures/synthetic_merch_scenario.json`에는 별도의 고정 seed 27SS 시나리오가 추가되어 있다. 이 fixture는 계획에서 상품·판매·재고·markdown·KPI·캠페인·피드백까지 합성 ID로 연결해 분석 흐름을 검증한다. 기존 `planning_operations_demo.json`의 간단한 UI 목업을 대체하거나 H&M Kaggle 자료와 결합하지 않는다. 생성 수치와 규칙, 분석 결과는 [합성 상품기획 데이터 맵](synthetic-merch-data-map.md)을 참고한다.
+
+`data/raw/fashion-cloud-api-v2.json`은 Fashion Cloud의 OpenAPI v2 명세이지 상품 레코드가 아니다. 명세는 소재 조성(`fcKeys.materials`), 관리 지침, 핏, 사이즈, 시즌, GTIN, 가격/재고 경로를 설명하지만 토큰을 발급하지 않는다. 명세 설명상 계정 등록 후 Fashion Cloud의 API 허용이 필요하다. 현재 프로젝트는 명세를 호출하지 않고, 토큰/계정도 설정하지 않는다. 승인 이후에도 실제 브랜드 접근범위와 데이터 이용조건을 확인한 뒤 조회 전용 필드만 선택해야 한다.
+
 `observed`, `user_input`, `synthetic`, `not_connected`, `unknown`은 서로 다른 상태다. 판매 구매 행은 주문·순매출·마크다운 효과를 자동으로 뜻하지 않는다. Kaggle price는 통화·정가가 확인되지 않아 가격 목표 계산에 사용하지 않는다.
 
 ## Fixture
@@ -42,8 +46,11 @@
 | `GET /api/products` | `products[]` | synthetic 확장 상품 상세만 반환 |
 | `GET /api/products/{style_id}` | `product` | `LW-*`는 synthetic 상세. Kaggle article ID/product_code는 원천 카탈로그 행만 반환 |
 | `GET /api/planning/campaigns` | `records[]` | synthetic schedule; 측정 지표 null |
+| `GET /api/synthetic-scenario` | 계획 대비 상품 구성, 주별/채널별 판매, KPI, markdown 전후 기술 비교, 캠페인·피드백 집계 | `synthetic`; seed/version/period/counts/limitations 포함 |
 
 Dataset collection 응답은 `schema_version`, `data_status`, `source_id`, `version`, `as_of`, `scope`, `limitations`, `records`를 반환한다. 제품 상세 조회는 `observed`와 `synthetic` 결과를 한 상품 레코드에 합치지 않는다. product_code가 여러 article에 연결되면 API는 첫 article을 보여주고 `matched_article_count`를 함께 준다.
+
+통합 fixture 재생성은 `PYTHONPATH=src python3 -m vogue_npp.prototype.synthetic_scenario` 명령으로 수행한다. 동일한 generator version과 seed는 동일한 JSON을 만든다. 재고 항등식, Style–Article–SKU 연결, 소재 조성 합계, KPI 재계산, 캠페인 연결은 검증한다. Markdown 전후 판매는 서술 비교이며 재고/기간/노출을 통제한 인과 효과가 아니다.
 
 이 API들은 로컬 fixture/로컬 가공 CSV만 읽는다. 외부 수집·갱신·쓰기 endpoint는 없다. H&M Partner Tech Hub는 조직 초대를, 내부 상품/가격/재고 데이터는 데이터 소유자와 내부 계약을 필요로 한다. Analytics/Ads 데이터는 승인된 account/property 및 campaign-item tagging이 정해지기 전까지 연결되지 않는다.
 

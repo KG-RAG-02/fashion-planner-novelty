@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import analytics, fixtures, planning_operations, repository, retrieval
+from . import analytics, fixtures, planning_operations, repository, retrieval, synthetic_scenario
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
@@ -83,6 +83,8 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                 self._json(200, {"reviews": repository.list_hm_brief_reviews()})
             elif path == "/api/data-status":
                 self._json(200, planning_operations.get_data_status())
+            elif path == "/api/synthetic-scenario":
+                self._json(200, synthetic_scenario.analyze_scenario(synthetic_scenario.load_scenario()))
             elif path == "/api/planning/line-plans":
                 self._json(200, planning_operations.list_records("line_plans"))
             elif path == "/api/planning/markdown-reviews":

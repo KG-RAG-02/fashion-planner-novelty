@@ -78,6 +78,14 @@ PYTHONPATH=src python3 -m vogue_npp.prototype.server
 
 주요 조회 API는 `/api/data-status`, `/api/planning/line-plans`, `/api/planning/markdown-reviews`, `/api/planning/kpi-definitions`, `/api/planning/campaigns`, `/api/products`, `/api/products/{id}`입니다. 현재는 로컬 읽기 전용이며 실제 PLM/PIM/ERP·분석 계정 연결은 포함하지 않습니다.
 
+상품기획 데이터 후보와 생성 순서는 [합성 상품기획 데이터 맵](docs/design/synthetic-merch-data-map.md)을 따릅니다. 교차 도메인 목데이터는 `examples/fixtures/synthetic_merch_scenario.json`이며 Style–Article–SKU, 12주 판매·재고, markdown, KPI, 캠페인, 피드백을 별도 `SYN-*` 키로 연결합니다. seed와 생성 규칙을 고정해 다음 명령으로 재생성하고 통합 분석을 출력할 수 있습니다.
+
+```bash
+PYTHONPATH=src python3 -m vogue_npp.prototype.synthetic_scenario
+```
+
+`GET /api/synthetic-scenario`는 상품군·가격 tier·주간/채널별 집계, KPI, markdown 비교 및 캠페인/피드백 요약을 반환합니다. 모두 합성 결과이며 실제 H&M Kaggle 분석과는 독립입니다. `data/raw/fashion-cloud-api-v2.json`은 Fashion Cloud API 명세일 뿐 실제 상품 데이터나 인증이 아닙니다. 승인 및 호출 요청 전까지 외부 API는 호출하지 않습니다.
+
 ### Docker로 실행
 
 Docker Compose를 설치한 뒤 저장소 루트에서 실행합니다.

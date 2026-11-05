@@ -119,6 +119,8 @@ def get_data_status() -> dict[str, Any]:
             {"dataset": "markdown_reviews", "data_status": "synthetic", "source_id": "SRC-SYN-MARKDOWN-01", "version": data["version"], "limitation": "No actual markdown review or effect data."},
             {"dataset": "approved_targets_and_kpi_measurements", "data_status": "not_connected", "source_id": None, "limitation": "Synthetic KPI definitions exist for UI validation; approved target and measured values are not connected."},
             {"dataset": "product_material_care_size_details", "data_status": "synthetic", "source_id": "SRC-SYN-PRODUCT-01", "version": data["version"], "limitation": "Detailed material, care, fit, and size attributes are synthetic; Kaggle catalog descriptions are available separately."},
+            {"dataset": "integrated_synthetic_merchandising_scenario", "data_status": "synthetic", "source_id": "SRC-SYN-MERCH-01", "version": "synthetic-merch-generator-1.0", "local_path": "examples/fixtures/synthetic_merch_scenario.json", "limitation": "Deterministic isolated scenario across plan, products, sales, stock, markdown, KPI, campaign, and feedback; not H&M or market evidence."},
+            {"dataset": "fashion_cloud_api", "data_status": "not_connected", "source_id": "FASHION-CLOUD-OPENAPI-V2", "local_path": "data/raw/fashion-cloud-api-v2.json", "limitation": "Local OpenAPI schema only; account approval and credentials are absent and no API requests are made."},
             {"dataset": "campaign_outcomes", "data_status": "not_connected", "source_id": None, "limitation": "No authorized analytics/ad account or mapped campaign outcomes."},
             *[{"dataset": row["system"], **row} for row in data["integrations"]],
         ],

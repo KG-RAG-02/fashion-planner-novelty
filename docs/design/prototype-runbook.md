@@ -44,6 +44,8 @@ flowchart LR
 
 `03 기획·운영 데이터` 섹션은 [상품기획·운영 데이터 계약](planning-operations-data-contract.md)에 정의한 로컬 조회 API를 사용한다. 라인 플랜·마크다운 시나리오·KPI 목표·상세 속성·캠페인은 합성 예시임을 표시하고, 실제 측정값이 연결되지 않은 KPI와 캠페인 결과는 비워 둔다. 실제 Kaggle article 조회에서는 원천 설명만 반환하며 합성 소재·관리·사이즈 속성을 덧붙이지 않는다.
 
+이 섹션의 **합성 시나리오 통합 분석**은 별도 `synthetic_merch_scenario.json`을 사용한다. seed `26061105` 기준으로 10 Style, 20 color Article, 60 size SKU와 12주간 720개 판매/재고 원장을 만든다. 계획 대비 상품 구성, 가격 tier, 주간/채널 집계, 재고 균형, KPI, markdown 전후 기술 비교, 캠페인 및 피드백 요약을 계산한다. 모든 숫자는 합성 가정에서 나온 결과이며 미래 수요, 인과효과 또는 H&M 실적이 아니다. 재생성 명령과 데이터 맵은 [합성 상품기획 데이터 맵](synthetic-merch-data-map.md)을 참고한다.
+
 ## 데이터와 저장 스키마
 
 입력 fixture는 [`examples/fixtures/prototype_demo.json`](../../examples/fixtures/prototype_demo.json)에 있으며, 모든 값은 합성이다. 실제 Kaggle 다운로드 파일과 별도 경로에서 읽고 섞지 않는다.

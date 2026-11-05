@@ -115,6 +115,16 @@ class PlanningOperationsApiTests(unittest.TestCase):
         self.assertEqual(states["hm_historical_catalog_and_sales"], "observed")
         self.assertEqual(states["approved_targets_and_kpi_measurements"], "not_connected")
         self.assertEqual(states["campaign_outcomes"], "not_connected")
+        self.assertEqual(states["fashion_cloud_api"], "not_connected")
+
+    def test_synthetic_scenario_endpoint_returns_reproducible_counts_and_status(self) -> None:
+        payload = self.get_json("/api/synthetic-scenario")
+        self.assertEqual(payload["data_status"], "synthetic")
+        self.assertEqual(payload["seed"], 26061105)
+        self.assertEqual(payload["counts"]["sales_rows"], 720)
+        self.assertEqual(payload["counts"]["inventory_rows"], 720)
+        self.assertFalse(payload["markdown_comparison"]["causal_effect_claim"])
+        self.assertNotIn("KAGGLE", json.dumps(payload))
 
     def test_product_endpoint_returns_actual_catalog_text_without_synthetic_enrichment(self) -> None:
         payload = self.get_json("/api/products/0999991001")
