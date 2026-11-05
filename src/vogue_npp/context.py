@@ -8,11 +8,12 @@ available and synchronized across repositories.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Mapping, Sequence
 
 
 InputStatus = Literal["ok", "partial", "no_results", "error"]
+ContextOrigin = Literal["user", "inferred", "unknown"]
 AttributeOrigin = Literal[
     "user_requested",
     "evidence_observation",
@@ -57,6 +58,7 @@ class PlanningRequest:
     requested_attributes: tuple[AttributeSignal, ...] = ()
     missing_fields: tuple[str, ...] = ()
     constraints: tuple[str, ...] = ()
+    field_origins: Mapping[str, ContextOrigin] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -115,7 +117,7 @@ class ContextConflict:
 
 @dataclass(frozen=True)
 class ProductPlanningContext:
-    """Evidence-preserving context prepared for a future concept generator.
+    """Evidence-preserving context prepared for the internal concept generator.
 
     This is deliberately not serialized as ProductConcept. The shared output
     contract and model/provider boundary still require team agreement.

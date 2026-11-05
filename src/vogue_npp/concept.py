@@ -1,16 +1,22 @@
 """Internal concept-draft model and provenance safety checks.
 
 This is an internal review model, not the shared ProductConcept wire schema.
-It can validate a candidate produced by a future generator without selecting a
-model provider or committing the team to a public payload layout.
+It can validate a candidate produced by the deterministic local generator
+without selecting a model provider or committing the team to a public payload
+layout.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import dataclass, field
+from typing import Literal, Mapping
 
-from .context import ProductPlanningContext
+from .context import (
+    ContextConflict,
+    ContextOrigin,
+    InputStatus,
+    ProductPlanningContext,
+)
 
 
 ClaimKind = Literal[
@@ -49,6 +55,13 @@ class ProductConceptDraft:
     opportunity: SourcedClaim
     target_customer: SourcedClaim
     product_definition: SourcedClaim
+    market: tuple[str, ...] = ()
+    channel: tuple[str, ...] = ()
+    field_origins: Mapping[str, ContextOrigin] = field(default_factory=dict)
+    input_statuses: Mapping[str, InputStatus] = field(default_factory=dict)
+    input_conflicts: tuple[ContextConflict, ...] = ()
+    evidence_ids: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
     attributes: tuple[ProposedAttribute, ...] = ()
     relation_to_own_products: tuple[SourcedClaim, ...] = ()
     differentiation: tuple[SourcedClaim, ...] = ()
@@ -142,6 +155,16 @@ def validate_concept_draft(
             )
         )
 
+    for field_name, origin in draft.field_origins.items():
+        if origin not in {"user", "inferred", "unknown"}:
+            issues.append(
+                ValidationIssue(
+                    path=f"field_origins.{field_name}",
+                    code="UNSUPPORTED_FIELD_ORIGIN",
+                    message="A request field origin must be user, inferred, or unknown.",
+                )
+            )
+
     known_evidence_ids = set(context.evidence_ids)
     for path, claim in (
         ("opportunity", draft.opportunity),
@@ -184,6 +207,7 @@ def validate_concept_draft(
                     code="EMPTY_ATTRIBUTE_NAME",
                     message="An attribute must have a non-empty name.",
                 )
+            )
         if attribute.kind not in {
             "user_requested",
             "evidence_observation",
@@ -207,7 +231,6 @@ def validate_concept_draft(
                     code="EMPTY_ATTRIBUTE_VALUE",
                     message="An attribute value must contain text or be null.",
                 )
-            )
             )
         if attribute.kind == "unknown" and attribute.value is not None:
             issues.append(

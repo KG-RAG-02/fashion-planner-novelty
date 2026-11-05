@@ -17,6 +17,7 @@ from .concept import (
     ValidationIssue,
     validate_concept_draft,
 )
+from .generator import generate_concept_draft
 
 __all__ = [
     "AgentResult",
@@ -31,5 +32,6 @@ __all__ = [
     "TrendCandidate",
     "ValidationIssue",
     "build_planning_context",
+    "generate_concept_draft",
     "validate_concept_draft",
 ]

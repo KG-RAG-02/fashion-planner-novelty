@@ -16,7 +16,7 @@ VOGUE 프로젝트의 3번 **New Product Planning Agent**를 구현하는 저장
 
 ## 기술 선택
 
-언어, 프레임워크, API 프로토콜, 모델, 데이터 소스 등은 아직 확정하지 않았습니다. 저장소의 후속 설계에서 대안과 근거를 기록한 뒤 결정합니다.
+초기 구현은 표준 라이브러리만 쓰는 Python 도메인 코어와 결정적 규칙 기반 콘셉트 초안 생성기를 임시 기본값으로 사용합니다. 공통 wire schema, API 프로토콜, 생성 모델, 데이터 소스와 운영 런타임은 확정하지 않았습니다. 선택 근거와 통합 시 변경 경계는 [임시 구현 기본값 ADR](docs/decisions/adr-0001-provisional-implementation-defaults.md)에 기록했습니다.
 
 ## 프로젝트 문서
 
@@ -26,4 +26,18 @@ VOGUE 프로젝트의 3번 **New Product Planning Agent**를 구현하는 저장
 
 ## 설계 상태
 
-구현 경계와 계약 공백은 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. `src/vogue_npp`에는 외부 계약과 분리된 입력 정합성 검사, 기획 컨텍스트 조립, 내부 콘셉트 초안의 출처 안전 검사기가 있습니다. Python은 현재 이 코어의 프로토타입 언어이며, 서비스 런타임·API·모델 스택이 확정된 것은 아닙니다.
+구현 경계와 계약 공백은 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. `src/vogue_npp`에는 입력 정합성 검사, 기획 컨텍스트 조립, 내부 콘셉트 초안 생성과 출처 안전 검사가 있습니다. 생성기는 입력으로 받은 사용자 조건과 Evidence를 정리하는 검토용 뼈대이며, 운영용 생성 모델이나 외부 API가 아닙니다.
+
+## 로컬 사용 예
+
+도메인 모델은 이미 공통 계약 어댑터가 정규화한 입력을 받습니다. 실행 방법과 실제 필드는 계약 합의 후 추가합니다.
+
+```python
+from vogue_npp import PlanningInputs, build_planning_context, generate_concept_draft
+
+inputs = PlanningInputs(request=..., trend=..., inventory=...)  # normalized internal models
+context = build_planning_context(inputs)
+draft, validation_issues = generate_concept_draft(context)
+```
+
+`draft`는 내부 검토 모델이며 입력별 상태, 충돌, Evidence ID와 제한사항을 보존합니다. 이를 공통 `ProductConcept` 응답으로 직렬화하는 코드는 아직 없습니다.
