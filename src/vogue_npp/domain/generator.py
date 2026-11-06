@@ -19,6 +19,7 @@ from .concept import (
 )
 from .context import AttributeSignal, ProductPlanningContext, TrendCandidate
 from .analysis import analyze_opportunities, dimension_mismatches
+from .styling import display_inventory_label
 
 
 class ConceptGenerator(Protocol):
@@ -175,7 +176,15 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
             for signal in observation.attributes:
                 add(signal, trend_signal=True)
     if _input_usable(context, "inventory_product_result"):
-        for product in context.inventory.products:
+        paired_indexes = {
+            relation.inventory_product_index
+            for relation in context.styling_relationships
+        }
+        for index, product in enumerate(context.inventory.products):
+            # Companion-product attributes belong to the outfit context, not
+            # to the requested new product's attribute list.
+            if index in paired_indexes:
+                continue
             for signal in product.attributes:
                 add(signal, trend_signal=True)
     return tuple(attributes)
@@ -189,10 +198,14 @@ def _inventory_relationships(context: ProductPlanningContext) -> tuple[SourcedCl
         else ()
     )
     for product in products:
-        if not product.style_id or not product.style_id.strip() or not product.evidence_ids:
+        if not product.evidence_ids:
             continue
-        style_id = product.style_id.strip()
-        value = f"자사 상품 {style_id}가 상품·재고 조회 결과에 포함되어 있습니다."
+        product_label = (
+            product.style_id.strip()
+            if product.style_id and product.style_id.strip()
+            else display_inventory_label(product)
+        )
+        value = f"재고 상품 {product_label}이 상품·재고 조회 결과에 포함되어 있습니다."
         if product.quantity is not None:
             value += (
                 f" 재고 스냅샷: {product.quantity} {product.unit or '(단위 미상)'}"
@@ -217,13 +230,43 @@ def _inventory_relationships(context: ProductPlanningContext) -> tuple[SourcedCl
             relationships.append(
                 SourcedClaim(
                     value=(
-                        f"자사 상품 {style_id}의 확인된 속성: "
+                        f"재고 상품 {product_label}의 확인된 속성: "
                         f"{attribute.name}={attribute.value}."
                     ),
                     kind="evidence_observation",
                     evidence_ids=attribute.evidence_ids,
                 )
             )
+    for relation in context.styling_relationships:
+        if relation.inventory_product_index >= len(products):
+            continue
+        product = products[relation.inventory_product_index]
+        target_role = "상의" if relation.requested_role == "upper_body" else "하의"
+        inventory_role = "상의" if relation.inventory_role == "upper_body" else "하의"
+        inventory_label = display_inventory_label(product)
+        note = (
+            f" 사용자 입력 메모는 ‘{product.note}’입니다 (출처: {product.note_origin}; 미확인 정보)."
+            if product.note else ""
+        )
+        relationships.append(SourcedClaim(
+            value=(
+            f"코디 기획 제안: 요청 대상 {target_role}와 재고 맥락 {inventory_role} "
+                f"({inventory_label})을 함께 검토합니다.{note} "
+                "이 관계는 재고 수량, 재고 소진, 수요 또는 매출 효과의 근거가 아닙니다."
+            ),
+            kind="interpretation",
+        ))
+        for signal in product.attributes:
+            if signal.value is None:
+                continue
+            relationships.append(SourcedClaim(
+                value=(
+                    f"코디 맥락의 재고 상품 속성: {signal.name}={signal.value}. "
+                    "이는 요청 신상품의 속성이 아닙니다."
+                ),
+                kind="evidence_observation" if signal.evidence_ids else "to_validate",
+                evidence_ids=signal.evidence_ids,
+            ))
     return tuple(relationships)
 
 
@@ -237,6 +280,15 @@ def _product_definition(context: ProductPlanningContext) -> SourcedClaim:
         )
         if value
     ]
+    role = context.request.product_role
+    if not role and context.styling_relationships:
+        role = context.styling_relationships[0].requested_role
+    if request_usable and role:
+        role_label = {
+            "upper_body": "상의",
+            "lower_body": "하의",
+        }.get(role.strip().casefold(), role)
+        parts.append(role_label)
     prefix = " ".join(parts) if parts else "신상품"
     requested_attributes = [
         f"{signal.name.strip()}={signal.value}"

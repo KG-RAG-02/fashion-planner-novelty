@@ -10,6 +10,7 @@ they are not VOGUE business data or approved shared-contract examples.
 from __future__ import annotations
 
 import json
+import argparse
 from dataclasses import asdict
 
 from vogue_npp import (
@@ -25,6 +26,9 @@ from vogue_npp import (
     TrendCandidate,
     TrendResult,
     build_planning_context,
+    OpenAIImageProvider,
+    run_concept_to_image,
+    load_settings,
 )
 
 
@@ -33,6 +37,12 @@ SCHEMA_VERSION = "internal-prototype-0"
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the synthetic concept-to-image workflow.")
+    parser.add_argument(
+        "--generate-image", action="store_true",
+        help="explicitly request one paid OpenAI image generation for this synthetic example",
+    )
+    args = parser.parse_args()
     query_trend_agent = "query-trend-agent"
     request = PlanningRequest(
         result=AgentResult(
@@ -159,14 +169,24 @@ def main() -> None:
     context = build_planning_context(
         PlanningInputs(request=request, trend=trend, sales=sales, inventory=inventory)
     )
-    generator = RuleBasedConceptGenerator()
-    draft, validation_issues = generator.generate(context)
+    settings = load_settings()
+    provider = (
+        OpenAIImageProvider(api_key=settings.image_generation_api_key)
+        if settings.image_generation_api_key else None
+    )
+    workflow = run_concept_to_image(
+        context,
+        provider=provider,
+        image_generation_enabled=settings.image_generation_enabled,
+        confirm_image_generation=args.generate_image,
+    )
     print("SYNTHETIC EXAMPLE ONLY — not project or business data")
     print(
         json.dumps(
             {
-                "draft": asdict(draft),
-                "validation_issues": [asdict(issue) for issue in validation_issues],
+                "draft": asdict(workflow.draft),
+                "validation_issues": [asdict(issue) for issue in workflow.validation_issues],
+                "image": asdict(workflow.image),
             },
             ensure_ascii=False,
             indent=2,

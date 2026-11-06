@@ -35,7 +35,9 @@ project_06/
   It adapts source observations into domain contracts but does not manufacture
   inventory, returns, customer preference, currency, or future demand.
 - `workflows/` composes evidence and human decisions into reviewable planning
-  artifacts. It does not call an external LLM or image service.
+  artifacts. It owns image prompt assembly and the optional image-provider
+  boundary; provider calls require both runtime enablement and per-call
+  confirmation. No request is sent by default.
 - `prototype/` serves the local interface and owns fixture access, persistence,
   and evidence lookup. The synthetic demo and H&M analysis remain separate.
 - `web/prototype/` is static browser code; it calls the local prototype API.

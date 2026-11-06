@@ -14,7 +14,7 @@
 | 3 | H&M 판매 분석 (`SalesAnalysisResult`) | 3번 에이전트 로컬 파이프라인 | 요청 범위에 명시적으로 매핑된 과거 구매 집계와 상품 속성을 보조 근거로 검토한다. 판매 수치는 결정적 코드로 계산하며 미래 수요로 해석하지 않는다. |
 | 4 | 자사 상품·재고 (`InventoryProductResult`) | Product & Inventory Agent | 자사 구색과 기준 시점 재고를 마지막 보조 맥락으로 검토한다. 단독으로 판매/수요를 설명하지 않는다. |
 
-트렌드는 콘셉트 방향의 첫 근거이고, 요청은 그 방향이 적용될 상품·시즌 범위를 정한다. 요청과 트렌드 속성이 충돌하면 어느 한쪽으로 자동 변경하지 않는다. 판매는 방향을 확정하거나 뒤집는 점수가 아니라 과거 관찰이며, 재고는 마지막 보조 맥락이다. 재고가 높거나 낮아도 순위나 산술 점수로 기회·성공률을 만들지 않는다.
+트렌드는 콘셉트 방향의 첫 근거이고, 요청은 그 방향이 적용될 상품·시즌 범위를 정한다. 요청과 트렌드 속성이 충돌하면 어느 한쪽으로 자동 변경하지 않는다. 판매는 방향을 확정하거나 뒤집는 점수가 아니라 과거 관찰이며, 재고는 마지막 보조 맥락이다. 재고가 높거나 낮아도 순위나 산술 점수로 기회·성공률을 만들지 않는다. 다만 요청 상품과 재고 상품의 분류가 다른 것만으로 즉시 충돌 처리하지 않는다. 내부의 버전 지정 상·하의 분류 규칙으로 코디 보완 관계가 명확한 경우에는 재고 사실과 별도인 코디 기획 제안으로 남긴다.
 
 ## 처리 단계
 
@@ -24,7 +24,7 @@
 4. **트렌드 우선 검토:** 근거가 연결된 후보명과 속성을 먼저 정리한다. 후보 상태, Evidence, 시즌·카테고리·지역·채널을 함께 보존한다.
 5. **요청 범위 확인:** 시즌·카테고리·요청 속성·제약을 기준으로 트렌드 적용 가능성을 확인한다. 충돌은 임의로 해소하지 않고 확인 질문으로 남긴다.
 6. **판매 보조 분석:** 처리된 H&M Style 판매 자료 중 요청 카테고리에 명시적으로 매핑된 행만 검토한다. 집계 기간·구매 행 수·상품 속성·출처 버전을 기록하고, 과거 관찰을 미래 수요로 해석하지 않는다.
-7. **재고 보조 맥락:** 자사 상품과 재고를 마지막으로 검토한다. 상품 ID·기간·단위·기준 시점이 맞지 않으면 결합하지 않고, 재고를 수요·인기·판매 속도로 해석하지 않는다.
+7. **재고 보조 맥락:** 자사 상품과 재고를 마지막으로 검토한다. SKU/수량/단위/기준 시점/Evidence가 제공되면 그 재고 주장에 연결한다. 요청 대상(예: 상의)과 재고 상품(예: 청바지/하의)은 서로 다른 상품으로 유지한다. `outfit-role-pairing-v1` 역할 규칙이 상·하의 보완 관계를 식별하면 별도 코디 제안으로 기록하며, 해당 규칙은 수요·스타일 선호·재고 소진 효과의 Evidence가 아니다. 역할을 알 수 없거나 관계가 애매하면 불일치를 임의 해소하지 않고 질문으로 남긴다.
 8. **콘셉트 및 출력 검증:** 내부 `ProductConceptDraft`를 만들고 사실/해석/가설/제안/미확정을 나눈다. 핵심 주장 Evidence ID가 입력 allowlist에 있는지 확인한다. 판매 수치 계산은 분석 코드에서 수행하고 LLM에 맡기지 않는다.
 
 ## 내부 모델 매핑
@@ -35,8 +35,8 @@
 | --- | --- | --- |
 | `SalesAnalysisResult` | `result`, `observations[]`: mapped category, product code/group, purchase rows, period, source/evidence IDs, catalog attributes, category-mapping version | H&M style aggregate adapter는 요청 ID/version과 버전이 지정된 source-category map을 받는다. 데이터에 시즌이 없어 시즌을 추정하지 않는다. 적용 가능한 카테고리 행이 없으면 `no_results`로 반환한다. |
 | `TrendResult` | `result`, `candidates[]` 및 후보의 분류 차원·속성·Evidence | 트렌드의 출처·기준일은 Evidence 메타데이터에서 보존한다. 판매량/미래 수요 증명으로 승격하지 않는다. |
-| `PlanningRequest` | `result`, `original_query`, `season`, `market`, `channel`, `category`, `requested_attributes`, `missing_fields`, `constraints`, `field_origins` | 대상 고객·목표 가격대 등 내부 모델에 없는 요청 필드는 계약 협의 전 임의로 끼워 넣지 않고 미결정으로 기록한다. |
-| `InventoryProductResult` | `result`, `products[]` | 입력 객체는 필수다. 개별 상품의 `quantity`, `unit`, `inventory_definition`, `as_of` 누락은 상위 result status 및 제한사항과 함께 보존한다. |
+| `PlanningRequest` | `result`, `original_query`, `season`, `market`, `channel`, `category`, 선택적 `product_role`, `requested_attributes`, `missing_fields`, `constraints`, `field_origins` | `product_role`은 내부 상/하의 역할 정규화 필드다. 공통 계약 필드로 가정하지 않으며 transport adapter에서 upstream과 매핑 협의가 필요하다. 대상 고객·목표 가격대 등은 계속 미결정으로 기록한다. |
+| `InventoryProductResult` | `result`, `products[]` | 각 상품에 선택적 `product_role`, 비정형 `note`/`note_origin` 및 기존 상품·재고 필드를 보존한다. `quantity`, `unit`, `inventory_definition`, `as_of` 누락은 상위 status와 제한사항에 남기며, 메모만으로 수량을 만들지 않는다. |
 | `ProductConceptDraft` | 요청 조건, 속성, 기회 관찰, 자사 상품 관계, 상태, 제한, 질문, Evidence ID | 내부 검토 출력이다. 합의 전 공통 `ProductConcept` wire payload로 부르지 않는다. |
 
 ## 실제 데이터 필드 계약과 현재 연결 상태
@@ -45,10 +45,10 @@
 
 | 흐름 | 내부 필드/식별자 | 버전·기준 시점 | 누락·충돌 처리 | 현재 연결 |
 | --- | --- | --- | --- | --- |
-| 기획 요청 | `request_id`, `schema_version`, `original_query`, `season`, `market[]`, `channel[]`, `category`, `requested_attributes[]`, `constraints[]`, `missing_fields[]`, `field_origins{}` | request별 식별자·schema version 필수 | 미입력 값은 `None`/빈 값과 `missing_fields`로 보존; taxonomy 임의 변환 금지 | 내부 dataclass; 외부 transport 미연결 |
+| 기획 요청 | `request_id`, `schema_version`, `original_query`, `season`, `market[]`, `channel[]`, `category`, 선택적 `product_role`, `requested_attributes[]`, `constraints[]`, `missing_fields[]`, `field_origins{}` | request별 식별자·schema version 필수 | 미입력 값은 `None`/빈 값과 `missing_fields`로 보존; taxonomy 임의 변환 금지 | 내부 dataclass; 외부 transport 미연결 |
 | 트렌드 | `AgentResult` + `TrendCandidate{name, qualification, season, market[], channel[], category, attributes[], evidence_ids[]}` | 공급자 결과의 schema version 및 각 Evidence의 문서 버전/기준일 | `no_results`, `partial`, `error`를 값 0/부재 사실로 치환하지 않음 | 내부 dataclass; Agent 1 연결 미확정 |
 | 판매 | `SalesObservation{category, purchase_rows, period_start/end, product_group, attributes[], source_channel_code, evidence_ids[]}` | Kaggle manifest `pipeline_version`, 원천 SHA-256, 관측기간; 매핑 버전은 호출자가 전달 | 미매칭 article은 제한사항으로 알림; 원천 분류와 요청 taxonomy 명시 map 없이는 결과를 매핑하지 않음 | 로컬 Article 집계 adapter |
-| 상품·재고 | `InventoryProduct{style_id, sku_ids[], season, category, market[], channel[], quantity, unit, inventory_definition, as_of, evidence_ids[]}` | 스냅샷 `as_of`, upstream schema version | 속성과 수량 결측을 구분; 실제 0만 0으로 유지; 단위/정의 충돌은 결합하지 않음 | 내부 dataclass; Agent 2 연결 미확정 |
+| 상품·재고 | `InventoryProduct{style_id, sku_ids[], season, category, product_role, note, note_origin, market[], channel[], quantity, unit, inventory_definition, as_of, evidence_ids[]}` | 스냅샷 `as_of`, upstream schema version; 역할 매핑 규칙 `outfit-role-pairing-v1` | 속성과 수량 결측을 구분; 실제 0만 0으로 유지; 단위/정의 충돌은 결합하지 않음. 카테고리가 다른 상·하의는 규칙 매핑이 명확할 때만 별도 코디 관계로 보존 | 내부 dataclass; Agent 2 연결 미확정 |
 | 콘셉트 초안 | `ProductConceptDraft` 및 claim별 `kind`, `evidence_ids[]`, 상태·제약 | request/schema version, source Evidence IDs | 미근거 사실은 검증 오류; 해석·가설·제안·미확정으로 낮추거나 제거 | 결정적 generator 연결; LLM adapter 미연결 |
 
 ### H&M 판매 adapter의 집계 경계
@@ -69,6 +69,7 @@
 | 재고 조회 `no_results` | 수량 0으로 치환하지 않는다. 상품 결과에 별도로 제공된 상품 속성만 비교할 수 있다. |
 | 실제 수량 0 | 단위·재고 정의·기준 시점·Evidence가 확인되면 조회 시점의 0으로 기록한다. 수요·판매·품절의 의미를 부여하지 않는다. |
 | 차원/ID/단위 충돌 | 임의 매핑·환산 없이 충돌과 미사용 사유를 보존한다. |
+| 카테고리는 다르나 상·하의 역할이 확인됨 | `outfit-role-pairing-v1`과 역할 분류 출처를 남기고 코디 제안으로 연결한다. 상품별 재고 사실은 별도 claim으로 보존하며, 역할이 애매하면 기존 충돌 질문을 유지한다. |
 
 ## 책임 경계와 미결정 사항
 

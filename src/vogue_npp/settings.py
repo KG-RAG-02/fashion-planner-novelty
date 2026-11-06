@@ -34,6 +34,8 @@ class Settings:
     """Runtime settings; secret values are excluded from repr output."""
 
     llm_api_key: str | None = field(default=None, repr=False)
+    image_generation_api_key: str | None = field(default=None, repr=False)
+    image_generation_enabled: bool = False
 
 
 def load_settings() -> Settings:
@@ -41,4 +43,10 @@ def load_settings() -> Settings:
 
     load_dotenv()
     api_key = os.getenv("LLM_API_KEY", "").strip()
-    return Settings(llm_api_key=api_key or None)
+    image_api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    image_enabled = os.getenv("VOGUE_IMAGE_GENERATION_ENABLED", "").strip().casefold() == "true"
+    return Settings(
+        llm_api_key=api_key or None,
+        image_generation_api_key=image_api_key or None,
+        image_generation_enabled=image_enabled,
+    )

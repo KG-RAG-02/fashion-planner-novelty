@@ -14,6 +14,7 @@ from .context import (
     SalesObservation,
     TrendCandidate,
 )
+from .styling import display_inventory_label
 
 
 @dataclass(frozen=True)
@@ -247,13 +248,53 @@ def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysi
 
     # Own-product and stock context is reviewed after trend, request, and
     # historical sales evidence have been assembled.
-    for product in products:
+    relation_by_index = {
+        relation.inventory_product_index: relation
+        for relation in context.styling_relationships
+    }
+    for product_index, product in enumerate(products):
+        relation = relation_by_index.get(product_index)
         mismatches = dimension_mismatches(context.request, product)
+        if relation:
+            mismatches = tuple(field for field in mismatches if field != "category")
         if mismatches:
             questions.append(
                 f"자사 상품 '{product.style_id or '(Style ID 없음)'}'의 "
                 f"{', '.join(mismatches)}가 요청 조건과 달라 비교에서 제외했습니다."
             )
+            continue
+        if relation:
+            target_label = _role_label(relation.requested_role)
+            inventory_label = _role_label(relation.inventory_role)
+            item_label = display_inventory_label(product)
+            note_text = (
+                f" 재고 입력 메모는 ‘{product.note}’ (출처: {product.note_origin}; "
+                "수량·기준일·Evidence 미확인)입니다."
+                if product.note else ""
+            )
+            relationship_question = (
+                "분류 규칙상 함께 코디할 수 있는 역할로 연결했습니다. 실제 착용 적합성과 MD 상품 방향을 확인해 주세요."
+            )
+            relationship_limitations = (
+                f"규칙 {relation.rule_version}; 역할 분류 출처: {relation.request_role_source}, {relation.inventory_role_source}.",
+                "코디 관계는 규칙 기반 제안이며 실제 스타일 선호, 재고 소진, 매출 효과를 입증하지 않습니다.",
+            )
+            findings.append(OpportunityFinding(
+                statement=SourcedClaim(
+                    value=(
+                        f"요청 상품 역할 ‘{target_label}’과 재고 상품 역할 ‘{inventory_label}’ "
+                        f"({item_label})을 코디 맥락으로 연결했습니다.{note_text} "
+                        "이는 재고 사실과 구분되는 규칙 기반 기획 제안이며 재고 소진이나 수요 효과를 뜻하지 않습니다."
+                    ),
+                    kind="interpretation",
+                ),
+                style_id=product.style_id,
+                attribute_name="styling_complement",
+                questions=(relationship_question,),
+                limitations=relationship_limitations,
+            ))
+            questions.append(relationship_question)
+            limitations.extend(relationship_limitations)
             continue
         if not product.style_id or not product.style_id.strip() or not product.evidence_ids:
             questions.append("Style ID 또는 Evidence가 부족한 자사 상품은 비교에서 제외했습니다.")
@@ -329,3 +370,7 @@ def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysi
         questions=unique_questions,
         limitations=unique_limitations,
     )
+
+
+def _role_label(role: str) -> str:
+    return {"upper_body": "상의", "lower_body": "하의"}.get(role, role)

@@ -36,9 +36,9 @@ PostgreSQL/Neo4j/pgvector 또는 별도 Vector DB, API framework, Pydantic 버�
 | `src/vogue_npp/workflows/planning.py` | 선택한 H&M 과거 판매 기회에서 Evidence·가설·미확정을 분리한 기획 브리프 초안 생성 | 구현 |
 | `src/vogue_npp/workflows/image_generation.py` | 근거/제안 구분 이미지 프롬프트 및 설정·요청별 확인을 거친 이미지 provider 연계 | 구현. 전체 TOP5 자동 시안 pipeline 아님 |
 | `src/vogue_npp/domain/trend_batch.py` | dependency-free `TrendBatch.from_json/from_mapping`; size/length/count/duplicate ID, evidence trace field, HTTP(S) reference format validation. `rank`/`similarity` 같은 unknown fields reject | 구현. Pydantic 미도입 |
-| `src/vogue_npp/domain/trend_evaluator.py` | name normalization, excerpt-backed dictionary attributes, category exact/alias/ambiguous/unmapped adapter, EvidenceResolver port, Trend × Category evaluation with explicit versioned weights | 구현 기준선. taxonomy/resolver/fit weights 미제공이면 abstain; ML/LLM 및 KG mapping 없음 |
+| `src/vogue_npp/domain/trend_evaluator.py` | name normalization, excerpt-backed dictionary attributes, category exact/alias/ambiguous/unmapped adapter, EvidenceResolver port, Trend × Category evaluation with explicit versioned weights; category taxonomy may provide attribute-value-specific affinity | 구현 기준선. taxonomy/resolver/fit weights 미제공이면 abstain; ML/LLM 및 KG mapping 없음 |
 | `src/vogue_npp/domain/retrieval.py` | KnowledgeRetriever, ProductCatalogRepository, MerchDataRepository ports 및 no-index/unconfigured/in-memory adapters; SQL 기간·채널·상품·재고 기준시점 filter contracts | 구현 기준선. 운영 DB/graph/vector connector 없음 |
-| `src/vogue_npp/domain/candidates.py` | Existing/New 후보 공통 모델, evidence/metric/KG refs, 설정형 scorer, dedup/category-cap portfolio selector | 구현 기준선. 승인된 business weights/metric normalizer 없음 |
+| `src/vogue_npp/domain/candidates.py` | Existing/New 후보 공통 모델, evidence/metric/KG refs, 설정형 scorer, tie-aware peer percentile normalizer, dedup/category-cap portfolio selector | 구현 기준선. 업무 weight 및 cohort 구성은 미승인 |
 | `src/vogue_npp/workflows/trend_planning.py` | API-neutral planning use case, deterministic run ID, candidate brief DTO, opt-in image adapter | 구현 기준선. 공용 HTTP API/저장/async job 없음 |
 | `tests/` | 위 신규 domain/use-case 동작과 기존 context, planning, H&M adapter, image flow 회귀 테스트 | 본 구현에서 전체 테스트 실행; 아래 구현 보고의 결과 참조 |
 | `requirements.txt`, `compose.yaml` | `python-dotenv` 중심 의존성, prototype 한 서비스; Pydantic/FastAPI/SQL/Neo4j/vector service 의존성 없음 | 현재 파일 기준 |
@@ -193,6 +193,20 @@ class TrendBatch(BaseModel):
 | product applicability | 10% | 자사 taxonomy 및 실제 설계 가능한 속성 연결 가능성; 제조 feasibility 판정은 아님 |
 
 근거 결손이 큰 경우 weighted score를 산출하지 않고 `insufficient_evidence` 상태로 보류한다. 구성요소별 점수·근거·결측을 함께 반환하고, TrendBatch 입력순서에 따른 우선순위는 부여하지 않는다.
+
+### 점수 포화/동점 방지와 MD 해석 경계 (2026-11-06 추가)
+
+이전 규칙은 `relevant attribute types` 중 하나만 매칭되어도 relevance가 1.0이 될 수 있었고, 근거 문서가 모두 verified이면 evidence verification도 1.0이었다. 그래서 네 트렌드가 모두 같은 `style` 속성으로 추출되면 Trend × Category 점수가 전부 100으로 포화될 수 있었다. Opportunity Scorer는 입력받은 component 점수를 가중 평균할 뿐 원천 수치를 정규화하지 않으므로, 호출자가 모든 후보에 같은 점수를 넣으면 동일 점수를 내는 것이 정상 동작이었다.
+
+**구현 변경:** `Category.attribute_value_affinities`에 `"attribute_type:canonical_value" → 0..1`을 지정한다. 값별 기준이 없는 applicable 속성은 `unconfigured`로 보류하고, 넓은 속성유형 일치를 100점으로 간주하지 않는다. 검증된 근거 속성 중 category 관련 유형이 하나도 없으면 적합도 0으로 둔다. 속성별 결과와 taxonomy/evaluator 버전을 보존한다. 이 표는 카테고리 taxonomy의 명시적 평가 기준이어야 하며, Trend Agent 순위/유사도 값으로 해석하지 않는다. 수치는 MD 검토와 기준 사례 평가 전까지 로컬 가설이다.
+
+상품/판매 peer 지표에는 `peer_percentile_scores`를 추가했다. 입력 cohort는 같은 카테고리·후보 유형·판매 기간·채널·단위·metric 정의로 미리 구성해야 한다. midrank로 동점을 보존하고, cohort 하나뿐인 값은 비교 불가로 간주해 50을 반환한다. 서로 다른 비교 조건의 점수를 한 모집단으로 섞지 않는다. 값이 실제로 같으면 동점이 유지되며, 분포를 인위적으로 벌리지 않는다. 최고 percentile 하나가 100이 되는 것은 가능하지만, 전체 점수가 100으로 몰리는 max-normalization은 사용하지 않는다.
+
+**로컬 시나리오 전용 작업 가설:** S/S 남성 반바지에 스타일별 affinity 예시를 적용하면 minimalism 0.78, maximalism 0.58, gorpcore 0.90, balletcore 0.42다. 이 수치는 룩 전개 용이성에 관한 MD 가설을 코드 경로에서 구분해 보는 fixture 전용 값이며, 승인된 회사 taxonomy나 패션 시장 실적이 아니다. 검증 verified 1.0, `attribute_relevance:evidence_verification = 0.7:0.3` 예시 적용 시 각각 84.6, 70.6, 93.0, 59.4다. 의미는 “남성 반바지에 바로 전개하기 쉬운 정도”이며 트렌드 인기도/시장 강도가 아니다. 실제 업무 사용 전에 MD가 점수 방향과 기준 사례를 승인해야 한다.
+
+Opportunity 점수는 서로 다른 비교군(기존 상품 개선/신규 상품)의 지표를 무리하게 같은 상대 percentile로 바꾸면 안 된다. trend/category fit은 두 유형 모두 공통 비교요소로 두고, demand는 기존 상품에 같은 기간·채널의 관측 수량/판매가능 기간을 사용한다. 신규 상품은 해당 상품의 실판매처럼 가장하지 말고, comparables가 있으면 별도 `category_demand_proxy`로 표시하거나 결측 처리한다. 재고 신호는 기준시점·available/reserved 정의·승인된 coverage/line-plan 목표가 있을 때만 정량화한다. 목표가 없으면 `null` 및 coverage 감소가 맞으며, 흰 티셔츠 잔여량은 반바지의 재고 component에 합산하지 않는다.
+
+네 트렌드 데모에서 산출한 Trend × Category 점수와 TOP5 값은 위의 **미승인 MD heuristic fixture**를 사용한다. Opportunity 기존 component 중 비-trend 기여분은 이전 테스트 fixture 값을 그대로 둔 재계산이다. 따라서 후보 간 수치 차이는 점수 경로 예시이지 실적 기반 품질 개선을 입증하지 않는다. 모든 component breakdown, profile version, evidence 및 coverage를 함께 노출해야 한다.
 
 ## 6. 저장 모델 및 KG 모델
 
@@ -354,14 +368,14 @@ WHERE k.product_id = ANY(:product_ids);
 | `I` Inventory/risk | 기존 SKU availability/재고 노출 리스크; 신규는 데이터 부족을 중립 가산하지 않음 | 스냅샷 시각·단위·가용 정의 필수 |
 | `E` Evidence confidence | 독립성·관련성·최신성·locator 검증 품질 | document assessment 근거 |
 
-이 식은 **검증 전 제안**이며 코드의 기본값으로 적용하지 않는다. 구현된 `ScoreWeights`와 `TrendFitWeights`는 명시적으로 전달된 가중치만 사용하며, 가중치가 없으면 `unconfigured`로 abstain한다. Scorer는 component score 입력과 coverage를 기록하고, coverage `< 0.8` 또는 evidence가 없으면 `insufficient_data`다. 운영 전에는 점수 산식, component scale 및 weights를 MD 평가로 승인해야 한다. 결측 항목은 0/평균으로 조용히 대체하지 않는다.
+이 식은 **검증 전 제안**이며 코드의 기본값으로 적용하지 않는다. 구현된 `ScoreWeights`와 `TrendFitWeights`는 명시적으로 전달된 가중치만 사용하며, 가중치가 없으면 `unconfigured`로 abstain한다. Scorer는 component score 입력과 coverage를 기록하고, coverage `< 0.8` 또는 evidence가 없으면 `insufficient_data`다. `peer_percentile_scores`는 같은 정의의 후보 peer 관측을 정규화하는 보조 함수이며, 서로 다른 기간/채널/단위/cohort 비교 가능성 검증이나 운영 adapter를 대체하지 않는다. 운영 전에는 점수 산식, component scale, taxonomy affinity, normalization cohort 및 weights를 MD 평가로 승인해야 한다. 결측 항목은 0/평균으로 조용히 대체하지 않는다.
 
 ### TOP 5 selector
 
 1. validator 통과 및 필수 근거 최소 기준을 만족하는 후보만 eligible.
-2. 동일 product, 동일 concept fingerprint, 거의 동일한 attribute/category 조합을 canonical ID + rule/embedding dedup으로 묶는다. 자동 merge에는 audit trail을 남긴다.
+2. 동일 product, 동일 concept fingerprint, 거의 동일한 attribute/category 조합을 canonical ID + rule/embedding dedup으로 묶는다. 점수로 먼저 정렬한 뒤 중복을 제거해 가장 강한 근거의 후보를 보존한다. 자동 merge에는 audit trail을 남긴다.
 3. 점수와 tie-break 기준(coverage, evidence quality, deterministic candidate_id)을 적용해 정렬한다.
-4. 포트폴리오 제약 예: 카테고리 분산, trend ID 분산, existing/new 조합을 목표로 하되, 최저 점수 후보를 무리하게 채워 넣지 않는다. 최소 점수/근거 threshold 아래면 5개 미만을 반환한다.
+4. 포트폴리오 제약 예: 카테고리 분산, trend ID 분산, existing/new 조합을 목표로 하되, 요청 범위가 단일 카테고리이면 카테고리 상한을 적용하지 않는다. 최저 점수 후보를 무리하게 채워 넣지 않으며, 최소 점수/근거 threshold 아래면 5개 미만을 반환한다.
 5. 제약과 가중치는 run configuration에 버전으로 기록하고, 선정/탈락 이유를 후보별 반환한다.
 
 권장 시작은 top 5 최대치 + 카테고리 중복 상한 + existing/new 최소 다양성 목표지만 비율은 MD가 평가해야 한다. 근거가 부족한 New 후보를 수량 맞추기 위해 추가하면 안 된다.

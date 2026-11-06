@@ -10,7 +10,10 @@ are deterministically adapted from the processed dataset.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Mapping, Sequence
+from typing import TYPE_CHECKING, Literal, Mapping, Sequence
+
+if TYPE_CHECKING:
+    from .styling import StylingRelationship
 
 
 InputStatus = Literal["ok", "partial", "no_results", "error"]
@@ -57,6 +60,7 @@ class PlanningRequest:
     market: tuple[str, ...] = ()
     channel: tuple[str, ...] = ()
     category: str | None = None
+    product_role: str | None = None
     requested_attributes: tuple[AttributeSignal, ...] = ()
     missing_fields: tuple[str, ...] = ()
     constraints: tuple[str, ...] = ()
@@ -123,6 +127,9 @@ class InventoryProduct:
     inventory_definition: str | None = None
     as_of: str | None = None
     evidence_ids: tuple[str, ...] = ()
+    product_role: str | None = None
+    note: str | None = None
+    note_origin: ContextOrigin = "unknown"
 
 
 @dataclass(frozen=True)
@@ -163,6 +170,7 @@ class ProductPlanningContext:
     sales: SalesAnalysisResult
     inventory: InventoryProductResult
     input_statuses: Mapping[str, InputStatus]
+    styling_relationships: tuple[StylingRelationship, ...] = ()
     conflicts: tuple[ContextConflict, ...] = ()
     evidence_ids: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
@@ -173,7 +181,10 @@ def _unique(values: Sequence[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(value for value in values if value))
 
 
-def _comparable_context(inputs: PlanningInputs) -> Mapping[str, Mapping[str, object]]:
+def _comparable_context(
+    inputs: PlanningInputs,
+    paired_inventory_indexes: frozenset[int] = frozenset(),
+) -> Mapping[str, Mapping[str, object]]:
     request = inputs.request
     trends = inputs.trend.candidates
     products = inputs.inventory.products
@@ -212,7 +223,8 @@ def _comparable_context(inputs: PlanningInputs) -> Mapping[str, Mapping[str, obj
     )
     inventory_seasons = _unique([product.season for product in products if product.season])
     inventory_categories = _unique(
-        [product.category for product in products if product.category]
+        [product.category for index, product in enumerate(products)
+         if product.category and index not in paired_inventory_indexes]
     )
     inventory_markets = _unique(
         [market for product in products for market in product.market]
@@ -281,9 +293,12 @@ def _comparable_context(inputs: PlanningInputs) -> Mapping[str, Mapping[str, obj
     return values
 
 
-def _conflicts(inputs: PlanningInputs) -> tuple[ContextConflict, ...]:
+def _conflicts(
+    inputs: PlanningInputs,
+    paired_inventory_indexes: frozenset[int] = frozenset(),
+) -> tuple[ContextConflict, ...]:
     conflicts: list[ContextConflict] = []
-    for field_name, sources in _comparable_context(inputs).items():
+    for field_name, sources in _comparable_context(inputs, paired_inventory_indexes).items():
         normalized = {key: value for key, value in sources.items() if value not in (None, (), [])}
         if "request" not in normalized:
             continue
@@ -386,6 +401,11 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
             *inputs.sales.result.limitations,
             *inputs.inventory.result.limitations,
             *(
+                f"Inventory note ({product.note_origin}; not independently verified): {product.note}"
+                for product in inputs.inventory.products
+                if product.note and product.note.strip()
+            ),
+            *(
                 f"Upstream result from {result.agent_id} has status '{result.status}'."
                 for result in results
                 if result.status != "ok"
@@ -398,10 +418,24 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
             for field_name in inputs.request.missing_fields
         ]
     )
-    conflicts = _conflicts(inputs)
+    from .styling import build_styling_relationships
+
+    styling_relationships = build_styling_relationships(
+        inputs.request, inputs.inventory.products
+    ) if statuses["inventory_product_result"] in {"ok", "partial"} else ()
+    paired_inventory_indexes = frozenset(
+        relation.inventory_product_index for relation in styling_relationships
+    )
+    conflicts = _conflicts(inputs, paired_inventory_indexes)
     questions = _unique(
         [
             *questions,
+            *(
+                f"상의·하의 코디 관계는 {relation.rule_version} 규칙과 "
+                f"{relation.request_role_source}, {relation.inventory_role_source} 분류로 연결했습니다. "
+                "코디 적합성은 Evidence로 입증된 사실이 아니므로 MD 확인이 필요합니다."
+                for relation in styling_relationships
+            ),
             *(
                 f"Resolve the {conflict.field} mismatch across input sources."
                 for conflict in conflicts
@@ -417,6 +451,7 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         sales=inputs.sales,
         inventory=inputs.inventory,
         input_statuses=statuses,
+        styling_relationships=styling_relationships,
         conflicts=conflicts,
         evidence_ids=evidence_ids,
         limitations=limitations,
