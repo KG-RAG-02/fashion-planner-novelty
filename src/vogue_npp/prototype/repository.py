@@ -9,9 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from .analytics import analyze
 from .config import IMAGEGEN_ASSET, IMAGEGEN_VARIANT_ID, database_path
-from .fixtures import load_fixture
 
 BRIEF_FIELDS = {
     "title", "target_customer", "wearing_situation", "category_season", "price_range",
@@ -66,25 +64,6 @@ def initialize() -> None:
                 price_feasibility INTEGER NOT NULL, production_feasibility INTEGER NOT NULL,
                 adopted INTEGER NOT NULL, feedback TEXT NOT NULL, created_at TEXT NOT NULL
             );
-            CREATE TABLE IF NOT EXISTS hm_planning_reviews (
-                review_id TEXT PRIMARY KEY, opportunity_id TEXT NOT NULL,
-                request_payload TEXT NOT NULL, decision_payload TEXT NOT NULL,
-                analysis_version TEXT NOT NULL, source_period TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS hm_planning_briefs (
-                brief_id TEXT PRIMARY KEY, brief_version INTEGER NOT NULL,
-                opportunity_id TEXT NOT NULL, payload TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                UNIQUE(opportunity_id, brief_version)
-            );
-            CREATE TABLE IF NOT EXISTS hm_brief_reviews (
-                review_id TEXT PRIMARY KEY, brief_id TEXT NOT NULL,
-                brief_version INTEGER NOT NULL, decision TEXT NOT NULL,
-                ratings_json TEXT NOT NULL, feedback TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY(brief_id) REFERENCES hm_planning_briefs(brief_id)
-            );
         """)
         variant_columns = {row["name"] for row in db.execute("PRAGMA table_info(variants)").fetchall()}
         variant_migrations = {
@@ -98,10 +77,10 @@ def initialize() -> None:
             if column not in variant_columns:
                 db.execute(f"ALTER TABLE variants ADD COLUMN {column} {definition}")
         version = db.execute("SELECT value FROM app_meta WHERE key='fixture_version'").fetchone()
-        fixture = load_fixture()
-        if version is None or version["value"] != fixture["schema_version"]:
+        schema_version = "planning-brief-schema-1"
+        if version is None or version["value"] != schema_version:
             db.execute("DELETE FROM app_meta WHERE key='fixture_version'")
-            db.execute("INSERT INTO app_meta(key,value) VALUES('fixture_version',?)", (fixture["schema_version"],))
+            db.execute("INSERT INTO app_meta(key,value) VALUES('fixture_version',?)", (schema_version,))
         imagegen_variant = db.execute("SELECT 1 FROM variants WHERE variant_id=?", (IMAGEGEN_VARIANT_ID,)).fetchone()
         if imagegen_variant is None:
             prompt = (
@@ -117,38 +96,35 @@ def initialize() -> None:
             )
 
 
-def _initial_brief(analysis: dict[str, Any]) -> dict[str, Any]:
-    opportunity = next((item for item in analysis["opportunities"] if item["kind"] == "고객 의견 신호"), None)
-    best = max(analysis["products"], key=lambda row: row["units"])
+def _initial_brief() -> dict[str, Any]:
     return {
-        "title": "Light Utility Anorak · 27SS",
-        "target_customer": "도시 이동과 짧은 야외 활동을 함께 하는 고객 (가설)",
-        "wearing_situation": "출퇴근, 주말 산책, 가벼운 야외 활동 (검토 가설)",
-        "category_season": "Light Outerwear · 27SS",
-        "price_range": "₩79,900–₩129,900 (가상 26SS 표본 가격 범위; 목표가 미정)",
-        "silhouette_fit": "가벼운 후드형 유틸리티 아우터 · 여유핏 검토",
-        "material_function": "소재 미정 · 발수·통기·구김 회복 시험 필요",
-        "color_pattern": "라이트 세이지 또는 먼지 낀 블루 탐색 (가설)",
-        "differentiation": "기존 경량 아우터의 휴대성을 참고하면서 구김 및 통기성 불편을 개선하는 방향 검토",
-        "feedback_application": opportunity["summary"] if opportunity else "고객 피드백 표본 확인 필요",
-        "supply_constraints": "가상 리드타임 스냅샷은 표에 표시됩니다. 공급업체 견적·MOQ·생산능력 자료는 없으므로 실제 원가와 생산 가능성을 확인해야 합니다.",
-        "facts": f"가상 상품 표본에서 {best['name']}이 12주 {best['units']:,} units로 가장 많이 관측됨. 실제 브랜드/수요 사실이 아님.",
-        "md_judgment": "가벼운 유틸리티 아우터에서 활동성과 관리 편의를 함께 강조할 가치가 있는지 검토한다.",
-        "assumptions": "타깃 고객과 사용 상황은 확인된 고객 세그먼트가 아니라 MD 검토 가설이다.",
-        "evidence": [ev for item in analysis["opportunities"] for ev in item["evidence"]],
+        "title": "상품기획 검토 초안",
+        "target_customer": "미정",
+        "wearing_situation": "미정",
+        "category_season": "미정",
+        "price_range": "미정",
+        "silhouette_fit": "미정",
+        "material_function": "미정",
+        "color_pattern": "미정",
+        "differentiation": "검토 필요",
+        "feedback_application": "미제공",
+        "supply_constraints": "미제공",
+        "facts": "상품·트렌드와 전달된 입력의 근거를 확인한 뒤 작성",
+        "md_judgment": "검토 전",
+        "assumptions": "확정 사실과 가설을 구분해 입력",
+        "evidence": [],
     }
 
 
 def get_brief() -> dict[str, Any]:
     initialize()
-    analysis = analyze()
     with connect() as db:
         row = db.execute("SELECT version,payload,created_at FROM briefs ORDER BY version DESC LIMIT 1").fetchone()
     if row:
         payload = json.loads(row["payload"])
-        payload["evidence"] = _initial_brief(analysis)["evidence"]
+        payload["evidence"] = _initial_brief()["evidence"]
         return {"version": row["version"], "created_at": row["created_at"], "payload": payload}
-    return {"version": 0, "created_at": None, "payload": _initial_brief(analysis)}
+    return {"version": 0, "created_at": None, "payload": _initial_brief()}
 
 
 def list_brief_versions() -> list[dict[str, Any]]:
@@ -347,125 +323,3 @@ def list_evaluations() -> list[dict[str, Any]]:
         if item["variant_id"] == IMAGEGEN_VARIANT_ID:
             item["image_url"] = IMAGEGEN_ASSET
     return results
-
-
-def save_hm_planning_review(payload: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any]:
-    """Persist an actual-H&M planning decision separately from synthetic briefs."""
-    initialize()
-    opportunity_id = str(payload.get("opportunity_id", "")).strip()
-    opportunity = next((row for row in analysis.get("opportunity_candidates", []) if row.get("opportunity_id") == opportunity_id), None)
-    if opportunity is None:
-        raise ValueError("선택한 기획 후보를 현재 분석 결과에서 찾을 수 없습니다.")
-    request = payload.get("request") if isinstance(payload.get("request"), dict) else {}
-    decision = payload.get("decision") if isinstance(payload.get("decision"), dict) else {}
-    reason = str(decision.get("selection_reason", "")).strip()
-    if not reason:
-        raise ValueError("후보 선택 근거를 입력해 주세요.")
-    clean_request = {
-        "target_season": str(request.get("target_season", "")).strip()[:100] or None,
-        "market": str(request.get("market", "")).strip()[:200] or None,
-        "channel": str(request.get("channel", "")).strip()[:100] or None,
-        "product_group_name": opportunity["category"]["product_group_name"],
-        "product_type_name": opportunity["category"]["product_type_name"],
-        "price_hypothesis": str(request.get("price_hypothesis", "")).strip()[:300] or None,
-        "design_constraints": str(request.get("design_constraints", "")).strip()[:1000] or None,
-        "missing_fields": ["trend_evidence", "inventory_and_returns", "cost_and_margin", "customer_segments"],
-    }
-    clean_decision = {
-        "selection_reason": reason[:2000],
-        "counter_evidence": str(decision.get("counter_evidence", "")).strip()[:2000] or None,
-        "unknowns_to_validate": str(decision.get("unknowns_to_validate", "")).strip()[:2000] or None,
-        "opportunity_snapshot": opportunity,
-    }
-    review_id = "HM-REVIEW-" + uuid.uuid4().hex[:12].upper()
-    created_at = utc_now()
-    period = analysis.get("observation_period", {})
-    source_period = f"{period.get('start', '')}–{period.get('end', '')}"
-    with connect() as db:
-        db.execute("INSERT INTO hm_planning_reviews VALUES(?,?,?,?,?,?,?)", (
-            review_id, opportunity_id, json.dumps(clean_request, ensure_ascii=False),
-            json.dumps(clean_decision, ensure_ascii=False), str(analysis.get("analysis_version", "unknown")),
-            source_period, created_at,
-        ))
-    return {"review_id": review_id, "opportunity_id": opportunity_id, "request": clean_request,
-            "decision": clean_decision, "analysis_version": analysis.get("analysis_version"),
-            "source_period": source_period, "created_at": created_at}
-
-
-def list_hm_planning_reviews() -> list[dict[str, Any]]:
-    """List actual-data planning reviews, separate from synthetic brief records."""
-    initialize()
-    with connect() as db:
-        rows = db.execute("SELECT * FROM hm_planning_reviews ORDER BY created_at DESC LIMIT 100").fetchall()
-    return [{"review_id": row["review_id"], "opportunity_id": row["opportunity_id"],
-             "request": json.loads(row["request_payload"]), "decision": json.loads(row["decision_payload"]),
-             "analysis_version": row["analysis_version"], "source_period": row["source_period"],
-             "created_at": row["created_at"]} for row in rows]
-
-
-def save_hm_planning_brief(payload: dict[str, Any], analysis: dict[str, Any]) -> dict[str, Any]:
-    """Build and version a deterministic brief from one H&M candidate."""
-    initialize()
-    from ..workflows.planning import build_review_brief
-
-    brief = build_review_brief(payload, analysis)
-    brief_id = "HM-BRIEF-" + uuid.uuid4().hex[:12].upper()
-    opportunity_id = brief["opportunity_id"]
-    with connect() as db:
-        version = int(db.execute("SELECT COALESCE(MAX(brief_version),0)+1 FROM hm_planning_briefs WHERE opportunity_id=?", (opportunity_id,)).fetchone()[0])
-        created_at = utc_now()
-        brief["brief_id"] = brief_id
-        brief["brief_version"] = version
-        brief["created_at"] = created_at
-        brief["image_prompt_package"]["brief_id"] = brief_id
-        db.execute("INSERT INTO hm_planning_briefs VALUES(?,?,?,?,?)", (brief_id, version, opportunity_id, json.dumps(brief, ensure_ascii=False), created_at))
-    return brief
-
-
-def list_hm_planning_briefs() -> list[dict[str, Any]]:
-    initialize()
-    with connect() as db:
-        rows = db.execute("SELECT payload FROM hm_planning_briefs ORDER BY created_at DESC LIMIT 100").fetchall()
-    return [json.loads(row["payload"]) for row in rows]
-
-
-def save_hm_brief_review(payload: dict[str, Any]) -> dict[str, Any]:
-    """Record a human review against an immutable H&M brief version."""
-    initialize()
-    brief_id = str(payload.get("brief_id", "")).strip()
-    decision = str(payload.get("decision", "")).strip()
-    if decision not in {"revise", "advance", "hold"}:
-        raise ValueError("검토 결정을 선택해 주세요.")
-    supplied_ratings = payload.get("ratings") if isinstance(payload.get("ratings"), dict) else {}
-    ratings: dict[str, int] = {}
-    for key in ("evidence_grounding", "request_fit", "product_direction"):
-        try:
-            value = int(supplied_ratings.get(key, 0))
-        except (TypeError, ValueError):
-            value = 0
-        if not 1 <= value <= 5:
-            raise ValueError("모든 검토 항목은 1–5점으로 입력해 주세요.")
-        ratings[key] = value
-    feedback = str(payload.get("feedback", "")).strip()[:4000]
-    review_id = "HM-BRIEF-REVIEW-" + uuid.uuid4().hex[:10].upper()
-    created_at = utc_now()
-    with connect() as db:
-        brief = db.execute("SELECT brief_version FROM hm_planning_briefs WHERE brief_id=?", (brief_id,)).fetchone()
-        if brief is None:
-            raise ValueError("검토할 브리프를 찾을 수 없습니다.")
-        db.execute("INSERT INTO hm_brief_reviews VALUES(?,?,?,?,?,?,?)", (
-            review_id, brief_id, brief["brief_version"], decision,
-            json.dumps(ratings, ensure_ascii=False), feedback, created_at,
-        ))
-    return {"review_id": review_id, "brief_id": brief_id, "brief_version": brief["brief_version"],
-            "decision": decision, "ratings": ratings, "feedback": feedback, "created_at": created_at}
-
-
-def list_hm_brief_reviews() -> list[dict[str, Any]]:
-    initialize()
-    with connect() as db:
-        rows = db.execute("SELECT * FROM hm_brief_reviews ORDER BY created_at DESC LIMIT 200").fetchall()
-    return [{"review_id": row["review_id"], "brief_id": row["brief_id"],
-             "brief_version": row["brief_version"], "decision": row["decision"],
-             "ratings": json.loads(row["ratings_json"]), "feedback": row["feedback"],
-             "created_at": row["created_at"]} for row in rows]

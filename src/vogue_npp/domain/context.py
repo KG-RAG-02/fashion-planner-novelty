@@ -3,14 +3,14 @@
 These types are internal domain models, not the shared wire contract. A transport
 adapter should map the agreed PlanningRequest, TrendResult, and
 InventoryProductResult schemas into these models after those schemas are
-available and synchronized across repositories. Local H&M sales observations
-are deterministically adapted from the processed dataset.
+available and synchronized across repositories. Project_07 sales research is
+accepted only as an opaque, evidence-aware handoff payload.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Literal, Mapping, Sequence
 
 if TYPE_CHECKING:
     from .styling import StylingRelationship
@@ -87,52 +87,6 @@ class TrendResult:
 
 
 @dataclass(frozen=True)
-class SalesObservation:
-    """A deterministic, period-bounded sales aggregate with normalized category."""
-
-    category: str | None
-    purchase_rows: int
-    period_start: str
-    period_end: str
-    source_id: str
-    evidence_ids: tuple[str, ...]
-    product_code: str | None = None
-    product_group: str | None = None
-    season: str | None = None
-    attributes: tuple[AttributeSignal, ...] = ()
-    unit: str = "purchase_rows"
-    source_channel_code: str | None = None
-
-
-@dataclass(frozen=True)
-class SalesAnalysisResult:
-    """Legacy local sales input; proposed Project 07 results map here only temporarily.
-
-    This compatibility model is not the agreed Project 07 wire contract.
-    Project 06 does not query or own a sales source.
-    """
-
-    result: AgentResult
-    observations: tuple[SalesObservation, ...] = ()
-    category_mapping_version: str = "unversioned"
-    dataset_label: str = "sales data"
-    # Proposed Project 07 provenance fields. These remain optional until the
-    # two owners agree on names and wire semantics.
-    source: str | None = None
-    locator: str | None = None
-    geography: tuple[str, ...] = ()
-    channel: tuple[str, ...] = ()
-    product_mapping: str | None = None
-    unit: str | None = None
-    currency: str | None = None
-    metric_definitions: tuple[str, ...] = ()
-    calculation_references: tuple[str, ...] = ()
-    missing_data: tuple[str, ...] = ()
-    errors: tuple[str, ...] = ()
-    follow_up_questions: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
 class InventoryProduct:
     style_id: str | None
     sku_ids: tuple[str, ...]
@@ -157,52 +111,14 @@ class InventoryProductResult:
     products: tuple[InventoryProduct, ...] = ()
 
 
-@dataclass(frozen=True, init=False)
+@dataclass(frozen=True)
 class PlanningInputs:
-    """Three shared inputs plus a compatibility slot for proposed sales results.
-
-    Project 06 no longer owns a sales source. The optional slot only allows
-    callers to pass a Project 07 result-shaped value while the teams agree on
-    the wire schema; it is not an operational adapter.
-    """
+    """Planning inputs, including Project_07's result as an opaque handoff."""
 
     request: PlanningRequest
     trend: TrendResult
     inventory: InventoryProductResult
-    sales: SalesAnalysisResult | None = None
-
-    def __init__(
-        self,
-        request: PlanningRequest,
-        trend: TrendResult,
-        *args: SalesAnalysisResult | InventoryProductResult,
-        inventory: InventoryProductResult | None = None,
-        sales: SalesAnalysisResult | None = None,
-    ) -> None:
-        if len(args) == 1:
-            positional = args[0]
-            if isinstance(positional, InventoryProductResult):
-                if inventory is not None:
-                    raise TypeError("InventoryProductResult was provided more than once.")
-                inventory = positional
-            elif isinstance(positional, SalesAnalysisResult):
-                if sales is not None:
-                    raise TypeError("SalesAnalysisResult was provided more than once.")
-                sales = positional
-            else:
-                raise TypeError("Third positional input must be InventoryProductResult or SalesAnalysisResult.")
-        elif len(args) == 2:
-            if inventory is not None or sales is not None:
-                raise TypeError("Do not mix positional sales/inventory inputs with their keywords.")
-            sales, inventory = args
-        elif len(args) > 2:
-            raise TypeError("PlanningInputs accepts at most four positional inputs.")
-        if inventory is None:
-            raise InputConsistencyError("InventoryProductResult is required and must be normalized.")
-        object.__setattr__(self, "request", request)
-        object.__setattr__(self, "trend", trend)
-        object.__setattr__(self, "inventory", inventory)
-        object.__setattr__(self, "sales", sales)
+    sales_market_result: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -224,7 +140,6 @@ class ProductPlanningContext:
     schema_version: str
     request: PlanningRequest
     trends: TrendResult
-    sales: SalesAnalysisResult
     inventory: InventoryProductResult
     input_statuses: Mapping[str, ContextInputStatus]
     styling_relationships: tuple[StylingRelationship, ...] = ()
@@ -232,7 +147,7 @@ class ProductPlanningContext:
     evidence_ids: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
     questions_for_validation: tuple[str, ...] = ()
-    sales_market_result: SalesAnalysisResult | None = None
+    sales_market_result: Mapping[str, Any] | None = None
 
 
 def _unique(values: Sequence[str]) -> tuple[str, ...]:
@@ -261,14 +176,6 @@ def _comparable_context(
         values["market"]["request"] = request.market
     if request.channel:
         values["channel"]["request"] = request.channel
-
-    sales_observations = inputs.sales.observations if inputs.sales else ()
-    sales_seasons = _unique([item.season for item in sales_observations if item.season])
-    sales_categories = _unique([item.category for item in sales_observations if item.category])
-    if sales_seasons:
-        values["season"]["sales"] = sales_seasons
-    if sales_categories:
-        values["category"]["sales"] = sales_categories
 
     trend_seasons = _unique([candidate.season for candidate in trends if candidate.season])
     trend_categories = _unique(
@@ -329,13 +236,6 @@ def _comparable_context(
                 inventory_attributes.setdefault(signal.name.strip().casefold(), set()).add(
                     signal.value
                 )
-    sales_attributes: dict[str, set[object]] = {}
-    for observation in sales_observations:
-        for signal in observation.attributes:
-            if signal.value is not None:
-                sales_attributes.setdefault(signal.name.strip().casefold(), set()).add(
-                    signal.value
-                )
     for name, requested_values in request_attributes.items():
         field_name = f"attribute:{name}"
         values[field_name] = {
@@ -347,8 +247,6 @@ def _comparable_context(
             values[field_name]["inventory"] = tuple(
                 sorted(inventory_attributes[name], key=str)
             )
-        if name in sales_attributes:
-            values[field_name]["sales"] = tuple(sorted(sales_attributes[name], key=str))
     return values
 
 
@@ -399,20 +297,14 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         raise InputConsistencyError("TrendResult is required and must be normalized.")
     if not isinstance(inputs.inventory, InventoryProductResult):
         raise InputConsistencyError("InventoryProductResult is required and must be normalized.")
-    if inputs.sales is not None and not isinstance(inputs.sales, SalesAnalysisResult):
-        raise InputConsistencyError("Optional SalesAnalysisResult must be normalized when provided.")
     if not isinstance(inputs.request.result, AgentResult):
         raise InputConsistencyError("PlanningRequest must contain a normalized AgentResult.")
     if not isinstance(inputs.trend.result, AgentResult):
         raise InputConsistencyError("TrendResult must contain a normalized AgentResult.")
-    if inputs.sales is not None and not isinstance(inputs.sales.result, AgentResult):
-        raise InputConsistencyError("SalesAnalysisResult must contain a normalized AgentResult.")
     if not isinstance(inputs.inventory.result, AgentResult):
         raise InputConsistencyError("InventoryProductResult must contain a normalized AgentResult.")
 
     results = [inputs.request.result, inputs.trend.result, inputs.inventory.result]
-    if inputs.sales is not None:
-        results.append(inputs.sales.result)
     request_ids = {result.request_id for result in results}
     if len(request_ids) != 1 or not next(iter(request_ids), ""):
         raise InputConsistencyError("Inputs must share one non-empty request_id.")
@@ -429,8 +321,6 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         ("trend_result", inputs.trend.result),
         ("inventory_product_result", inputs.inventory.result),
     ]
-    if inputs.sales is not None:
-        named_results.append(("sales_analysis_result", inputs.sales.result))
     for input_name, result in named_results:
         if result.status not in {"ok", "partial", "no_results", "error"}:
             raise InputConsistencyError(
@@ -439,34 +329,47 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         if not result.agent_id:
             raise InputConsistencyError("Each upstream result must include an agent_id.")
         statuses[input_name] = result.status
-    if inputs.sales is None:
-        statuses["sales_analysis_result"] = "not_provided"
-    # Preserve the former read-only convenience shape for local callers. This
-    # placeholder is not an upstream result: status stays not_provided and the
-    # draft handoff slot remains None, so it cannot be rendered as a zero.
-    sales_context = inputs.sales or SalesAnalysisResult(
-        result=AgentResult(
-            "not-provided",
-            next(iter(request_ids)),
-            next(iter(schema_versions)),
-            "no_results",
-            limitations=("Project_07 sales/market result was not provided; no sales source was queried.",),
-        )
-    )
-
+    upstream_sales_market = inputs.sales_market_result
+    if upstream_sales_market is not None:
+        if not isinstance(upstream_sales_market, Mapping):
+            raise InputConsistencyError("Project_07 result must be a mapping payload.")
+        if upstream_sales_market.get("request_id") != next(iter(request_ids)):
+            raise InputConsistencyError("Project_07 result must match the planning request_id.")
+        if upstream_sales_market.get("agent_id") != "market-research-agent":
+            raise InputConsistencyError("Project_07 handoff must identify market-research-agent.")
+        upstream_status = upstream_sales_market.get("status")
+        if upstream_status not in {"ok", "partial", "no_results", "error"}:
+            raise InputConsistencyError("Project_07 result has an unsupported status.")
+        statuses["sales_market_result"] = upstream_status
+    else:
+        statuses["sales_market_result"] = "not_provided"
     evidence_ids = _unique(
         [
             *inputs.request.result.evidence_ids,
             *inputs.trend.result.evidence_ids,
-            *(inputs.sales.result.evidence_ids if inputs.sales else ()),
             *inputs.inventory.result.evidence_ids,
-            *(evidence_id for observation in (inputs.sales.observations if inputs.sales else ()) for evidence_id in observation.evidence_ids),
             *(evidence_id for candidate in inputs.trend.candidates for evidence_id in candidate.evidence_ids),
             *(evidence_id for product in inputs.inventory.products for evidence_id in product.evidence_ids),
             *(evidence_id for attr in inputs.request.requested_attributes for evidence_id in attr.evidence_ids),
             *(evidence_id for candidate in inputs.trend.candidates for attr in candidate.attributes for evidence_id in attr.evidence_ids),
-            *(evidence_id for observation in (inputs.sales.observations if inputs.sales else ()) for attr in observation.attributes for evidence_id in attr.evidence_ids),
             *(evidence_id for product in inputs.inventory.products for attr in product.attributes for evidence_id in attr.evidence_ids),
+            *(
+                str(item.get("evidence_id"))
+                for item in (upstream_sales_market or {}).get("evidence", ())
+                if isinstance(item, Mapping) and item.get("evidence_id")
+            ),
+            *(
+                str(evidence_id)
+                for finding in (upstream_sales_market or {}).get("findings", ())
+                if isinstance(finding, Mapping)
+                for evidence_id in finding.get("evidence_ids", ())
+            ),
+            *(
+                str(evidence_id)
+                for observation in ((upstream_sales_market or {}).get("sales_data") or {}).get("observations", ())
+                if isinstance(observation, Mapping)
+                for evidence_id in observation.get("evidence_ids", ())
+            ),
         ]
     )
 
@@ -474,7 +377,10 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         [
             *inputs.request.result.limitations,
             *inputs.trend.result.limitations,
-            *(inputs.sales.result.limitations if inputs.sales else ()),
+            *(str(item) for item in (upstream_sales_market or {}).get("limitations", ())),
+            *(str(item) for item in (((upstream_sales_market or {}).get("sales_data") or {}).get("limitations", ()))),
+            *(f"Project_07 error {item.get('code')}: {item.get('message')}" for item in (upstream_sales_market or {}).get("errors", ()) if isinstance(item, Mapping)),
+            *(str(item) for item in (((upstream_sales_market or {}).get("sales_data") or {}).get("errors", ()))),
             *inputs.inventory.result.limitations,
             *(
                 f"Inventory note ({product.note_origin}; not independently verified): {product.note}"
@@ -492,6 +398,9 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         [
             f"Confirm missing planning input: {field_name}."
             for field_name in inputs.request.missing_fields
+        ] + [
+            str(item)
+            for item in (((upstream_sales_market or {}).get("sales_data") or {}).get("follow_up_questions", ()))
         ]
     )
     from .styling import build_styling_relationships
@@ -524,7 +433,6 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         schema_version=next(iter(schema_versions)),
         request=inputs.request,
         trends=inputs.trend,
-        sales=sales_context,
         inventory=inputs.inventory,
         input_statuses=statuses,
         styling_relationships=styling_relationships,
@@ -532,5 +440,5 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         evidence_ids=evidence_ids,
         limitations=limitations,
         questions_for_validation=questions,
-        sales_market_result=inputs.sales,
+        sales_market_result=upstream_sales_market,
     )

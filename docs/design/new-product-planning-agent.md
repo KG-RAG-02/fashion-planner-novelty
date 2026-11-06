@@ -1,10 +1,10 @@
 # Project_06 Planning Agent 설계 제안
 
-- 상태: 역할 경계 정렬안 · Project_07 결과 및 공통 계약 미합의
+- 상태: 경계 설계 제안 · 실제 코드 소유권은 2026-11-06 책임 경계 기록에 따라 판매 분석을 Project_07로 이전
 - 작성 목적: Project_06 Planning Agent 경계와 Project_07 handoff 후보를 명확히 합니다.
 - 적용 범위: `KG-RAG-02/new-product-planning-agent` 저장소 (현재 연결 remote)
-- Project_07 저장소명은 `market-research-agent`로 확인됨. 구현 범위, 자료원, 결과 필드와 이관 대상은 미정이며 추측하지 않습니다.
-- 구현 상태: 입력 정합성 검사, 컨텍스트 조립, 출처 검증과 결정적 규칙 기반 초안 생성기가 임시 기본값으로 추가되었습니다. 공통 wire schema와 API 어댑터는 미정입니다.
+- Project_07 저장소명은 `market-research-agent`로 확인됨. 판매 결과의 공통 wire 계약과 운영 자료원은 여전히 미확정입니다.
+- 현재 책임 기준: Project_06은 새상품 기획만 담당합니다. 과거 H&M/synthetic 판매 분석 코드는 Project_07에 이관되었고, 본 문서 내 과거 판매 처리 설명은 현행 책임이 아닙니다. 자세한 현재 상태는 [책임 경계 기록](agent-3-responsibility-map.md)을 기준으로 합니다.
 
 ## 1. 확정 요구사항
 

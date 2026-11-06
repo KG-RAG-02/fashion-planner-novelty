@@ -1,5 +1,7 @@
 # GraphRAG TrendBatch 기반 VOGUE 상품기획 에이전트 설계
 
+> **현재 책임 경계 (2026-11-06):** Project_06은 새상품 기획만 소유합니다. 아래의 판매 원장·KPI·판매 SQL·판매 adapter 설계는 Project_07 책임으로 이관되었으며, Project_06에 구현된 것으로 해석하면 안 됩니다. 현재 소유권과 코드 상태는 [책임 경계·이관 기록](agent-3-responsibility-map.md)을 기준으로 확인하세요. 이 문서의 세부 파이프라인은 초기에 합의했던 목표/제안 일부를 보존한 기록이며, Project_06 실행 계약은 아닙니다.
+
 - 상태: **부분 기준선 구현** · 운영 adapter/공통 wire API 및 데이터 연결 미완료
 - 기준일: 2026-11-06
 - 적용 저장소: `KG/00_project/project_06` (현재 New Product Planning Agent 프로토타입)
@@ -28,19 +30,19 @@ PostgreSQL/Neo4j/pgvector 또는 별도 Vector DB, API framework, Pydantic 버�
 
 | 위치 | 확인된 내용 | 상태 |
 |---|---|---|
-| `src/vogue_npp/domain/context.py` | `PlanningRequest`, `TrendResult`, `SalesAnalysisResult`, `InventoryProductResult`, `ProductPlanningContext` 내부 dataclass. request ID·schema version·상태·Evidence ID 및 제한 보존 | 구현 |
+| `src/vogue_npp/domain/context.py` | `PlanningRequest`, `TrendResult`, `InventoryProductResult`, `ProductPlanningContext` 내부 dataclass. Project_07 결과는 불투명 handoff로 Evidence/status/제한사항을 보존 | 구현 |
 | `src/vogue_npp/domain/analysis.py` | Evidence가 있는 트렌드 속성과 자사 상품 속성의 보수적 비교. 카탈로그 미완전성을 상품 부재로 단정하지 않음 | 구현 |
 | `src/vogue_npp/domain/generator.py`, `concept.py` | 결정적 규칙 기반 `ProductConceptDraft` 및 입력 Evidence ID allowlist 검사 | 구현 |
-| `src/vogue_npp/sources/hm/` | H&M Kaggle 원천 파일의 로컬 처리, 과거 상품·거래 집계 및 adapter | 구현. 사내 SQL/API 아님 |
-| `src/vogue_npp/prototype/` | Python 표준 라이브러리 로컬 HTTP prototype, 합성 demo 자료 검색/SQLite 기록, H&M 결과 별도 조회 | 구현. 운영 API/KG 아님 |
-| `src/vogue_npp/workflows/planning.py` | 선택한 H&M 과거 판매 기회에서 Evidence·가설·미확정을 분리한 기획 브리프 초안 생성 | 구현 |
+| `src/vogue_npp/sources/hm/` | 없음 | 판매 처리·adapter는 Project_07로 이동 |
+| `src/vogue_npp/prototype/` | Python 표준 라이브러리 로컬 planning-only HTTP prototype과 SQLite 기획 기록 | 구현. 판매 분석·운영 API/KG 아님 |
+| H&M sales workflow | 없음 | 판매 분석 기반 workflow 및 UI는 Project_07로 이동 |
 | `src/vogue_npp/workflows/image_generation.py` | 근거/제안 구분 이미지 프롬프트 및 설정·요청별 확인을 거친 이미지 provider 연계 | 구현. 전체 TOP5 자동 시안 pipeline 아님 |
 | `src/vogue_npp/domain/trend_batch.py` | dependency-free `TrendBatch.from_json/from_mapping`; size/length/count/duplicate ID, evidence trace field, HTTP(S) reference format validation. `rank`/`similarity` 같은 unknown fields reject | 구현. Pydantic 미도입 |
 | `src/vogue_npp/domain/trend_evaluator.py` | name normalization, excerpt-backed dictionary attributes, category exact/alias/ambiguous/unmapped adapter, EvidenceResolver port, Trend × Category evaluation with explicit versioned weights; category taxonomy may provide attribute-value-specific affinity | 구현 기준선. taxonomy/resolver/fit weights 미제공이면 abstain; ML/LLM 및 KG mapping 없음 |
-| `src/vogue_npp/domain/retrieval.py` | KnowledgeRetriever, ProductCatalogRepository, MerchDataRepository ports 및 no-index/unconfigured/in-memory adapters; SQL 기간·채널·상품·재고 기준시점 filter contracts | 구현 기준선. 운영 DB/graph/vector connector 없음 |
-| `src/vogue_npp/domain/candidates.py` | Existing/New 후보 공통 모델, evidence/metric/KG refs, 설정형 scorer, tie-aware peer percentile normalizer, dedup/category-cap portfolio selector | 구현 기준선. 업무 weight 및 cohort 구성은 미승인 |
+| `src/vogue_npp/domain/retrieval.py` | KnowledgeRetriever port와 empty adapter | 구현 기준선. 상품/판매 DB adapter 없음; 운영 graph/vector connector도 없음 |
+| `src/vogue_npp/domain/candidates.py` | Existing/New 후보 공통 모델, evidence/source/KG refs, 설정형 scorer와 diversity selector | 구현 기준선. 판매 수치/percentile 계산 없음; 업무 weight 미승인 |
 | `src/vogue_npp/workflows/trend_planning.py` | API-neutral planning use case, deterministic run ID, candidate brief DTO, opt-in image adapter | 구현 기준선. 공용 HTTP API/저장/async job 없음 |
-| `tests/` | 위 신규 domain/use-case 동작과 기존 context, planning, H&M adapter, image flow 회귀 테스트 | 본 구현에서 전체 테스트 실행; 아래 구현 보고의 결과 참조 |
+| `tests/` | planning, context, TrendBatch, image flow 회귀 테스트 | Project_07 판매 adapter/fixture 테스트는 Project_07로 이동 |
 | `requirements.txt`, `compose.yaml` | `python-dotenv` 중심 의존성, prototype 한 서비스; Pydantic/FastAPI/SQL/Neo4j/vector service 의존성 없음 | 현재 파일 기준 |
 | `data/processed/hm-personalized-fashion-recommendations/` | H&M에서 유래한 가공 CSV/JSON | 실제 파일 존재. 데이터 이용 조건과 README 제한을 따름 |
 
@@ -53,7 +55,7 @@ PostgreSQL/Neo4j/pgvector 또는 별도 Vector DB, API framework, Pydantic 버�
 | 근거 문서 검증 | `EvidenceResolver` port와 metadata-only resolver 구현. 기본 resolver는 URL을 조회하지 않고 `unverified` 반환 | 승인 원문 저장소/권한/인용 검증 adapter |
 | KG | graph DB/client/schema/query 없음 | 상품 taxonomy·속성·트렌드·문서 관계 KG |
 | RAG | prototype의 키워드 fixture 검색 및 Evidence 조회 있음 | 승인 문서 hybrid retrieval과 KG traversal |
-| SQL 상품/판매/재고 원장 | 없음. H&M 파일 분석과 demo SQLite 존재 | 운영 데이터 PostgreSQL 권장, SQL 집계 API |
+| SQL 상품/판매/재고 원장 | Project_06에는 조회 코드 없음 | 판매·시장 수치는 Project_07, 상품·재고 결과는 상위 agent가 소유 |
 | Existing + New 후보 통합 | 공통 Candidate와 두 생성기 구현. 신규 후보는 scored Trend × Category 및 verified evidence 필요 | 운영 KG/catalog/SQL adapter 및 attribute mapping |
 | Opportunity Scorer/TOP5 다양성 | configurable score, coverage gate, deterministic max-per-category selector 구현 | 승인된 normalization/weights/threshold 및 MD 효용 평가 |
 | 기획서/시안 | CandidateBrief DTO 및 기존 opt-in 이미지 provider 재사용 함수 구현 | 저장/전달 UI와 선정 후보 전체 이미지 작업 연결 |
@@ -200,19 +202,19 @@ class TrendBatch(BaseModel):
 
 **구현 변경:** `Category.attribute_value_affinities`에 `"attribute_type:canonical_value" → 0..1`을 지정한다. 값별 기준이 없는 applicable 속성은 `unconfigured`로 보류하고, 넓은 속성유형 일치를 100점으로 간주하지 않는다. 검증된 근거 속성 중 category 관련 유형이 하나도 없으면 적합도 0으로 둔다. 속성별 결과와 taxonomy/evaluator 버전을 보존한다. 이 표는 카테고리 taxonomy의 명시적 평가 기준이어야 하며, Trend Agent 순위/유사도 값으로 해석하지 않는다. 수치는 MD 검토와 기준 사례 평가 전까지 로컬 가설이다.
 
-상품/판매 peer 지표에는 `peer_percentile_scores`를 추가했다. 입력 cohort는 같은 카테고리·후보 유형·판매 기간·채널·단위·metric 정의로 미리 구성해야 한다. midrank로 동점을 보존하고, cohort 하나뿐인 값은 비교 불가로 간주해 50을 반환한다. 서로 다른 비교 조건의 점수를 한 모집단으로 섞지 않는다. 값이 실제로 같으면 동점이 유지되며, 분포를 인위적으로 벌리지 않는다. 최고 percentile 하나가 100이 되는 것은 가능하지만, 전체 점수가 100으로 몰리는 max-normalization은 사용하지 않는다.
+판매 percentile 계산 및 비교 cohort 구성은 Project_07의 판매 분석 책임이다. Project_06의 후보 scorer는 Project_07 판매 관측을 재계산하거나 percentile로 바꾸지 않는다.
 
 **로컬 시나리오 전용 작업 가설:** S/S 남성 반바지에 스타일별 affinity 예시를 적용하면 minimalism 0.78, maximalism 0.58, gorpcore 0.90, balletcore 0.42다. 이 수치는 룩 전개 용이성에 관한 MD 가설을 코드 경로에서 구분해 보는 fixture 전용 값이며, 승인된 회사 taxonomy나 패션 시장 실적이 아니다. 검증 verified 1.0, `attribute_relevance:evidence_verification = 0.7:0.3` 예시 적용 시 각각 84.6, 70.6, 93.0, 59.4다. 의미는 “남성 반바지에 바로 전개하기 쉬운 정도”이며 트렌드 인기도/시장 강도가 아니다. 실제 업무 사용 전에 MD가 점수 방향과 기준 사례를 승인해야 한다.
 
-Opportunity 점수는 서로 다른 비교군(기존 상품 개선/신규 상품)의 지표를 무리하게 같은 상대 percentile로 바꾸면 안 된다. trend/category fit은 두 유형 모두 공통 비교요소로 두고, demand는 기존 상품에 같은 기간·채널의 관측 수량/판매가능 기간을 사용한다. 신규 상품은 해당 상품의 실판매처럼 가장하지 말고, comparables가 있으면 별도 `category_demand_proxy`로 표시하거나 결측 처리한다. 재고 신호는 기준시점·available/reserved 정의·승인된 coverage/line-plan 목표가 있을 때만 정량화한다. 목표가 없으면 `null` 및 coverage 감소가 맞으며, 흰 티셔츠 잔여량은 반바지의 재고 component에 합산하지 않는다.
+Project_06의 상품기획 검토 점수는 판매 관측이나 시장 component를 계산하지 않는다. Project_07의 결과를 Evidence와 함께 별도로 노출한다. 재고 신호는 전달된 기준시점·단위·가용 정의가 있을 때만 기획 제약/맥락으로 보존하고, 판매량·수요 proxy로 환산하지 않는다. 흰 티셔츠 잔여량은 반바지의 재고 component에 합산하지 않는다.
 
-네 트렌드 데모에서 산출한 Trend × Category 점수와 TOP5 값은 위의 **미승인 MD heuristic fixture**를 사용한다. Opportunity 기존 component 중 비-trend 기여분은 이전 테스트 fixture 값을 그대로 둔 재계산이다. 따라서 후보 간 수치 차이는 점수 경로 예시이지 실적 기반 품질 개선을 입증하지 않는다. 모든 component breakdown, profile version, evidence 및 coverage를 함께 노출해야 한다.
+네 트렌드 데모 fixture는 Trend × Category 적합성 예시와 점수 미산출 후보 예시만 보여준다. 이전 데모의 판매/상품/재고 가중점수 및 TOP 5 순위는 제거했다. 운영 평가에는 MD 승인 기준과 고정 평가 데이터가 필요.
 
 ## 6. 저장 모델 및 KG 모델
 
 ### PostgreSQL: 정량 원장 및 실행 기록 권장안
 
-실제 운영 전제(상품·판매·재고 확보)를 반영한 logical schema다. 실제 ERP/PIM/판매 테이블 구조가 확인되면 adapter가 기존 원장에 맞춘다. 원본 시스템을 이 프로젝트 DB로 복제해야 한다고 확정한 것은 아니다.
+이 저장소는 PostgreSQL schema를 만들거나 상품/재고/판매 원장을 조회하지 않는다. 상품·재고 사실은 상위 에이전트가, 판매·시장 분석은 Project_07이 소유한다. 아래 원장 모델은 이 저장소의 구현 제안에서 제외되었으며, 데이터 저장 구조는 해당 소유 프로젝트에서 정해야 한다.
 
 | 테이블 | 키/핵심 컬럼 | grain/용도 |
 |---|---|---|
@@ -220,14 +222,13 @@ Opportunity 점수는 서로 다른 비교군(기존 상품 개선/신규 상품
 | `sku` | `sku_id`, `product_id`, `color_id`, `size_id`, `attributes_json`, `active` | variant 단위 상품 |
 | `category` | `category_id`, `parent_id`, `taxonomy_version`, `name` | versioned taxonomy |
 | `product_attribute` | `product_id/sku_id`, `attribute_id`, `value`, `source_id`, `confidence`, `valid_from/to` | provenance가 있는 속성 |
-| `sales_fact` | `date`, `sku_id`, `channel_id`, `units`, `net_revenue`, `currency`, `source_id` | SKU×일×채널 거래 집계; 주문수와 units 구분 |
-| `inventory_snapshot` | `as_of`, `sku_id`, `location_id`, `on_hand`, `reserved`, `available`, `unit`, `source_id` | SKU×위치×시점 재고 snapshot |
-| `product_kpi` | `product_id/sku_id`, `period`, `metric_name/value`, `formula_version`, `source_snapshot` | sell-through/velocity/coverage 등 계산값과 산식 버전 |
+| 상품·재고 원장 | 이 Project_06 저장소에 정의하지 않음 | 상위 상품·재고 소유자가 정한 결과를 입력으로 소비 |
+| 판매·시장 원장/KPI | 이 Project_06 저장소에 정의하지 않음 | Project_07 소유. 결과 및 정의를 handoff로 소비 |
 | `trend_batch`, `trend`, `evidence_document` | batch/version, input hash; document locator/date/access/hash | 입력 추적·감사 |
 | `trend_evaluation` | evaluation ID, trend/category, component scores, status, version | 평가 결과 재현 |
 | `candidate`, `candidate_evidence`, `opportunity_score`, `selection_run` | candidate ID/type, source refs, score breakdown, run config | 후보·근거·TOP5 결과 audit |
 
-판매·재고 수치는 KG property에 대량 복제하지 않는다. 쿼리는 파라미터화하고, 권한·채널·시즌 필터가 빠지지 않게 한다. 판매 속도는 판매 가능 일수를 알 수 있을 때만 계산한다. 재고 coverage는 단위/시점/가용 재고 정의와 판매 일속도가 모두 유효할 때만 계산한다. 결측/미조회는 0이 아니다. 해당 컬럼 또는 원천이 존재하는지는 실제 운영 DB 확인 후 매핑한다.
+Project_06은 판매·재고 원장을 직접 쿼리하지 않으며, 원장 컬럼 및 KPI 정의의 소유자는 각 upstream 담당자다. handoff의 값·단위·기간·기준일·상태를 기획 claim에 그대로 연결한다.
 
 ### Knowledge Graph 노드
 
@@ -270,8 +271,8 @@ RAG는 문서 검색으로 주장 근거를 찾고, KG는 관계·카테고리·
 - **Seed:** `EvaluatedTrend`의 표준화된 명칭, alias, 속성, 해당 evidence document ID.
 - **KG traversal:** 연결 Category → 해당 카테고리의 Product/SKU → 속성 및 유사 기존 상품; Trend를 지지하는 EvidenceDocument. hop 수는 1–2로 제한하고 taxonomy/version 필터를 적용.
 - **Document retrieval:** 승인 코퍼스에서 trend claim, 속성, category alias 및 season으로 BM25/full-text + embedding hybrid retrieval. 필요 시 reranker는 검색 관련도만 정렬하며 trend 강도로 해석하지 않는다.
-- **SQL context:** 선별된 상품/SKU ID에 대해 기간, 채널, 시장, 판매 가능성·재고 상태를 강제 필터링해 aggregate 조회.
-- **Evidence pack:** 각 후보별 claim→Evidence ID/quote/locator/date/source/access label, KG path, SQL query parameters/aggregate version을 기록.
+- **Upstream context:** 상품·재고 사실과 Project_07의 판매·시장 결과를 해당 agent의 handoff로 받는다. Project_06에서 raw source를 직접 조회하지 않는다.
+- **Evidence pack:** 각 후보 claim에 Evidence ID/quote/locator/date/source/access label, KG path를 연결한다. Project_07 수치는 정의와 범위를 보존해 출처 결과를 인용하고, 이 저장소에서 재집계하지 않는다.
 - **No-results:** 독립 증거가 부족하면 해당 영역 score를 `null`로 두거나 candidate를 보류한다. zero result를 실제 부재/판매 0으로 치환하지 않는다.
 
 ### 예시 Cypher (Neo4j 가정; 아직 실행 코드 아님)
@@ -290,37 +291,9 @@ LIMIT $limit
 
 프로덕션에서는 optional match 조합으로 인한 row 곱을 피하려고 상품/문서 검색을 별도 쿼리로 나누고, 모든 입력은 parameterized query로 전달한다.
 
-### 예시 SQL 판매·재고 조회 (PostgreSQL 가정)
+### 판매·시장 조회 경계
 
-```sql
-WITH sales AS (
-  SELECT s.sku_id,
-         SUM(s.units) AS units_sold,
-         SUM(s.net_revenue) AS net_revenue,
-         COUNT(DISTINCT s.sale_date) AS observed_sale_days
-  FROM sales_fact s
-  JOIN sku k ON k.sku_id = s.sku_id
-  WHERE k.product_id = ANY(:product_ids)
-    AND s.sale_date >= :period_start AND s.sale_date < :period_end
-    AND (:channel_id IS NULL OR s.channel_id = :channel_id)
-  GROUP BY s.sku_id
-), latest_inventory AS (
-  SELECT DISTINCT ON (i.sku_id) i.sku_id, i.available, i.unit, i.as_of
-  FROM inventory_snapshot i
-  JOIN sku k ON k.sku_id = i.sku_id
-  WHERE k.product_id = ANY(:product_ids) AND i.as_of <= :inventory_as_of
-  ORDER BY i.sku_id, i.as_of DESC
-)
-SELECT k.product_id, k.sku_id, COALESCE(s.units_sold, 0) AS units_sold,
-       s.net_revenue, s.observed_sale_days,
-       i.available, i.unit, i.as_of
-FROM sku k
-LEFT JOIN sales s USING (sku_id)
-LEFT JOIN latest_inventory i USING (sku_id)
-WHERE k.product_id = ANY(:product_ids);
-```
-
-실제 운영에서는 `COALESCE(...,0)`가 “조회 성공 후 매칭 거래 없음”일 때만 맞다. 원천 상태와 쿼리 완료 여부를 함께 반환하고, 누락/오류는 0 대신 상태로 유지해야 한다. 프로모션, 반품, 가격·통화, 품절·판매 가능 일수의 정의가 확보되지 않으면 해당 KPI는 계산하지 않는다.
+Project_06에는 판매 SQL 예시나 판매 집계 코드가 없다. 기간·채널·단위·통화·지표 정의가 있는 판매/시장 결과를 Project_07이 전달하고, 이 저장소는 source references와 한계를 보존한다. 상품·재고 정량 결과도 upstream adapter에서 전달받아 기준 시점과 단위를 함께 표시한다.
 
 ## 8. Candidate Generator
 
@@ -330,17 +303,17 @@ WHERE k.product_id = ANY(:product_ids);
 - `target_season`, `category_id`, `product_id?`, `sku_ids[]?`
 - `concept`: 제안 제목/요약/설명/속성 및 속성별 출처 타입
 - `responds_to_trend_ids[]`, `category_fit_evaluation_ids[]`
-- `evidence_refs[]`, `sql_metric_refs[]`, `kg_paths[]`
+- `evidence_refs[]`, `source_record_refs[]`, `kg_paths[]`
 - `assumptions[]`, `unknowns[]`, `risks[]`, `validation_questions[]`
 - generator/prompt/model/config version, created_at
 
 ### Existing Candidate Generator
 
 1. Trend × Category score/상태를 통과한 category만 대상으로 한다.
-2. 해당 카테고리 active Product/SKU와 근거가 있는 속성을 KG에서 찾고 SQL aggregate를 연결한다.
+2. 전달받은 해당 카테고리 상품과 근거가 있는 속성을 KG/RAG 경계에서 확인한다. 상품·재고 원천 조회는 수행하지 않는다.
 3. 기존 상품의 확인된 속성을 보존하면서 트렌드 속성과의 `match / complement / conflict / unknown`을 만든다.
 4. 개선 후보 유형 예: verified attribute variation, color/print update, styling bundle; 입력 근거가 제시하지 않는 소재·핏 기능을 생성하지 않는다.
-5. 판매 약세를 개선 기회로 단정하지 않는다. 비교 가능한 기간/채널/가격/품절 가용성이 있을 때만 기술 통계를 참고하며, 그렇지 않으면 “관측 자료 불충분”.
+5. Project_07의 판매·시장 사실이 전달되면 범위·기간·정의·Evidence를 그대로 보존해 검토 맥락으로 제시한다. 판매 점수·재집계·수요 해석을 하지 않는다.
 6. 재고 기반 제안은 시점·위치·가용 정의가 있는 경우에만 기존 SKU와 함께 묶을 수 있는지 표시한다. 재고량은 수요 점수가 아니다.
 
 ### New Candidate Generator
@@ -358,17 +331,16 @@ WHERE k.product_id = ANY(:product_ids);
 
 후보 `p`에 대한 0–100 우선순위 점수의 한 가지 시작점:
 
-`Opportunity(p) = 0.25*T + 0.25*D + 0.20*B + 0.15*I + 0.15*E`
+`PlanningReview(p) = configured(T, B, I, E)`
 
 | 항목 | 설명 | 데이터 조건 |
 |---|---|---|
 | `T` Trend/category fit | 평가된 Trend × 해당 후보 category 적합도 | `EvaluatedTrend`와 evidence 필요 |
-| `D` Demand observation | 비교 가능한 과거 판매 속도/카테고리 기준 대비 | SQL 기간·채널·단위·품절 보정 가용 여부 기록. 미래수요 예측 아님 |
-| `B` Brand/product fit | 브랜드·카테고리/상품 taxonomy에 적용 가능한 정도 | 허용된 상품/브랜드 맥락과 KG 근거 |
-| `I` Inventory/risk | 기존 SKU availability/재고 노출 리스크; 신규는 데이터 부족을 중립 가산하지 않음 | 스냅샷 시각·단위·가용 정의 필수 |
+| `B` Product fit | 전달된 상품 속성에 콘셉트를 적용할 수 있는 정도 | 상품 근거와 적용 범위 |
+| `I` Planning constraints | 전달된 제약/재고 맥락과 기획안의 관계 | 기준 시점·단위·Evidence 보존 |
 | `E` Evidence confidence | 독립성·관련성·최신성·locator 검증 품질 | document assessment 근거 |
 
-이 식은 **검증 전 제안**이며 코드의 기본값으로 적용하지 않는다. 구현된 `ScoreWeights`와 `TrendFitWeights`는 명시적으로 전달된 가중치만 사용하며, 가중치가 없으면 `unconfigured`로 abstain한다. Scorer는 component score 입력과 coverage를 기록하고, coverage `< 0.8` 또는 evidence가 없으면 `insufficient_data`다. `peer_percentile_scores`는 같은 정의의 후보 peer 관측을 정규화하는 보조 함수이며, 서로 다른 기간/채널/단위/cohort 비교 가능성 검증이나 운영 adapter를 대체하지 않는다. 운영 전에는 점수 산식, component scale, taxonomy affinity, normalization cohort 및 weights를 MD 평가로 승인해야 한다. 결측 항목은 0/평균으로 조용히 대체하지 않는다.
+이는 상품기획 검토를 위한 미승인 제안이다. 판매 observation component 또는 percentile helper는 Project_06에 두지 않는다. 명시적으로 승인된 상품기획 weight가 전달되지 않으면 점수를 계산하지 않고, Project_07의 판매 결과는 별도 evidence/finding으로 보여준다. 결측 항목은 0/평균으로 대체하지 않는다.
 
 ### TOP 5 selector
 
@@ -435,11 +407,11 @@ Baseline와 변경 후는 동일한 고정 TrendBatch, 문서 snapshot, SQL snap
 | 7. API/security/operations | API-neutral use case 구현 | auth, async job, idempotent persistence, observability, retention, deployment 미완료 |
 | 8. Offline/MD evaluation | 자동 회귀 테스트 구현 | 고정 real holdout, blind MD review, quality gates 미실행 |
 
-현 코드에서 재사용할 수 있는 것은 내부 입력 context, conservative opportunity comparison, Evidence allowlist validation, H&M offline adapter, brief/image workflow 일부다. 이를 새 설계의 완성 구현이라고 간주하지 않고 얇은 adapter와 단계별 migration으로 연결한다.
+현 코드에서 재사용할 수 있는 것은 내부 입력 context, conservative opportunity comparison, Evidence allowlist validation, planning brief/image workflow 일부다. 판매 source 및 분석 기능은 Project_07에 이관했으며, Project_06은 이 결과를 handoff로만 받는다.
 
 ## 13. 구현 기준선 사용과 검증 결과
 
-내부 use case를 호출하는 예시는 다음과 같다. 아래 weight 값은 fixture 전용 예시일 뿐 운영 추천값이 아니다. 실제 실행에는 승인된 taxonomy, 근거 resolver, catalog/merch/retrieval adapters 및 metric component provider를 전달해야 한다.
+내부 use case를 호출하는 예시는 다음과 같다. 아래 weight 값은 fixture 전용 예시일 뿐 운영 추천값이 아니다. 실제 실행에는 승인된 taxonomy, 근거 resolver, KG/RAG adapter 및 필요한 상품기획 component provider를 전달해야 한다. 상품/재고와 판매 수치를 직접 조회하지 않는다.
 
 ```python
 result = run_trend_planning(
@@ -447,8 +419,6 @@ result = run_trend_planning(
     taxonomy=approved_taxonomy_adapter,
     evidence_resolver=authorized_document_resolver,
     trend_fit_weights=approved_trend_fit_weights,
-    catalog=authorized_product_catalog,
-    merch_data=authorized_sales_inventory_repository,
     knowledge=approved_kg_rag_retriever,
     weights=approved_opportunity_weights,
     score_components=calculated_candidate_components,
@@ -457,7 +427,7 @@ result = run_trend_planning(
 
 현재 기본값만으로는 원문 검증기와 운영 데이터 source가 구성되지 않으므로 Trend × Category가 보류되고 후보/TOP5가 비어 있을 수 있다. 이것은 누락 데이터를 사실이나 점수로 채우지 않기 위한 의도된 동작이다. `run_id`는 입력 내용과 기간/필터, taxonomy/score config 버전 및 source snapshot IDs로 결정되지만 결과 저장·재실행 방지·HTTP idempotency는 제공하지 않는다.
 
-검증: `PYTHONPATH=src python3 -m unittest discover -s tests -v` 실행 결과 **52 tests passed**. H&M Kaggle와 synthetic scenario의 기존 테스트에서 SQLite `ResourceWarning`이 출력되었으나 실패는 아니었다. 이 테스트는 로컬 fixture/회귀 검증이며 승인된 실제 상품기획 holdout이나 MD 평가를 대신하지 않는다.
+검증: 현재 Project_06 테스트 결과는 저장소 책임 정리 후 재실행 기록을 따른다. 테스트는 로컬 fixture/회귀 검증이며 승인된 실제 상품기획 holdout이나 MD 평가를 대신하지 않는다. H&M/synthetic sales source 테스트는 Project_07로 이동했다.
 
 ## 14. 확정 사항과 미정 사항
 
@@ -466,8 +436,8 @@ result = run_trend_planning(
 - upstream GraphRAG 순위·유사도는 받지 않는다. Trend Agent는 이름·설명·근거 문서를 보낸다.
 - 우리 측이 Trend Evaluator를 구현하고 Trend × Category 적합성을 계산한다.
 - Existing + New 후보를 혼합한다.
-- 상품·판매·재고 자료는 확보 가능하다는 목표 전제다.
-- 상품/판매/재고 SQL 분석, KG-RAG, Opportunity Scorer, 중복·다양성 고려 TOP5, 기획서와 시안까지 목표로 한다.
+- 상품·재고 결과는 upstream에서, 판매·시장 분석 결과는 Project_07에서 전달된다.
+- Project_06 범위는 KG-RAG를 활용한 새상품 기획, 근거·미확정이 표시된 기획안과 시안이다. 판매 집계와 시장 분석은 Project_07 책임이다.
 - 근거와 unknown을 분리하고, 점수 의미를 데이터가 뒷받침하는 범위로 한정한다.
 
 ### 미정 또는 운영 전 확인할 사항
@@ -475,8 +445,7 @@ result = run_trend_planning(
 - TrendBatch 공통 schema/version, `trend_id` 공급자, 필드 필수성, maximum batch.
 - 트렌드 근거 문서 저장소, 원문 접근/API, license/permission, retention 및 LLM 전송 허용 범위.
 - fashion taxonomy와 attribute vocabulary, 카테고리/시즌/시장 구분, alias 관리 책임.
-- 실제 상품/Style/SKU ID, 판매 grain, 반품/할인/가격 통화, inventory as-of/available 정의와 갱신 주기.
-- 실제 데이터 source-of-truth와 이미 운영 중인 PostgreSQL 접근 경로/스키마. 본 문서의 PostgreSQL은 권장 logical mapping이지 확인된 구현이 아니다.
+- 상품/Style/SKU ID와 재고 정의·기준시점은 upstream 계약에서 확인한다. 판매 grain/기간/단위/통화/지표 정의는 Project_07 계약에서 확인한다.
 - Neo4j 또는 다른 KG, pgvector/별도 vector store, 기존 RAG 서비스 재사용 여부.
 - Pydantic/FastAPI 등 API 기술, auth, tenant boundary, job runtime, 배포 및 모니터링.
 - category fit 및 Opportunity score의 label, formula/weights/threshold, top5 다양성 제약과 existing/new 목표 비율.
@@ -490,7 +459,5 @@ result = run_trend_planning(
 - [New Product Planning Agent 설계 제안](new-product-planning-agent.md)
 - [입력·출력 처리 흐름](input-output-processing-flow.md)
 - [데이터 출처·Evidence 계획](data-source-and-evidence-plan.md)
-- [H&M Kaggle 파이프라인](hm-kaggle-data-pipeline.md)
 - [평가 계획](generator-evaluation-plan.md)
-- [운영 데이터 계약](planning-operations-data-contract.md)
 - [향후 구현 roadmap](implementation-roadmap.md)

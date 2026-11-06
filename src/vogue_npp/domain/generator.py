@@ -148,8 +148,7 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
             evidence_ids=evidence_ids,
         )
 
-    # Keep the agreed synthesis order: trend evidence, request scope,
-    # historical sales support, then own-product/stock context.
+    # Keep the planning order: trend evidence, request scope, then own-product context.
     candidates = (
         context.trends.candidates
         if _input_usable(context, "trend_result")
@@ -164,17 +163,6 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
     if _input_usable(context, "planning_request"):
         for signal in context.request.requested_attributes:
             add(signal)
-    if _input_usable(context, "sales_analysis_result"):
-        for observation in context.sales.observations if context.sales else ():
-            if (
-                not context.request.category
-                or not observation.category
-                or context.request.category.strip().casefold() != observation.category.strip().casefold()
-                or (observation.season and context.request.season and observation.season.strip().casefold() != context.request.season.strip().casefold())
-            ):
-                continue
-            for signal in observation.attributes:
-                add(signal, trend_signal=True)
     if _input_usable(context, "inventory_product_result"):
         paired_indexes = {
             relation.inventory_product_index
@@ -349,10 +337,8 @@ def _validation_questions(
 ) -> tuple[str, ...]:
     questions = [*context.questions_for_validation, *analysis_questions]
     for input_name, status in context.input_statuses.items():
-        if input_name == "sales_analysis_result" and status == "not_provided":
-            questions.append(
-                "선택적 과거 판매 분석은 제공되지 않아 이 초안은 판매 근거를 사용하지 않았습니다."
-            )
+        if input_name == "sales_market_result" and status == "not_provided":
+            questions.append("Project_07 판매·시장 결과가 제공되지 않아 판매·시장 주장은 초안에 반영하지 않았습니다.")
             continue
         if status in {"error", "no_results"}:
             questions.append(
@@ -390,13 +376,6 @@ def _validation_questions(
         )
     ):
         questions.append("트렌드 후보를 뒷받침하는 Evidence 참조를 확인해 주세요.")
-    sales_status = context.input_statuses.get("sales_analysis_result")
-    if sales_status not in {"not_provided", None} and (
-        not _input_usable(context, "sales_analysis_result")
-        or not context.sales
-        or not context.sales.observations
-    ):
-        questions.append("요청 카테고리에 적용할 수 있는 판매 분석 결과를 확인해 주세요.")
     if not _input_usable(context, "inventory_product_result") or not context.inventory.products:
         questions.append("자사 상품 및 재고 자료의 범위와 조회 상태를 확인해 주세요.")
     if not any(
@@ -430,10 +409,6 @@ def generate_concept_draft(
             for evidence_id in finding.statement.evidence_ids
         )
     )
-    sales_observation_count = sum(
-        finding.attribute_name == "purchase_rows" for finding in analysis.findings
-    )
-    relationship_count = len(analysis.findings) - sales_observation_count
     evidenced_trends = _usable_trend_candidates(context)
     trend_names = tuple(dict.fromkeys(candidate.name for candidate in evidenced_trends))
     trend_summary = (
@@ -447,9 +422,8 @@ def generate_concept_draft(
     )
     opportunity_summary = (
         (
-            f"{trend_summary} 판매 데이터 관찰 {sales_observation_count}건과 "
-            f"트렌드·자사 상품 관계 {relationship_count}건을 검토 대상으로 구성했습니다. "
-            "이는 미래 수요나 상품 채택 결론이 아니며 MD 검토가 필요합니다."
+            f"{trend_summary} 트렌드·자사 상품 및 재고 관계 {len(analysis.findings)}건을 "
+            "검토 대상으로 구성했습니다. 이는 상품 채택 결론이 아니며 MD 검토가 필요합니다."
         )
         if analysis.findings
         else (

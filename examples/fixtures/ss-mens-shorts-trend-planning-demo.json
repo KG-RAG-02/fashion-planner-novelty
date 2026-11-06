@@ -1,16 +1,15 @@
 {
   "demo_id": "ss-mens-shorts-all-inputs-received-test-20261106",
-  "mode": "complete fixture inputs; no blocking for missing live connectors",
+  "mode": "planning-only review fixture; candidate examples are unranked",
   "run_id": "run-bee6fe2afe262873f867",
   "input_statuses": {
     "trend_evidence": "assumed_received_and_verified_for_test",
     "product_catalog": "fixture_complete",
-    "sales": "fixture_complete",
     "inventory": "fixture_complete",
     "kg_retrieval": "fixture_complete",
     "taxonomy": "fixture_configured",
-    "score_configuration": "fixture_configured",
-    "white_tshirt_styling_inventory_note": "received; qualitative quantity class accepted for pairing context"
+    "white_tshirt_styling_inventory_note": "received; qualitative quantity class accepted for pairing context",
+    "opportunity_scores": "withheld; no approved scoring profile"
   },
   "user_inputs": {
     "season": "S/S",
@@ -25,19 +24,10 @@
   },
   "fixture_only_values": {
     "existing_short_products": 2,
-    "sales_period": "2026-01-01/2026-01-31",
-    "channel": "web",
     "short_sku_available_units": [
       42,
       27
     ],
-    "scoring_weights": {
-      "trend_fit": 0.25,
-      "sales_observation": 0.25,
-      "product_fit": 0.2,
-      "inventory_signal": 0.15,
-      "evidence_confidence": 0.15
-    },
     "white_tshirt_inventory": {
       "sku_id": "W-TEE-WHITE-01",
       "available_units": 320,
@@ -108,79 +98,7 @@
       "trend_id": "T-04"
     }
   ],
-  "candidate_count": 12,
-  "selected_top5": [
-    {
-      "candidate_id": "cand-70bcf07cb475ea93",
-      "type": "new_product",
-      "title": "고프코어 기반 men-shorts 신규 콘셉트",
-      "trend_ids": [
-        "T-03"
-      ],
-      "score": 83.8,
-      "score_contribution": {
-        "trend_fit": 23.25,
-        "other_fixture_dimensions_weighted": 60.55
-      },
-      "scoring_profile": "local-md-heuristic-fixture-v2"
-    },
-    {
-      "candidate_id": "cand-0838194daf378445",
-      "type": "existing_improvement",
-      "title": "Core short 1 개선 검토",
-      "trend_ids": [
-        "T-01"
-      ],
-      "score": 82.5,
-      "score_contribution": {
-        "trend_fit": 21.15,
-        "other_fixture_dimensions_weighted": 61.35
-      },
-      "scoring_profile": "local-md-heuristic-fixture-v2"
-    },
-    {
-      "candidate_id": "cand-e129b1c6cc0c6dc6",
-      "type": "existing_improvement",
-      "title": "Core short 2 개선 검토",
-      "trend_ids": [
-        "T-01"
-      ],
-      "score": 82.5,
-      "score_contribution": {
-        "trend_fit": 21.15,
-        "other_fixture_dimensions_weighted": 61.35
-      },
-      "scoring_profile": "local-md-heuristic-fixture-v2"
-    },
-    {
-      "candidate_id": "cand-bc556991583c5938",
-      "type": "new_product",
-      "title": "맥시멀리즘 기반 men-shorts 신규 콘셉트",
-      "trend_ids": [
-        "T-02"
-      ],
-      "score": 78.2,
-      "score_contribution": {
-        "trend_fit": 17.65,
-        "other_fixture_dimensions_weighted": 60.55
-      },
-      "scoring_profile": "local-md-heuristic-fixture-v2"
-    },
-    {
-      "candidate_id": "cand-09b348cd0d597526",
-      "type": "new_product",
-      "title": "발레코어 기반 men-shorts 신규 콘셉트",
-      "trend_ids": [
-        "T-04"
-      ],
-      "score": 75.4,
-      "score_contribution": {
-        "trend_fit": 14.85,
-        "other_fixture_dimensions_weighted": 60.55
-      },
-      "scoring_profile": "local-md-heuristic-fixture-v2"
-    }
-  ],
+  "candidate_count": 5,
   "image": "web/prototype/ss-mens-shorts-trend-planning-demo.png",
   "limitations": [
     "Trend documents and numeric catalog/sales/stock rows are complete test fixtures for this run, not user-supplied operational records.",
@@ -190,7 +108,7 @@
   ],
   "scoring_profile": {
     "version": "local-md-heuristic-fixture-v2",
-    "status": "illustrative_unapproved",
+    "status": "scores_withheld",
     "trend_fit_method": "70% category attribute affinity + 30% verified citation status",
     "shorts_attribute_affinity": {
       "미니멀리즘": 0.78,
@@ -198,14 +116,53 @@
       "고프코어": 0.9,
       "발레코어": 0.42
     },
-    "opportunity_weights": {
-      "trend_fit": 0.25,
-      "sales_observation": 0.25,
-      "product_fit": 0.2,
-      "inventory_signal": 0.15,
-      "evidence_confidence": 0.15
+    "limitation": "판매 관측은 이 fixture와 Project_06 scoring에서 제외됩니다. 상품 후보 예시는 순위가 아닙니다."
+  },
+  "candidate_examples": [
+    {
+      "candidate_id": "cand-70bcf07cb475ea93",
+      "type": "new_product",
+      "title": "고프코어 기반 men-shorts 신규 콘셉트",
+      "trend_ids": [
+        "T-03"
+      ],
+      "selection_status": "unranked_review_example"
     },
-    "opportunity_note": "기존 fixture의 비-trend weighted contributions는 유지; 이 예시의 판매·상품·재고 입력은 테스트 데이터.",
-    "limitation": "수치들은 구현 검증용 MD 가설이며 승인된 업무 기준/시장 실적이 아님."
-  }
+    {
+      "candidate_id": "cand-0838194daf378445",
+      "type": "existing_improvement",
+      "title": "Core short 1 개선 검토",
+      "trend_ids": [
+        "T-01"
+      ],
+      "selection_status": "unranked_review_example"
+    },
+    {
+      "candidate_id": "cand-e129b1c6cc0c6dc6",
+      "type": "existing_improvement",
+      "title": "Core short 2 개선 검토",
+      "trend_ids": [
+        "T-01"
+      ],
+      "selection_status": "unranked_review_example"
+    },
+    {
+      "candidate_id": "cand-bc556991583c5938",
+      "type": "new_product",
+      "title": "맥시멀리즘 기반 men-shorts 신규 콘셉트",
+      "trend_ids": [
+        "T-02"
+      ],
+      "selection_status": "unranked_review_example"
+    },
+    {
+      "candidate_id": "cand-09b348cd0d597526",
+      "type": "new_product",
+      "title": "발레코어 기반 men-shorts 신규 콘셉트",
+      "trend_ids": [
+        "T-04"
+      ],
+      "selection_status": "unranked_review_example"
+    }
+  ]
 }

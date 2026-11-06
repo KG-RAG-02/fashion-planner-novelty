@@ -13,7 +13,6 @@ from vogue_npp import (
     GeneratedImage,
     PlanningInputs,
     PlanningRequest,
-    SalesAnalysisResult,
     TrendCandidate,
     build_planning_context,
     run_concept_to_image,
@@ -86,11 +85,7 @@ def make_context(
                 attributes=(AttributeSignal("color", "dark indigo", "evidence_observation", ("inventory:E-2",)),) if inventory_evidence else (),
             ),),
         )
-    sales = SalesAnalysisResult(
-        result=AgentResult("sales-analysis", request_id, schema, "no_results"),
-        observations=(),
-    )
-    return build_planning_context(PlanningInputs(request, trend, sales, inventory))
+    return build_planning_context(PlanningInputs(request, trend, inventory))
 
 
 class ImageGenerationWorkflowTests(unittest.TestCase):

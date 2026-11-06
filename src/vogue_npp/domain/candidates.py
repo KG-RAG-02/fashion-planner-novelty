@@ -8,43 +8,13 @@ import re
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from .retrieval import EvidenceRef, KGPath, SalesInventoryResult
+from .retrieval import EvidenceRef, KGPath
 from .trend_evaluator import EvaluatedTrend
 
 
 GENERATOR_VERSION = "candidate-generator-rules-v1"
 SCORER_VERSION = "opportunity-scorer-configurable-v1"
 SELECTOR_VERSION = "portfolio-selector-v1"
-
-
-def peer_percentile_scores(observations: Mapping[str, float | None]) -> dict[str, float | None]:
-    """Normalize a like-for-like peer cohort without max-scaling saturation.
-
-    Use only comparable observations (same category, period, channel, unit and
-    metric definition). Midranks keep genuine ties equal; a singleton cohort
-    receives 50 because its relative position is unknown. The top observed
-    item may reach 100, but cannot make every item score 100.
-    """
-    valid = [(key, value) for key, value in observations.items()
-             if value is not None and math.isfinite(value)]
-    ordered = sorted(valid, key=lambda item: (item[1], item[0]))
-    n = len(ordered)
-    result: dict[str, float | None] = {key: None for key in observations}
-    if not n:
-        return result
-    index = 0
-    while index < n:
-        end = index + 1
-        value = ordered[index][1]
-        while end < n and ordered[end][1] == value:
-            end += 1
-        # One-based average rank, mapped to 0..100. Ties share a midrank.
-        average_rank = ((index + 1) + end) / 2
-        percentile = 50.0 if n == 1 else 100 * (average_rank - 1) / (n - 1)
-        for key, _ in ordered[index:end]:
-            result[key] = round(percentile, 2)
-        index = end
-    return result
 
 
 @dataclass(frozen=True)
@@ -66,7 +36,7 @@ class Candidate:
     product_id: str | None
     attributes: tuple[CandidateAttribute, ...]
     evidence_refs: tuple[EvidenceRef, ...]
-    sql_metric_refs: tuple[str, ...]
+    source_record_refs: tuple[str, ...]
     kg_paths: tuple[KGPath, ...]
     assumptions: tuple[str, ...]
     unknowns: tuple[str, ...]
@@ -97,7 +67,6 @@ def generate_existing_candidates(
     trend: EvaluatedTrend,
     category_id: str,
     products: Sequence[Mapping[str, object]],
-    data: SalesInventoryResult,
     *,
     target_season: str | None = None,
     evidence_refs: Sequence[EvidenceRef] = (),
@@ -121,14 +90,7 @@ def generate_existing_candidates(
                     attributes.append(CandidateAttribute(str(name), value, "evidence_observation" if is_verified else "unknown", evidence_ids))
         evidence_ids = tuple(dict.fromkeys(eid for attr in attributes for eid in attr.evidence_ids))
         evidence_ids += tuple(ref.evidence_id for ref in combined_evidence_refs)
-        related_sales = tuple(row for row in data.sales if row.sku_id.split(":", 1)[0] == product_id)
-        related_inventory = tuple(row for row in data.inventory if row.sku_id.split(":", 1)[0] == product_id)
-        sql_refs = tuple(dict.fromkeys([row.source_id for row in (*related_sales, *related_inventory)]))
         unknowns: list[str] = []
-        if not related_sales:
-            unknowns.append("선택 기간의 상품 판매 관측이 없어 판매 성과를 평가하지 않았습니다.")
-        if not related_inventory:
-            unknowns.append("조회 가능한 재고 snapshot이 없어 현재 재고를 평가하지 않았습니다.")
         if not attributes:
             unknowns.append("기존 상품 속성을 제공 자료에서 확인하지 못했습니다.")
         candidates.append(Candidate(
@@ -136,14 +98,14 @@ def generate_existing_candidates(
             "existing_improvement", f"{product.get('name', product_id)} 개선 검토", category_id,
             target_season,
             (trend.trend_id,) if trend.trend_id else (), product_id, tuple(attributes), combined_evidence_refs,
-            sql_refs, tuple(kg_paths),
+            (), tuple(kg_paths),
             ("트렌드 속성을 기존 상품에 적용하는 방향은 검토 제안입니다.",),
             tuple(unknowns),
-            ("판매·재고 snapshot은 미래 수요나 생산 가능성을 입증하지 않습니다.",),
+            ("상품 속성 근거만으로 판매 성과·미래 수요·생산 가능성을 판단하지 않습니다.",),
             ("MD가 적용할 트렌드 속성과 수정 범위를 확인해야 합니다.",),
         ))
-    result_status = ("partial" if candidates else "error") if data.status == "error" else ("ok" if candidates else "no_results")
-    limitations = list(data.limitations if data.status in {"no_results", "error"} else ())
+    result_status = "ok" if candidates else "no_results"
+    limitations: list[str] = []
     if not candidates:
         limitations.append("해당 카테고리에 매핑된 기존 상품이 없습니다.")
     return CandidateGenerationResult(result_status, tuple(candidates), tuple(limitations))
@@ -183,14 +145,13 @@ def generate_new_candidate(
 @dataclass(frozen=True)
 class ScoreWeights:
     trend_fit: float
-    sales_observation: float
     product_fit: float
     inventory_signal: float
     evidence_confidence: float
     version: str
 
     def __post_init__(self) -> None:
-        values = (self.trend_fit, self.sales_observation, self.product_fit, self.inventory_signal, self.evidence_confidence)
+        values = (self.trend_fit, self.product_fit, self.inventory_signal, self.evidence_confidence)
         if not self.version.strip() or any(not math.isfinite(value) or value < 0 for value in values) or sum(values) <= 0:
             raise ValueError("Score weights must be non-negative with a positive sum.")
 
@@ -211,7 +172,6 @@ def score_candidate(
     candidate: Candidate,
     *,
     trend_fit: float | None,
-    sales_observation: float | None,
     product_fit: float | None,
     inventory_signal: float | None,
     evidence_confidence: float | None,
@@ -219,7 +179,6 @@ def score_candidate(
 ) -> CandidateScore:
     components = {
         "trend_fit": trend_fit,
-        "sales_observation": sales_observation,
         "product_fit": product_fit,
         "inventory_signal": inventory_signal,
         "evidence_confidence": evidence_confidence,
@@ -237,7 +196,6 @@ def score_candidate(
                               ("가중치/평가 기준이 승인되지 않아 단일 점수를 계산하지 않았습니다.",))
     weight_values = {
         "trend_fit": weights.trend_fit,
-        "sales_observation": weights.sales_observation,
         "product_fit": weights.product_fit,
         "inventory_signal": weights.inventory_signal,
         "evidence_confidence": weights.evidence_confidence,

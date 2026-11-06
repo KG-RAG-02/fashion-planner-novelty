@@ -1,60 +1,27 @@
-# Project structure
+# Project_06 structure
 
-This repository is organized by responsibility. The dependency direction is
-`domain` ← data adapters and workflows ← the local prototype interface.
-Domain code does not depend on the web app or local persistence.
+Project_06 owns new-product planning. The direction remains `domain` ← planning workflows ← local review UI; domain code does not import the web app, SQLite, or source-specific sales modules.
 
 ```text
-project_06/
-├── data/
-│   ├── raw/                         Downloaded source files (ignored by Git)
-│   ├── processed/                   Reproducible analysis outputs (ignored)
-│   └── local/                       Prototype SQLite state (ignored)
-├── docs/
-│   ├── decisions/                   Architecture decision records
-│   └── design/                      Requirements, data contracts, and runbooks
-├── examples/
-│   └── fixtures/                    Clearly labeled synthetic demo data
-├── src/vogue_npp/
-│   ├── domain/                      Planning contracts and pure business logic
-│   ├── sources/hm/                  H&M ingestion, audit, analysis, and adapter
-│   ├── workflows/                   Human review and brief assembly
-│   ├── prototype/                   Local HTTP app and supporting components
-│   ├── settings.py                  Shared runtime settings
-│   └── __init__.py                  Public package API
-├── tests/                            Automated behavior and boundary checks
-└── web/prototype/                    Browser UI and static assets
+src/vogue_npp/
+├── domain/       planning inputs, evidence-aware evaluation, product concepts and candidates
+├── workflows/    TrendBatch use case, planning brief and opt-in image generation
+├── prototype/    local planning-only HTTP UI and review persistence
+└── settings.py   runtime image-generation settings
 ```
 
-## Package responsibilities
+## Boundaries
 
-- `domain/` contains normalized planning inputs, evidence-aware analysis,
-  concept models, and generation interfaces. It should remain independent of
-  Kaggle file paths, SQLite, HTTP, and UI code.
-- `sources/hm/` reads local H&M competition files and writes derived reports.
-  It adapts source observations into domain contracts but does not manufacture
-  inventory, returns, customer preference, currency, or future demand.
-- `workflows/` composes evidence and human decisions into reviewable planning
-  artifacts. It owns image prompt assembly and the optional image-provider
-  boundary; provider calls require both runtime enablement and per-call
-  confirmation. No request is sent by default.
-- `prototype/` serves the local interface and owns fixture access, persistence,
-  and evidence lookup. The synthetic demo and H&M analysis remain separate.
-- `web/prototype/` is static browser code; it calls the local prototype API.
-- `data/` is runtime state. Source downloads, generated reports, and SQLite
-  files stay out of Git; `data/README.md` documents how to recreate them.
+- TrendBatch, Trend × Category fit, existing/new product concepts and MD review support belong here.
+- Product and inventory data are consumed from the upstream agent; Project_06 does not connect to operational product/inventory databases.
+- Sales and market results are received as a Project_07 handoff. Sales aggregation, market research, H&M historical processing, sales fixtures and their source adapters belong to Project_07.
+- `data/` may contain user-local or source data. This code move did not change or copy it.
 
-## Canonical commands
-
-Run these from the repository root:
+## Run
 
 ```bash
-PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_data
-PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_quality
-PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_planning_analysis
 PYTHONPATH=src python3 -m vogue_npp.prototype.server
+PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-Each module has one canonical location. Older flat module paths were removed
-after all in-repository callers and run commands moved to the package paths
-above; the package-level public API in `vogue_npp` remains available.
+The local web UI only serves planning review and optional image generation. Image generation requires server enablement and explicit confirmation in the request form.

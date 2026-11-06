@@ -6,10 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from vogue_npp.domain.candidates import Candidate, CandidateAttribute, ScoreWeights
-from vogue_npp.domain.retrieval import (
-    EvidenceRef, InMemoryMerchDataRepository, InMemoryProductCatalogRepository,
-    InventoryMetric, SalesMetric,
-)
+from vogue_npp.domain.retrieval import EvidenceRef
 from vogue_npp.domain.trend_batch import TrendBatch
 from vogue_npp.domain.trend_evaluator import Category, EvidenceAssessment, InMemoryCategoryTaxonomy, TrendFitWeights
 from vogue_npp.workflows.trend_planning import (
@@ -49,24 +46,20 @@ class TrendPlanningVisualTests(unittest.TestCase):
             "outer", "Outerwear", relevant_attribute_types=("color",),
             attribute_value_affinities=(("color:burgundy", 1.0),),
         ),), "tax1")
-        ref = EvidenceRef("CAT1", "catalog", None, None, None, "permitted", True)
-        catalog = InMemoryProductCatalogRepository(({
+        request = PlanningRunRequest(batch, existing_products=({
             "product_id":"P1", "category_id":"outer", "name":"Classic jacket",
-            "attributes":{"color":"Black"}, "attribute_evidence":{"color":["CAT1"]}, "evidence_refs":(ref,),
+            "attributes":{"color":"Black"}, "attribute_evidence":{"color":["CAT1"]},
+            "evidence_refs":(EvidenceRef("CAT1", "catalog", None, None, None, "permitted", True),),
         },))
-        sales = SalesMetric("P1:S1", 8, 240, "USD", date(2026,1,1), date(2026,1,31), "web", "SQL-SALES")
-        inventory = InventoryMetric("P1:S1", 2, 0, "units", None, "A", "available", "SQL-STOCK")
-        merch = InMemoryMerchDataRepository((sales,), (inventory,))
-        request = PlanningRunRequest(batch, date(2026,1,1), date(2026,2,1), "web")
         trend_weights = TrendFitWeights(.7,.3,"test-fit-v1")
-        first = run_trend_planning(request, taxonomy=taxonomy, evidence_resolver=VerifiedResolver(), trend_fit_weights=trend_weights, catalog=catalog, merch_data=merch)
+        first = run_trend_planning(request, taxonomy=taxonomy, evidence_resolver=VerifiedResolver(), trend_fit_weights=trend_weights)
         self.assertEqual(first.status, "needs_scoring_configuration")
         self.assertEqual(len(first.candidates), 2)
         self.assertFalse(first.selection.selected)
-        self.assertEqual(first.run_id, run_trend_planning(request, taxonomy=taxonomy, evidence_resolver=VerifiedResolver(), trend_fit_weights=trend_weights, catalog=catalog, merch_data=merch).run_id)
-        components = {item.candidate_id:{"sales_observation":80,"product_fit":70,"inventory_signal":60,"evidence_confidence":100} for item in first.candidates}
-        second = run_trend_planning(request, taxonomy=taxonomy, evidence_resolver=VerifiedResolver(), trend_fit_weights=trend_weights, catalog=catalog, merch_data=merch,
-            weights=ScoreWeights(.25,.25,.2,.15,.15,"test-approved-v1"), score_components=components)
+        self.assertEqual(first.run_id, run_trend_planning(request, taxonomy=taxonomy, evidence_resolver=VerifiedResolver(), trend_fit_weights=trend_weights).run_id)
+        components = {item.candidate_id:{"product_fit":70,"inventory_signal":60,"evidence_confidence":100} for item in first.candidates}
+        second = run_trend_planning(request, taxonomy=taxonomy, evidence_resolver=VerifiedResolver(), trend_fit_weights=trend_weights,
+            weights=ScoreWeights(.4,.2,.2,.2,"test-approved-v1"), score_components=components)
         self.assertEqual(second.status, "completed")
         self.assertLessEqual(len(second.selection.selected), 5)
         self.assertEqual(len(second.briefs), len(second.selection.selected))

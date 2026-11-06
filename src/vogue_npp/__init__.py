@@ -8,8 +8,6 @@ from .domain.context import (
     PlanningInputs,
     PlanningRequest,
     ProductPlanningContext,
-    SalesAnalysisResult,
-    SalesObservation,
     TrendCandidate,
     TrendResult,
     build_planning_context,
@@ -24,7 +22,6 @@ from .domain.concept import (
 )
 from .domain.analysis import OpportunityAnalysis, analyze_opportunities
 from .domain.generator import ConceptGenerator, RuleBasedConceptGenerator, generate_concept_draft
-from .sources.hm.hm_sales_adapter import load_hm_sales_analysis
 from .settings import Settings, load_settings
 from .workflows.image_generation import (
     ConceptImageWorkflowResult,
@@ -49,8 +46,6 @@ __all__ = [
     "PlanningInputs",
     "PlanningRequest",
     "ProductPlanningContext",
-    "SalesAnalysisResult",
-    "SalesObservation",
     "OpportunityAnalysis",
     "OpportunityFinding",
     "ConceptGenerator",
@@ -73,6 +68,5 @@ __all__ = [
     "run_concept_to_image",
     "run_image_generation",
     "load_settings",
-    "load_hm_sales_analysis",
     "validate_concept_draft",
 ]

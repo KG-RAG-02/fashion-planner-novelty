@@ -21,8 +21,6 @@ from vogue_npp import (
     PlanningInputs,
     PlanningRequest,
     RuleBasedConceptGenerator,
-    SalesAnalysisResult,
-    SalesObservation,
     TrendCandidate,
     TrendResult,
     build_planning_context,
@@ -100,38 +98,6 @@ def main() -> None:
             ),
         ),
     )
-    sales = SalesAnalysisResult(
-        result=AgentResult(
-            agent_id="synthetic-sales-analysis",
-            request_id=REQUEST_ID,
-            schema_version=SCHEMA_VERSION,
-            status="ok",
-            evidence_ids=("sales:E-SYN-004",),
-            limitations=("합성 데모 수치이며 실제 H&M 성과가 아닙니다.",),
-        ),
-        observations=(
-            SalesObservation(
-                category="women_outerwear",
-                purchase_rows=1250,
-                period_start="2025-09-01",
-                period_end="2025-11-30",
-                source_id="SYNTHETIC-SALES-SOURCE",
-                evidence_ids=("sales:E-SYN-004",),
-                product_code="SYNTHETIC-STYLE-001",
-                product_group="Synthetic outerwear",
-                attributes=(
-                    AttributeSignal(
-                        name="color_group",
-                        value="olive",
-                        origin="evidence_observation",
-                        evidence_ids=("sales:E-SYN-004",),
-                    ),
-                ),
-            ),
-        ),
-        category_mapping_version="synthetic-demo-1",
-        dataset_label="합성 판매 데이터",
-    )
     inventory = InventoryProductResult(
         result=AgentResult(
             agent_id="own-product-inventory-agent",
@@ -167,7 +133,7 @@ def main() -> None:
     )
 
     context = build_planning_context(
-        PlanningInputs(request=request, trend=trend, sales=sales, inventory=inventory)
+        PlanningInputs(request=request, trend=trend, inventory=inventory)
     )
     settings = load_settings()
     provider = (

@@ -6,7 +6,6 @@ import hashlib
 import json
 from pathlib import Path
 from dataclasses import dataclass
-from datetime import date, datetime
 from typing import Mapping, Sequence
 
 from ..domain.candidates import (
@@ -15,9 +14,7 @@ from ..domain.candidates import (
     select_top_candidates,
 )
 from ..domain.retrieval import (
-    EmptyKnowledgeRetriever, EmptyProductCatalogRepository, EvidenceRef,
-    KnowledgeRetriever, MerchDataRepository, ProductCatalogRepository,
-    RetrievalQuery, SalesInventoryQuery, UnconfiguredMerchDataRepository,
+    EmptyKnowledgeRetriever, EvidenceRef, KnowledgeRetriever, RetrievalQuery,
 )
 from ..domain.trend_batch import TrendBatch
 from ..domain.trend_evaluator import (
@@ -33,10 +30,7 @@ from .image_generation import (
 @dataclass(frozen=True)
 class PlanningRunRequest:
     batch: TrendBatch
-    period_start: date
-    period_end: date
-    channel_id: str | None = None
-    inventory_as_of: datetime | None = None
+    existing_products: tuple[Mapping[str, object], ...] = ()
     limit: int = 5
     max_per_category: int = 2
     max_per_trend: int | None = 2
@@ -79,16 +73,16 @@ def _run_id(request: PlanningRunRequest, taxonomy_version: str,
     material = {
         "batch_id": request.batch.batch_id,
         "schema_version": request.batch.schema_version,
-        "period_start": request.period_start.isoformat(),
-        "period_end": request.period_end.isoformat(),
-        "channel_id": request.channel_id,
-        "inventory_as_of": request.inventory_as_of.isoformat() if request.inventory_as_of else None,
         "taxonomy_version": taxonomy_version,
         "trend_fit_weights_version": trend_fit_weights.version if trend_fit_weights else None,
         "opportunity_weights_version": weights.version if weights else None,
         "trend_fit_weight_values": ([trend_fit_weights.attribute_relevance, trend_fit_weights.evidence_verification] if trend_fit_weights else None),
-        "opportunity_weight_values": ([weights.trend_fit, weights.sales_observation, weights.product_fit, weights.inventory_signal, weights.evidence_confidence] if weights else None),
+        "opportunity_weight_values": ([weights.trend_fit, weights.product_fit, weights.inventory_signal, weights.evidence_confidence] if weights else None),
         "source_snapshot_ids": request.source_snapshot_ids,
+        "existing_products": [
+            {key: value for key, value in item.items() if key in {"product_id", "category_id", "name", "attributes", "attribute_evidence"}}
+            for item in request.existing_products
+        ],
         "portfolio_limits": [request.limit, request.max_per_category, request.max_per_trend, request.max_per_type],
         "score_components": score_components or {},
         "trends": [{
@@ -126,32 +120,18 @@ def run_trend_planning(
     taxonomy: CategoryTaxonomy,
     evidence_resolver: EvidenceResolver | None = None,
     trend_fit_weights: TrendFitWeights | None = None,
-    catalog: ProductCatalogRepository | None = None,
-    merch_data: MerchDataRepository | None = None,
     knowledge: KnowledgeRetriever | None = None,
     weights: ScoreWeights | None = None,
     score_components: Mapping[str, Mapping[str, float | None]] | None = None,
 ) -> PlanningRunResult:
     """Run deterministic stages with adapter ports; no public API or DB assumed."""
-    if request.period_end <= request.period_start:
-        raise ValueError("period_end must be later than period_start.")
-    catalog = catalog or EmptyProductCatalogRepository()
-    merch_data = merch_data or UnconfiguredMerchDataRepository()
     knowledge = knowledge or EmptyKnowledgeRetriever()
     evaluated = evaluate_trend_batch(request.batch, taxonomy, evidence_resolver, trend_fit_weights)
-    category_ids = tuple(dict.fromkeys(
-        evaluation.category_id
-        for trend in evaluated for evaluation in trend.category_evaluations
-        if evaluation.status == "ok"
-    ))
-    catalog_result = catalog.list_products(category_ids) if category_ids else None
     candidates: list[Candidate] = []
     limitations: list[str] = []
-    if catalog_result is None:
-        limitations.append("유효한 Trend × Category 평가가 없어 상품 카탈로그 조회를 생략했습니다.")
-    else:
-        limitations.extend(catalog_result.limitations)
-    products = catalog_result.products if catalog_result and catalog_result.status == "ok" else ()
+    products = request.existing_products
+    if not products:
+        limitations.append("상위 상품·재고 에이전트의 기존 상품 목록이 제공되지 않았습니다.")
     for original, trend in zip(request.batch.trends, evaluated):
         source_docs = {doc.document_id: doc for doc in original.evidence}
         assessments = {item.document_id: item for item in trend.evidence}
@@ -168,20 +148,16 @@ def run_trend_planning(
             if evaluation.status != "ok":
                 limitations.extend(evaluation.limitations)
                 continue
-            product_ids = tuple(str(product.get("product_id")) for product in products
-                                if str(product.get("category_id", "")) == evaluation.category_id and product.get("product_id"))
-            sql_result = merch_data.query_sales_inventory(SalesInventoryQuery(
-                product_ids, request.period_start, request.period_end, request.channel_id, request.inventory_as_of)) if product_ids else None
+            category_products = tuple(product for product in products
+                                      if str(product.get("category_id", "")) == evaluation.category_id)
             retrieval = knowledge.retrieve(RetrievalQuery(
                 (trend.trend_id,) if trend.trend_id else (), (evaluation.category_id,),
                 tuple(item.value for item in trend.attributes if item.status == "evidence_observation"),
                 limit=50))
             limitations.extend(retrieval.limitations)
-            if sql_result:
-                limitations.extend(sql_result.limitations)
+            if category_products:
                 existing = generate_existing_candidates(trend, evaluation.category_id,
-                    tuple(product for product in products if str(product.get("category_id", "")) == evaluation.category_id),
-                    sql_result, target_season=request.batch.target_season,
+                    category_products, target_season=request.batch.target_season,
                     evidence_refs=tuple(ref for ref in retrieval.evidence if ref.verified), kg_paths=retrieval.kg_paths)
                 candidates.extend(existing.candidates)
                 limitations.extend(existing.limitations)
@@ -199,7 +175,6 @@ def run_trend_planning(
         trend_id = candidate.responds_to_trend_ids[0] if candidate.responds_to_trend_ids else None
         scores.append(score_candidate(candidate,
             trend_fit=components.get("trend_fit", trend_fits.get((trend_id, candidate.category_id))),
-            sales_observation=components.get("sales_observation"),
             product_fit=components.get("product_fit"),
             inventory_signal=components.get("inventory_signal"),
             evidence_confidence=components.get("evidence_confidence"),

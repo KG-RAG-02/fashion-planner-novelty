@@ -9,14 +9,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import analytics, fixtures, planning_operations, repository, retrieval, synthetic_scenario
+from . import repository
 from ..domain.context import (
     AgentResult, AttributeSignal, InventoryProduct, InventoryProductResult,
     PlanningInputs, PlanningRequest, TrendCandidate, TrendResult,
     build_planning_context,
 )
 from ..settings import load_settings
-from ..sources.hm.hm_sales_adapter import load_hm_sales_analysis
 from ..workflows.image_generation import (
     DEFAULT_IMAGE_DIR, DEFAULT_IMAGE_MODEL, OpenAIImageProvider, run_concept_to_image,
 )
@@ -27,7 +26,6 @@ WEB_ROOT = REPOSITORY_ROOT / "web" / "prototype"
 GENERATED_IMAGE_ROOT = REPOSITORY_ROOT / DEFAULT_IMAGE_DIR
 TREND_DEMO_JSON = REPOSITORY_ROOT / "examples" / "fixtures" / "ss-mens-shorts-trend-planning-demo.json"
 TREND_DEMO_IMAGE = WEB_ROOT / "ss-mens-shorts-trend-planning-demo.png"
-PIPELINE_DOC = REPOSITORY_ROOT / "docs" / "design" / "hm-kaggle-data-pipeline.md"
 MAX_BODY_BYTES = 1_000_000
 COMPARISON_IMAGE_MODELS = (
     "gpt-image-2.5-sunburst",
@@ -74,7 +72,7 @@ class PrototypeHandler(BaseHTTPRequestHandler):
         try:
             if path == "/api/health":
                 repository.initialize()
-                self._json(200, {"ok": True, "mode": "local-prototype-with-separate-hm-analysis"})
+                self._json(200, {"ok": True, "mode": "new-product-planning"})
             elif path == "/api/trend-planning-demo":
                 if not TREND_DEMO_JSON.is_file():
                     self._json(404, {"error": "트렌드 기획 데모 데이터를 찾을 수 없습니다."})
@@ -103,55 +101,10 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                     self._send(200, target.read_bytes(), mime or "application/octet-stream")
             elif path == "/api/bootstrap":
                 self._json(200, {
-                    "analysis": analytics.analyze(), "brief": repository.get_brief(),
+                    "brief": repository.get_brief(),
                     "brief_versions": repository.list_brief_versions(),
                     "variants": repository.list_variants(), "evaluations": repository.list_evaluations(),
                 })
-            elif path == "/api/hm-analysis":
-                analysis = fixtures.get_hm_analysis()
-                if analysis is None:
-                    self._json(404, {"error": "H&M Kaggle 데이터 분석 산출물이 없습니다. 데이터 파이프라인을 먼저 실행해 주세요."})
-                else:
-                    self._json(200, analysis)
-            elif path == "/api/hm-planning-analysis":
-                analysis = fixtures.get_hm_planning_analysis()
-                if analysis is None:
-                    self._json(404, {"error": "Article 기준 상품기획 분석이 없습니다. 분석 단계를 먼저 실행해 주세요."})
-                else:
-                    self._json(200, analysis)
-            elif path == "/api/hm-planning-reviews":
-                self._json(200, {"reviews": repository.list_hm_planning_reviews()})
-            elif path == "/api/hm-planning-briefs":
-                self._json(200, {"briefs": repository.list_hm_planning_briefs()})
-            elif path == "/api/hm-brief-reviews":
-                self._json(200, {"reviews": repository.list_hm_brief_reviews()})
-            elif path == "/api/data-status":
-                self._json(200, planning_operations.get_data_status())
-            elif path == "/api/synthetic-scenario":
-                self._json(200, synthetic_scenario.analyze_scenario(synthetic_scenario.load_scenario()))
-            elif path == "/api/planning/line-plans":
-                self._json(200, planning_operations.list_records("line_plans"))
-            elif path == "/api/planning/markdown-reviews":
-                self._json(200, planning_operations.list_records("markdown_reviews"))
-            elif path == "/api/planning/kpi-definitions":
-                self._json(200, planning_operations.list_records("kpi_definitions"))
-            elif path == "/api/planning/campaigns":
-                self._json(200, planning_operations.list_records("campaigns"))
-            elif path == "/api/products":
-                self._json(200, planning_operations.list_products())
-            elif path.startswith("/api/products/"):
-                style_id = path.removeprefix("/api/products/")
-                product = planning_operations.get_product(style_id)
-                self._json(200 if product else 404, product or {"error": "상품을 찾을 수 없습니다."})
-            elif path == "/docs/hm-kaggle-data-pipeline.md":
-                self._send(200, PIPELINE_DOC.read_bytes(), "text/markdown; charset=utf-8")
-            elif path.startswith("/api/evidence/"):
-                record_id = path.removeprefix("/api/evidence/")
-                evidence = retrieval.get_evidence(record_id)
-                self._json(200 if evidence else 404, evidence or {"error": "근거 기록을 찾을 수 없습니다."})
-            elif path == "/api/search":
-                query = parse_qs(parsed.query).get("q", [""])[0][:300]
-                self._json(200, {"query": query, "results": retrieval.search_documents(query)})
             elif path.startswith("/api/variants/") and path.endswith(".svg"):
                 variant_id = path.removeprefix("/api/variants/").removesuffix(".svg")
                 image = repository.get_variant_image(variant_id)
@@ -229,15 +182,6 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                         ), evidence_ids=trend_ids,
                     ),),
                 )
-                sales = load_hm_sales_analysis(
-                    request_id=request_id, schema_version=schema, requested_category=category,
-                    source_category_map={
-                        "Outdoor overall": category,
-                        "Outdoor trousers": category,
-                        "Outdoor waistcoat": category,
-                    },
-                    category_mapping_version="local-example-outdoor-map-v1",
-                )
                 inventory = InventoryProductResult(
                     result=AgentResult(
                         "own-product-inventory-agent", request_id, schema, "partial",
@@ -251,7 +195,7 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                         evidence_ids=(inventory_evidence,), note=inventory_note, note_origin="user",
                     ),),
                 )
-                context = build_planning_context(PlanningInputs(request, trend, sales, inventory))
+                context = build_planning_context(PlanningInputs(request, trend, inventory))
                 results = []
                 for model in models:
                     workflow = run_concept_to_image(
@@ -305,13 +249,6 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                     "error": None if successes else "이미지 생성에 실패했습니다. " + "; ".join(failed_models),
                     "requested_models": models,
                     "results": results,
-                    "sales_status": sales.result.status,
-                    "sales_observation_count": len(sales.observations),
-                    "sales_purchase_rows": sum(row.purchase_rows for row in sales.observations),
-                    "sales_period": [
-                        min((row.period_start for row in sales.observations), default=None),
-                        max((row.period_end for row in sales.observations), default=None),
-                    ],
                     "conflicts": [conflict.message for conflict in context.conflicts],
                     "limitations": [limit for result in results for limit in result["limitations"]],
                 })
@@ -325,18 +262,6 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                 self._json(201, {"variants": repository.generate_variant(payload, str(payload.get("image_type", "product")), int(payload.get("count", 3)))})
             elif path == "/api/evaluations":
                 self._json(201, repository.save_evaluation(payload))
-            elif path == "/api/hm-planning-reviews":
-                analysis = fixtures.get_hm_planning_analysis()
-                if analysis is None:
-                    raise ValueError("H&M 상품기획 분석 결과가 없습니다.")
-                self._json(201, repository.save_hm_planning_review(payload, analysis))
-            elif path == "/api/hm-planning-briefs":
-                analysis = fixtures.get_hm_planning_analysis()
-                if analysis is None:
-                    raise ValueError("H&M 상품기획 분석 결과가 없습니다.")
-                self._json(201, repository.save_hm_planning_brief(payload, analysis))
-            elif path == "/api/hm-brief-reviews":
-                self._json(201, repository.save_hm_brief_review(payload))
             else:
                 self._json(404, {"error": "Not found"})
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
@@ -351,7 +276,7 @@ def main() -> None:
     port = int(os.getenv("VOGUE_PORT", "8765"))
     server = ThreadingHTTPServer((host, port), PrototypeHandler)
     display_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
-    print(f"VOGUE prototype running at http://{display_host}:{port} (local only; synthetic demo and separate H&M analysis)")
+    print(f"VOGUE planning prototype running at http://{display_host}:{port} (local only)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -8,7 +8,7 @@ from vogue_npp.domain.candidates import (
     generate_existing_candidates, generate_new_candidate, score_candidate,
     select_top_candidates,
 )
-from vogue_npp.domain.retrieval import EvidenceRef, SalesInventoryResult, SalesMetric
+from vogue_npp.domain.retrieval import EvidenceRef
 from vogue_npp.domain.trend_batch import TrendBatch
 from vogue_npp.domain.trend_evaluator import (
     Category, EvidenceAssessment, InMemoryCategoryTaxonomy, TrendFitWeights, evaluate_trend_batch,
@@ -42,31 +42,33 @@ class CandidateTests(unittest.TestCase):
         self.assertTrue(candidate.unknowns)
         self.assertEqual(generate_new_candidate(trend, "outer", target_season=None).status, "insufficient_evidence")
 
-    def test_existing_candidate_preserves_attributes_and_query_status(self):
+    def test_existing_candidate_preserves_attributes_without_sales_analysis(self):
         trend = self._trend()
-        data = SalesInventoryResult("ok", (SalesMetric("P1:S1", 4, 20, "USD", date(2026,1,1), date(2026,1,31), "web", "SQL1"),))
-        result = generate_existing_candidates(trend, "outer", ({"product_id":"P1", "category_id":"outer", "name":"Jacket", "attributes":{"color":"Black"}, "attribute_evidence":{"color":["CAT1"]}},), data)
+        result = generate_existing_candidates(trend, "outer", ({
+            "product_id":"P1", "category_id":"outer", "name":"Jacket",
+            "attributes":{"color":"Black"}, "attribute_evidence":{"color":["CAT1"]},
+        },))
         self.assertEqual(result.status, "ok")
         self.assertEqual(result.candidates[0].attributes[0].evidence_ids, ("CAT1",))
-        self.assertEqual(result.candidates[0].sql_metric_refs, ("SQL1",))
-        self.assertEqual(generate_existing_candidates(trend, "outer", (), SalesInventoryResult("error")).status, "error")
+        self.assertEqual(result.candidates[0].source_record_refs, ())
+        self.assertEqual(generate_existing_candidates(trend, "outer", ()).status, "no_results")
 
     def test_scorer_abstains_without_config_then_scores_with_config(self):
         candidate = Candidate("c1", "new_product", "Burgundy outer", "outer", None, ("T1",), None,
             (CandidateAttribute("color", "Burgundy", "evidence_observation", ("D1",)),),
             (EvidenceRef("D1", "SRC1", None, None, None, "permitted", True),), (), (), (), (), (), ())
-        abstain = score_candidate(candidate, trend_fit=80, sales_observation=60, product_fit=70, inventory_signal=50, evidence_confidence=90)
+        abstain = score_candidate(candidate, trend_fit=80, product_fit=70, inventory_signal=50, evidence_confidence=90)
         self.assertEqual(abstain.status, "unconfigured")
-        weights = ScoreWeights(.25,.25,.2,.15,.15,"reviewed-v1")
-        scored = score_candidate(candidate, trend_fit=80, sales_observation=60, product_fit=70, inventory_signal=50, evidence_confidence=90, weights=weights)
+        weights = ScoreWeights(.25,.25,.25,.25,"reviewed-v1")
+        scored = score_candidate(candidate, trend_fit=80, product_fit=70, inventory_signal=50, evidence_confidence=90, weights=weights)
         self.assertEqual(scored.status, "scored")
-        self.assertAlmostEqual(scored.score, 70.0)
+        self.assertAlmostEqual(scored.score, 72.5)
         self.assertEqual(scored.coverage, 1.0)
         unverified = Candidate(candidate.candidate_id, candidate.candidate_type, candidate.title, candidate.category_id,
             candidate.target_season, candidate.responds_to_trend_ids, candidate.product_id, candidate.attributes,
-            (EvidenceRef("D1", "SRC1", None, None, None, "unverified", False),), candidate.sql_metric_refs,
+            (EvidenceRef("D1", "SRC1", None, None, None, "unverified", False),), candidate.source_record_refs,
             candidate.kg_paths, candidate.assumptions, candidate.unknowns, candidate.risks, candidate.validation_questions)
-        rejected = score_candidate(unverified, trend_fit=80, sales_observation=60, product_fit=70,
+        rejected = score_candidate(unverified, trend_fit=80, product_fit=70,
             inventory_signal=50, evidence_confidence=90, weights=weights)
         self.assertEqual(rejected.status, "insufficient_data")
 

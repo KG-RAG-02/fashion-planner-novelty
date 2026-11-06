@@ -9,14 +9,13 @@ layout.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Mapping
+from typing import Any, Literal, Mapping
 
 from .context import (
     ContextInputStatus,
     ContextConflict,
     ContextOrigin,
     ProductPlanningContext,
-    SalesAnalysisResult,
 )
 
 
@@ -85,7 +84,7 @@ class ProductConceptDraft:
     # Optional Project 07 handoff payload, retained verbatim until the shared
     # result schema is agreed. It is deliberately an internal compatibility
     # field and must not be serialized as an approved wire contract.
-    sales_market_result: SalesAnalysisResult | None = None
+    sales_market_result: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)

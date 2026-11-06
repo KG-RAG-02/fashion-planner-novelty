@@ -1,132 +1,25 @@
-# New Product Planning Agent 데이터·Evidence 계획
+# Project_06 data and Evidence boundary
 
-- 상태: H&M Kaggle 파일 로컬 수집·처리 완료 · 내부 데이터/API 접근 미확인
-- 적용 범위: VOGUE 3번 New Product Planning Agent
-- 기준일: 2026-11-05
+Updated 2026-11-06. This replaces the earlier source plan that assigned H&M sales collection and analysis to Project_06.
 
-## 1. 책임 경계
+## Sources and owners
 
-3번 에이전트는 `PlanningRequest`, `TrendResult`, `InventoryProductResult`를 핵심 입력으로 검토 가능한 `ProductConceptDraft`를 생성합니다. 내부 `SalesAnalysisResult`는 H&M 과거 데이터 파이프라인에서 제공할 수 있는 선택형 로컬 확장입니다. 트렌드와 요청 구조화는 1번, 자사 상품·재고 조회는 2번이 맡고, 3번은 이들이 반환한 근거를 소비합니다.
+| Information | Owner | How Project_06 uses it |
+|---|---|---|
+| User request | upstream request/query stage | Preserve requested category, season, constraints and missing values. |
+| Trend names, descriptions and evidence | trend agent | Validate traceability; evaluate Trend × Category fit without rank/similarity input. |
+| Product and inventory facts | upstream product/inventory agent | Preserve IDs, units, status, as-of and Evidence. Do not query the operational source. |
+| Sales and market observations | Project_07 | Receive findings and source scope as a handoff; cite and carry limitations without recalculating. |
+| KG/RAG context | approved retrieval adapter when configured | Use retrieved relationships/documents to support product-concept claims. No production KG/vector connector is configured by default. |
 
-현재 입력 처리 정책은 세 핵심 입력을 검증하고 **트렌드 → 사용자 쿼리 → 자사 상품·재고** 순서로 검토하는 것입니다. 선택형 판매 분석이 있으면 기간·분류 매핑을 확인한 과거 관찰로 추가합니다. 요청은 트렌드 적용 범위를 정하며, 충돌 시 둘 다 보존하고 확인 질문을 남깁니다. 판매 데이터는 사용자 요청 범위를 넓히는 근거가 아니며, 통합 MVP에서 사용할지는 팀 합의가 필요합니다. 전체 규칙과 충돌 처리 방식은 [입력·출력 처리 흐름](input-output-processing-flow.md)에 정의합니다.
+## Evidence handling
 
-과거 기획서, 과거 콘셉트, MD 검토 이력은 5번 Planning Draft & MD Review Agent의 범위로 둡니다. 3번에서 해당 자료를 별도 수집하거나 RAG 색인하지 않습니다. H&M Kaggle의 상품과 판매 실적 수집·처리·집계 분석은 현재 3번의 목표에 포함합니다. 경쟁상품 조사는 제외합니다. 원가·마진·생산·조달·고객 피드백 분석은 4번의 별도 저장소 책임입니다.
+Each factual claim should retain its Evidence IDs and upstream status. Distinguish observation, interpretation, proposal, hypothesis and unknown. Missing, not provided, no results, query failure and numeric zero remain separate states. A supplied sales observation is not automatically future demand, customer preference or market growth.
 
-## 2. 현재 확인된 데이터/API 상태
+## Current data connection status
 
-Notion의 `Data Sources` 데이터베이스에는 아직 등록된 행이 없습니다. 현재 저장소에도 외부 데이터원이나 사내 API를 호출하는 구현은 없습니다. 따라서 사내 상품·재고 API의 존재나 접근 가능성을 확인했다고 간주하지 않습니다.
+There is no operational PostgreSQL, product/inventory API, sales source, external market provider, KG database or vector store connection in Project_06. The internal handoff is not an approved cross-project API contract. The local planning fixture is a review example, not a claim about live operations.
 
-| 데이터 후보 | 발견한 API/자료 경로 | 3번에서의 취급 | 현재 확인 상태 |
-| --- | --- | --- | --- |
-| 트렌드 근거 | 1번 에이전트가 전달하는 `TrendResult`; 외부 후보는 아래 참고 | 입력 Evidence를 근거로 사용하며 원천 검색 소유권은 1번에 둠 | 실제 API·계약·자료 권한 미확인 |
-| 자사 상품 속성 | 2번 에이전트가 전달하는 `InventoryProductResult`의 상품·속성 | 구조화된 비교와 상품 관계 분석에 사용 | 사내 카탈로그와 API 미확인 |
-| 현재 재고 | 2번 에이전트가 전달하는 기준 시점 포함 스냅샷 | 코디/상품 조합 참고로만 사용. 수요나 판매 추세로 해석하지 않음 | 사내 재고 시스템/API 미확인 |
-| 과거 기획 문서 | 현 범위에서 사용하지 않음 | 5번 에이전트 책임 | 3번 색인 대상 아님 |
-| 원가·생산·고객 피드백 | 현 범위에서 직접 수집하지 않음 | 4번 에이전트 책임 | 사내 데이터/API 미확인 |
-| H&M Kaggle 데이터 | 로컬 ZIP의 `articles.csv`, `transactions_train.csv`를 처리. `customers.csv`와 고객 식별자는 제외 | H&M MD 페르소나용 역사적 상품·구매 집계. 파생물은 Git-ignored이며 synthetic fixture와 별도 표시 | 다운로드·정제·분석 완료. 이용·공유는 competition rules를 따르며 브리프/LLM 자동연결은 아직 없음 |
+## Project_07 transfer
 
-`API가 공개되어 있음`, `API 접근 자격이 있음`, `사용권한이 있음`, `해당 자료가 프로젝트의 주장을 뒷받침함`은 서로 별개로 확인합니다.
-
-## 3. 외부 프로젝트의 데이터 확보 방식
-
-### 3.1 트렌드 데이터
-
-- 우선 연결 경로는 1번 에이전트의 `TrendResult`입니다. 3번이 별도 트렌드 API를 직접 호출하면 검색 근거와 버전이 갈라지므로, 별도 설계 합의 없이는 추가하지 않습니다.
-- WGSN은 트렌드·소비자·상품 전망을 제공하는 기업용 Intelligence API를 안내합니다. 통합은 범위와 상업 조건을 협의하는 방식이므로, 실제 계약·접근·사용권한은 확인되지 않았습니다.
-- Google Trends API는 공식 문서상 alpha 조기 접근 신청 방식입니다. 검색 관심도를 나타내는 보조 신호로만 검토하며, 패션 트렌드 전망·판매·고객 선호의 직접 증거로 취급하지 않습니다.
-- 공개 API 결과는 요청 조건에 맞는 지역·기간·검색어 정의, 원본 응답, 조회 시각, 사용 조건을 보존하고 `TrendResult` Evidence로 전달할 수 있을 때만 평가 후보로 둡니다.
-
-### 3.2 자사 상품·재고 데이터
-
-- 외부 프로젝트에는 자사 시스템과 API가 있다고 가정하지 않습니다. 실제 카탈로그가 없으면 합성 Style/SKU와 속성, 합성 재고 스냅샷으로 계약 변환과 상태 처리를 시연합니다.
-- 합성 상품·재고는 실제 브랜드 상품, 공급 상황, 고객 반응 또는 판매 성과처럼 표현하지 않습니다. 이를 이용한 결과는 파이프라인 검증이며 상품기획 품질이나 시장 타당성의 증거가 아닙니다.
-- 외부 쇼핑몰이나 도매 API에서 가져온 타 브랜드 상품으로 빈칸을 채우지 않습니다. 경쟁상품 조사가 현재 범위 밖이며, 제3자 API 접근이 가능해도 이 책임 경계는 바뀌지 않습니다.
-- 공개 패션 이미지/속성 데이터셋은 라이선스와 원 출처 이용 조건이 분명한 경우에만 파서·속성 스키마 실험 후보로 삼습니다. 자사 상품 사실이나 고객 수요 근거로 사용하지 않습니다.
-
-### 3.3 H&M Kaggle 자료의 활용 범위
-
-사용자 페르소나는 **H&M 소속 패션 MD**입니다. 따라서 Kaggle의 H&M 자료는 타사 경쟁상품 자료가 아니라 H&M의 상품·고객·구매 이력을 담은 내부형 실험 자료로 취급합니다. 사용자는 데이터의 과거 시점을 실험 데이터로 사용하는 데 동의했으므로, 연식만으로 배제하지 않습니다. 다만 각 결과에는 해당 데이터 기간을 표시하고 현재 H&M 상태나 미래 수요를 직접 관측한 것처럼 표현하지 않습니다.
-
-Kaggle competition은 상품 메타데이터, 고객 메타데이터, 구매 이력과 일부 상품 이미지를 파일로 제공합니다. 공식 과제는 과거 구매 및 메타데이터로 향후 7일 구매 article을 예측하는 추천 과제입니다. 이는 실시간 상품 API나 현재 재고 피드가 아닙니다. Kaggle API/CLI는 competition 파일 다운로드를 지원하며, 다운로드 전 competition 규칙을 수락해야 합니다.
-
-| H&M 파일/자료 | 포함하는 유용한 데이터 | 3번 활용 가능 범위 | 해서는 안 되는 해석 |
-| --- | --- | --- | --- |
-| `articles.csv` | 상품별 카테고리, 분류, 색상 계열, 부서/의류군, 설명 등 상품 메타데이터 | H&M 상품의 중복·속성 보완·상품군 내 빈 영역 탐색. Style/상품 ID 관계와 카탈로그 범위가 확인된 범위에서 사용 | 카탈로그에 없는 상품을 H&M에 실제로 없다고 단정하거나 전 시장에서 유일하다고 표현 |
-| 상품 이미지 | 일부 `article_id`에 해당하는 이미지 | 상품 속성 보강이나 콘셉트 근거의 시각적 검토에 활용 가능 | 이미지 미제공을 상품 특성 부재로 해석하거나 사용권한을 추정 |
-| `transactions_train.csv` | 날짜, 고객 ID, article ID, 거래 가격, 채널 등 구매 이력 | 데이터 기간과 모집단을 명시한 상품·채널·주차별 구매 실적 관찰과 제한된 코호트/연관 분석 | 구매 이력을 현재 전체 고객 선호, 미래 트렌드, 인과적 니즈로 일반화 |
-| `customers.csv` | 고객 ID와 제한된 고객/멤버십 속성 | 집계된 코호트 특성을 이해하는 보조 데이터 후보. 최소 집계 단위와 privacy 검토 후 사용 | 익명 ID/연령만으로 개인의 니즈·착용 상황을 단정하거나 재식별 시도 |
-
-Kaggle competition 규칙은 데이터 사용을 비상업 목적 및 학술 연구로 제한하고, 데이터를 팀 외부에 비공개 공유하는 것을 금지합니다. 과거 시점의 데이터를 쓰는 것과 Kaggle 사용 조건을 지키는 것은 별개입니다. 원본 파일·이미지·고객 단위 기록은 GitHub에 커밋하지 않습니다. 외부 LLM API에 전송하려면 competition 조건과 제공자 데이터 처리 조건을 먼저 확인하고 허용되는 최소 필드만 사용합니다. Kaggle 계정에서 현재 적용되는 전체 규칙과 팀 공유 조건도 다운로드 전 재확인합니다.
-
-**실무 판단:** H&M 상품 자료는 이 페르소나의 자사 상품으로 보고 중복·보완 관계를 분석합니다. 거래 행을 상품·주차·채널 단위로 집계해 판매 실적의 근거로 활용합니다. Kaggle에 없는 재고, 할인 기준가격, 반품 사유, 품절/재고 가용성, 매장 ID, 리뷰·문의, 실제 launch date, MD가 평가한 콘셉트 품질 레이블은 이 데이터만으로 채워지지 않습니다.
-
-### 3.4 평가 데이터
-
-- **합성 검증 세트:** 정상 입력, 속성 충돌, partial/no_results/error, 실제 재고 0과 자료 없음 구분 등을 확인하는 용도입니다.
-- **엔진 비교 holdout:** 사용 권한이 확인된 실제 또는 공개 자료를 사용하고, 검색 결과와 Evidence를 고정해 각 엔진에 동일 입력을 제공합니다. 사용할 수 있는 실제 자료가 없으면 평가 가능한 범위를 합성 시나리오로 제한했다고 결과에 명시합니다.
-- **사람 평가:** 각 출력의 단일 정답 문구를 정하지 않습니다. MD/패션기획 검토자가 근거 충실성, 요청 준수, 콘셉트 구체성·일관성, 검토 유용성을 루브릭으로 평가합니다.
-- 테스트/평가 자료는 개발용 prompt 예시와 분리합니다. 출처·라이선스·기준일·데이터 버전·평가 사례 ID를 기록합니다.
-
-## 4. H&M Kaggle 외에 필요한 데이터
-
-| 필요한 데이터 | 최소 필드/메타데이터 | 처리 단계에서 쓰는 목적 | H&M 데이터가 채우는 정도 | 우선도/책임 |
-| --- | --- | --- | --- | --- |
-| 기획 요청 조건 | 시즌, 카테고리, 시장/지역, 채널, 요청 속성, 고객·가격·일정·제약의 값과 출처 | 제안의 범위를 제한하고 누락은 질문으로 남김 | Kaggle 고객/상품 데이터가 개별 기획 요청을 대신하지 못함 | 필수 · 사용자/Agent 1 |
-| 트렌드 자료와 근거 | 이름·정의·속성 관계, 실제 출처/위치, 지역·시즌, 게시·관측·수집 시점, 사용 조건 | 상품 속성과 연결해 기회 방향을 제안 | 현재/미래 트렌드 증거가 아님 | 필수 · Agent 1 |
-| 자사 상품 카탈로그 | Style/SKU 매핑, 상품 상태/시즌, 속성·속성 출처, 카탈로그 범위·완전성 | 기존 자사 상품과 중복·보완 관계를 평가 | H&M Kaggle 상품 메타데이터가 상품 속성 근거로 일부 제공. 기간·카탈로그 범위를 기록 | 필수 · Agent 2 |
-| 현재 재고 스냅샷 | Style/SKU, 재고 정의, 수량·단위, 위치/채널 범위, 기준 시점 | 기존 재고와 함께 기획할 수 있는지 참고 | Kaggle competition 파일에는 실시간 재고/재고 이력이 포함되지 않음 | 필수 · Agent 2 또는 후속 연결 |
-| 고객·착용 상황 근거 | 요청에서 제공된 고객/사용 맥락 또는 사용 승인된 조사·피드백의 기간·표본·출처 | 대상 고객·착용 상황을 명시 근거 또는 가설로 표현 | 구매 기록은 반응 신호 후보지만 착용 상황·필요의 직접 진술은 아님. 고객 프로필은 제한적 | 고객 니즈를 근거로 주장하려면 필요 · 입력/별도 승인; 고객 피드백 분석은 Agent 4 |
-| 상품 속성 용어/제작 제약 | 속성 사전, 소재/부자재 사전, 금지·필수 속성, 치수/핏 용어 | 콘셉트 속성을 구체적이고 일관된 용어로 제안 | 일부 표시용 상품 속성은 있어도 내부 테크팩·BOM·제작 규격은 아님 | 핵심 속성 정합화에 유용 · 계약/Agent 2; 원가·조달 세부는 Agent 4 |
-| 가격·사업 제약 | 사용자 목표 가격대(통화·기준일), 일정·브랜드 제약 | 제약을 출력에 보존하고 검토 질문으로 전달 | 거래 가격은 실제 체결가의 기간별 기록으로 활용 가능하나 목표 판매가·원가·마진을 대신하지 못함 | 요청 시 입력 · 사용자; 원가·마진·조달 판정은 Agent 4 |
-| 생성 품질 평가 레이블 | 익명 평가 사례, 제공 Evidence, 근거성/요청준수/구체성/유용성 점수와 평가자 의견 | 엔진 비교 및 반복 개선 | 추천 competition의 구매 article 정답은 콘셉트 정답이 아님 | LLM 품질 비교에 필수 · 프로젝트 평가 담당자/MD 검토자 |
-
-과거 기획서·기존 콘셉트·MD 승인/수정 기록은 위 목록에 넣지 않습니다. 이는 5번 에이전트 범위입니다. 원가·마진·생산·조달과 고객 피드백 분석 자료도 3번에서 직접 수집하거나 색인하지 않습니다.
-
-## 5. Agent 3에서 수행할 근거 기반 처리
-
-### 5.1 기존 자사 상품과의 중복·보완 및 기회 정의
-
-1. 요청, 트렌드 근거, 상품 속성의 시즌·시장·카테고리·속성이 비교 가능한지 검증합니다.
-2. 근거가 연결된 트렌드 속성과 자사 Style/SKU 속성을 같은 차원끼리 비교합니다.
-3. 동일·상이·자료에서 확인되지 않음·실제 없음(완전성이 증명된 경우만)을 서로 구분합니다.
-4. 재고 스냅샷은 조회 기준일과 단위를 보존해 상품 조합에 참고하고, 재고량만으로 수요·인기·과잉을 추론하지 않습니다.
-5. 발견한 관계는 관찰로, 관계가 시사하는 상품 기회는 해석/가설로, 기획 방향은 제안으로 표시합니다. 카탈로그 완전성이 확인되지 않으면 상품 구색 공백을 사실로 단정하지 않습니다.
-
-### 5.2 대상 고객·착용 상황·상품 역할·속성·차별화 제안
-
-- **대상 고객:** 사용자 요청이나 승인된 입력에 명시된 경우에만 관찰/요청으로 기록합니다. 그 외에는 가설 또는 확인 질문으로 둡니다.
-- **착용 상황:** 입력 근거로 직접 확인되지 않으면 제안/가설로 표시합니다. 근거 없는 니즈나 구매 의향으로 바꾸지 않습니다.
-- **상품 역할:** 요청과 근거에 비추어 콘셉트가 수행할 기능/스타일상 역할을 제안으로 작성합니다.
-- **핵심 속성:** 속성별로 `user_requested`, `evidence_observation`, `interpretation`, `hypothesis`, `proposal`, `unknown/to_validate` 중 출처 유형과 Evidence ID를 연결합니다. 실제 합의 enum은 공통 계약 변경 전까지 내부 모델에만 둡니다.
-- **차별화 방향:** 우선 자사 카탈로그 안에서 확인 가능한 기존 상품과 비교해 설명합니다. 비교 대상/범위가 불완전하면 `자사 자료에서 관찰된 차이` 또는 `제안된 방향`으로 표현합니다. 시장 전체에서 유일하거나 경쟁상품보다 우수하다는 주장은 하지 않습니다.
-
-### 5.3 가격·원가·조달 제약 전달
-
-- 입력되지 않은 목표가격, 원가, 마진, MOQ, 리드타임, 생산능력을 만들지 않습니다.
-- 수치/조건이 요청에 있으면 사용자 입력으로 보존하되 검증된 사실이나 확정값으로 격상하지 않습니다.
-- 필요한 필드가 없거나 근거가 불충분하면 `unknown`, 제한사항 및 담당 단계 확인 질문으로 전달합니다.
-- 원가·마진·조달 검토 자체는 4번 에이전트에서 수행하며, 3번은 확인할 제약을 넘기고 의사결정을 대신하지 않습니다.
-
-## 6. RAG·LLM과 API 연결 원칙
-
-3번의 근거 기반 생성은 검색된 1·2번 결과를 정규화 컨텍스트로 받아 LLM에 전달하고, 출력의 각 claim/속성을 입력 Evidence ID에 연결·검증하는 흐름으로 시작합니다. 이 방식은 별도의 3번 원천 데이터베이스나 과거 기획문서 색인을 요구하지 않습니다.
-
-복수 엔진 비교 시 같은 `SalesAnalysisResult`, `TrendResult`, `PlanningRequest`, `InventoryProductResult`, Evidence 목록과 순서를 사용하고 생성 엔진만 바꿉니다. 데이터/검색 API 변경을 엔진 변경과 한 실험에 섞지 않습니다. 외부 API를 직접 연결해야 하는 경우에는 API 제공자, endpoint/version, 인증 방식, quota/rate limit, 갱신 주기, 데이터 필드, 권한·라이선스, 원문 보존·LLM 전송 허용 여부를 기록한 뒤 adapter를 설계합니다. 비밀키는 `.env` 또는 승인된 secret store에만 둡니다.
-
-## 7. 초기 진행 순서
-
-1. 계약에 맞는 명시적 합성 `TrendResult`와 `InventoryProductResult` 사례를 만들어 도메인 흐름을 검증합니다. 자료를 실제로 수집한 것처럼 표현하지 않습니다.
-2. Agent 1의 승인된 공개/라이선스 트렌드 Evidence 접근 가능성을 확인하고, 가능하면 재생 가능한 snapshot으로 고정합니다.
-3. 자사 카탈로그/재고가 없는 동안 합성 값을 계속 분리 관리합니다. API가 실제로 확인되기 전까지 source adapter/API 선택을 가정하지 않습니다.
-4. 엔진별 연결이 승인되면 동일 컨텍스트 비교 harness를 만들고, 안전성 지표와 MD 루브릭으로 평가합니다.
-5. Agent 5용 과거 기획서와 Agent 4용 원가·조달·고객 데이터는 3번 데이터 목록과 색인에서 제외합니다.
-
-## 참고 자료
-
-- [Google Trends API 공식 안내](https://developers.google.com/search/apis/trends): alpha 접근 신청; 검색 관심도 자료.
-- [WGSN Intelligence API](https://www.wgsn.com/en/what-we-do/intelligence-api): 기업용 트렌드·소비자·상품 전망 API. 상업·통합 조건 협의 필요.
-- Notion [Project Overview](https://app.notion.com/p/40d3269b1acd809c98c5dc5de4f61d24), [Project Workflow](https://app.notion.com/p/40f3269b1acd81378143f35b599ef9a0), [Data & Knowledge](https://app.notion.com/p/40d3269b1acd81a28e69c991870f7fbd), [Experiments & Evaluation](https://app.notion.com/p/40d3269b1acd81ac80eae832d87226bd).
-- [H&M Personalized Fashion Recommendations competition data](https://www.kaggle.com/competitions/h-and-m-personalized-fashion-recommendations/data): 제공 파일·목표 확인.
-- [H&M competition rules](https://www.kaggle.com/c/h-and-m-personalized-fashion-recommendations/rules): 데이터 사용·공유 조건 확인.
-- [Kaggle Public API 안내](https://www.kaggle.com/getting-started/524433): competition data 파일 다운로드 지원과 규칙 수락 필요.
-- [Kaggle competition API / CLI 문서](https://github.com/Kaggle/kaggle-cli/blob/main/docs/competitions.md): 파일 다운로드 명령 참조.
+H&M historical processing/analysis adapters, synthetic sales and operations fixtures, and their tests/docs now live in Project_07. Project_06 data directories were left untouched. See [the responsibility and transfer record](agent-3-responsibility-map.md).

@@ -1,5 +1,7 @@
 # ADR 0001: 임시 구현 기본값
 
+> **대체됨:** 이 ADR은 2026-11-06 이전 Project_06 범위를 기록합니다. H&M 판매 수집·분석 결정은 Project_07 소유로 이전되었습니다. 현재 책임은 [책임 경계 기록](../design/agent-3-responsibility-map.md)을 따릅니다.
+
 - 상태: 임시 적용 · 팀 통합 시 재검토
 - 날짜: 2026-11-05
 - 범위: `new-product-planning-agent` 저장소 내부 도메인 코어
