@@ -12,7 +12,7 @@
 
 | 구분 | 책임 |
 | --- | --- |
-| 입력 | 필수 H&M 판매 분석 `SalesAnalysisResult`, `TrendResult`, `PlanningRequest`, `InventoryProductResult` |
+| 입력 | 핵심 `PlanningRequest`, `TrendResult`, `InventoryProductResult`; H&M 과거 판매 `SalesAnalysisResult`는 선택형 로컬 확장 |
 | 내부 출력 | `ProductConceptDraft`; 공통 `ProductConcept` adapter는 합의 후 연결 |
 | 수행 | H&M Kaggle 자료의 로컬 수집·정제·판매 실적 집계, 입력 정합성 확인, 자사 상품·실적 관계와 기회 분석, RAG 근거 기반 콘셉트 생성, claim-level Evidence 연결 및 복수 생성 엔진 평가 |
 | 보존 | `request_id`, 계약 버전, 입력 상태, Evidence 참조, 누락·불일치·제약 |
@@ -24,8 +24,8 @@ H&M 거래 집계는 데이터의 기간·채널·단위와 출처가 있는 과
 
 ```text
 TrendResult + PlanningRequest + SalesAnalysisResult + InventoryProductResult
-  → 네 입력의 구조·요청 ID·계약 버전·상태 검증
-  → H&M 상품·거래 데이터 manifest 및 집계 Evidence 로드
+  → 세 핵심 입력의 구조·요청 ID·계약 버전·상태 검증
+  → 선택형 H&M 상품·거래 manifest 및 집계 Evidence가 제공되면 추가 검증
   → request_id 및 입력 계약 버전 정합성 확인
   → 시즌·시장·채널·카테고리·요청 속성 정합성 확인
   → 입력 상태와 Evidence 참조 보존
@@ -43,7 +43,7 @@ TrendResult + PlanningRequest + SalesAnalysisResult + InventoryProductResult
 - 시즌·시장·속성이 다르면 충돌 필드를 기록하고, 충돌을 해소할 수 없는 주장은 콘셉트 근거로 사용하지 않습니다. 요청 상품과 재고 상품의 카테고리가 다르더라도 내부 `outfit-role-pairing-v1` 규칙이 상·하의 코디 보완 관계를 명확히 찾으면 재고 상품을 요청 상품으로 병합하지 않고 별도의 코디 제안으로 기록합니다. 역할 분류가 없거나 애매하면 기존처럼 충돌/확인 질문을 남깁니다.
 - 입력 `partial`은 확보된 정보와 누락 사유를 함께 전달합니다.
 - 입력 `no_results`는 데이터 값 0과 구분합니다. 조회 실패, 자료 없음, 실제 0을 재해석하지 않습니다.
-- 네 입력은 모두 필수입니다. 판매 분석 결과, 트렌드, 요청, 상품·재고 입력 중 하나가 빠지면 유효 초안으로 가장하지 않고 입력 오류를 반환합니다. 다만 각 입력의 `partial`, `no_results`, `error` 상태는 계약상 가능한 제한 모드로 보존합니다.
+- `PlanningRequest`, `TrendResult`, `InventoryProductResult`는 핵심 입력입니다. 선택형 H&M 판매 확장이 없으면 초안에서 판매 근거를 사용하지 않았다고 표시하며, 이를 실제 판매 0이나 조회 실패로 바꾸지 않습니다. 제공된 입력의 `partial`, `no_results`, `error` 상태는 보존합니다.
 - 상품 속성과 재고 수량은 의미를 구분합니다. `InventoryProductResult`는 필수지만 개별 데이터에 재고 수량이 없으면 미확정으로 표시하고 상품 속성만 활용합니다. 수량은 `quantity`, `unit`, `inventory_definition`, `as_of`, Evidence를 함께 확인한 경우에만 스냅샷 사실로 기록합니다.
 - 코디 목적의 내부 역할 정규화는 `PlanningRequest.product_role`, `InventoryProduct.product_role`, 또는 명확한 상/하의 상품 분류 문구를 사용할 수 있습니다. `outfit-role-pairing-v1`은 상의와 하의를 분리해 코디 후보로 연결할 뿐, 수요·선호·재고 소진 효과를 입증하지 않습니다. Upstream adapter에서 역할/메모 필드를 전달할 수 있는지와 분류 용어를 담당자와 합의해야 하며, 이 내부 필드들을 공통 wire contract로 간주하지 않습니다.
 - 분석 우선순위는 트렌드 → 사용자 쿼리 → 판매 분석 → 자사 상품·재고입니다. 이는 점수나 사용자 요청을 무시하는 권한이 아닙니다. 요청은 적용 범위를 정하고, 트렌드와 요청이 충돌하면 둘 다 보존해 확인 질문을 표시합니다. 판매와 재고는 보조 맥락으로 사용합니다.
@@ -58,8 +58,8 @@ TrendResult + PlanningRequest + SalesAnalysisResult + InventoryProductResult
 | --- | --- | --- |
 | 입력 어댑터 | transport에서 입력을 읽고 공통 계약으로 변환 | API 경계에 한정 |
 | 계약 검증 | 버전, 공통 envelope, 필수 구조, enum 값 검증 | 없음 |
-| 정합성 검사 | 네 입력의 요청·기간·상품 식별·분류 기준 비교 | 없음 |
-| 기회 분석 | 트렌드 Evidence로 방향을 먼저 검토하고, 요청 범위를 확인한 뒤 판매 관찰과 자사 상품/재고 관계를 순서대로 비교 | 없음 |
+| 정합성 검사 | 세 핵심 입력의 요청·분류 기준 비교. 선택 판매 확장이 있으면 기간·상품 식별·분류도 확인 | 없음 |
+| 기회 분석 | 트렌드 Evidence로 방향을 검토하고 요청 범위를 확인한 뒤 자사 상품/재고 관계를 비교. 선택 판매 관찰은 추가 맥락 | 없음 |
 | Kaggle 데이터 pipeline | H&M competition 원본 수집, 정제, 품질 요약, 기간·article·channel 집계 및 Evidence manifest | 파일 다운로드/로컬 처리. raw data는 Git/외부 전송 금지 |
 | 콘셉트 제안기 | 규칙 기반 기준선과 Evidence-grounded LLM 생성기를 같은 포트 뒤에서 실행 | 복수 엔진 비교는 허용 모델·자료 전송 범위 합의 후 실행 |
 | 실험 실행기 | 고정된 입력/Evidence를 각 생성 엔진에 재생하고 설정·출력을 기록 | API 키·민감 원문을 기록하지 않음 |
@@ -173,7 +173,7 @@ TrendResult + PlanningRequest + SalesAnalysisResult + InventoryProductResult
 ## 8. MVP 인수 기준
 
 - 계약 버전, 요청 ID, 상태를 검증하거나 검증 불가 사유를 명확히 반환합니다.
-- 네 입력의 조건 불일치와 부분 상태를 숨기지 않습니다.
+- 세 핵심 입력의 조건 불일치와 부분 상태를 숨기지 않습니다. 선택 판매 확장의 상태도 구분합니다.
 - 유효한 입력에서 내부 콘셉트 초안을 구성하고 핵심 주장마다 Evidence 또는 명시적 제안·미확정 표기를 연결합니다.
 - 사용자 요청, 근거 기반 관찰, 제안, 가설, 미확정을 구분합니다.
 - 판매량·경쟁상품 분석과 원가·생산·조달·고객 반응 분석을 수행하지 않습니다.

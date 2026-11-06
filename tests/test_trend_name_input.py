@@ -17,7 +17,10 @@ from vogue_npp.domain.context import InventoryProductResult, TrendResult
 
 
 class TrendNameInputTests(unittest.TestCase):
-    def _context(self, *, trend_status: str = "ok", with_pattern: bool = True):
+    def _context(
+        self, *, trend_status: str = "ok", with_pattern: bool = True,
+        include_sales: bool = True,
+    ):
         request_id = "trend-name-test"
         agent_id = "query-trend-agent"
         trend_evidence = "query-trend:E-001"
@@ -81,9 +84,12 @@ class TrendNameInputTests(unittest.TestCase):
             ),
             products=(),
         )
-        return build_planning_context(
-            PlanningInputs(request=request, trend=trend, sales=sales, inventory=inventory)
+        inputs = (
+            PlanningInputs(request, trend, inventory)
+            if not include_sales
+            else PlanningInputs(request=request, trend=trend, sales=sales, inventory=inventory)
         )
+        return build_planning_context(inputs)
 
     def test_named_trend_and_supported_direction_are_in_review_draft(self) -> None:
         draft, issues = generate_concept_draft(self._context())
@@ -121,6 +127,18 @@ class TrendNameInputTests(unittest.TestCase):
         self.assertTrue(
             any("trend_result 상태가 'error'" in question for question in draft.questions_for_validation)
         )
+
+    def test_three_shared_inputs_generate_without_optional_sales_extension(self) -> None:
+        context = self._context(include_sales=False)
+        draft, issues = generate_concept_draft(context)
+
+        self.assertEqual(context.input_statuses["sales_analysis_result"], "not_provided")
+        self.assertEqual(context.sales.observations, ())
+        self.assertFalse(issues)
+        self.assertIn("절제된 맥시멀리스트", draft.opportunity.value)
+        self.assertIn("not_provided", draft.input_statuses.values())
+        self.assertTrue(any("선택적 과거 판매 분석은 제공되지 않아" in question for question in draft.questions_for_validation))
+        self.assertTrue(any("no sales observations were analyzed" in item for item in draft.limitations))
 
 
 if __name__ == "__main__":

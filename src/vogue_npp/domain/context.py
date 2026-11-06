@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 
 InputStatus = Literal["ok", "partial", "no_results", "error"]
+ContextInputStatus = InputStatus | Literal["not_provided"]
 ContextOrigin = Literal["user", "inferred", "unknown"]
 AttributeOrigin = Literal[
     "user_requested",
@@ -138,14 +139,52 @@ class InventoryProductResult:
     products: tuple[InventoryProduct, ...] = ()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class PlanningInputs:
-    """All four required inputs, ordered by their role in concept generation."""
+    """Three shared inputs plus an optional local historical-sales extension.
+
+    Positional compatibility is retained for the former four-argument form
+    ``(request, trend, sales, inventory)``. New three-input callers may pass
+    inventory as the third positional argument or by keyword.
+    """
 
     request: PlanningRequest
     trend: TrendResult
-    sales: SalesAnalysisResult
     inventory: InventoryProductResult
+    sales: SalesAnalysisResult | None = None
+
+    def __init__(
+        self,
+        request: PlanningRequest,
+        trend: TrendResult,
+        *args: SalesAnalysisResult | InventoryProductResult,
+        inventory: InventoryProductResult | None = None,
+        sales: SalesAnalysisResult | None = None,
+    ) -> None:
+        if len(args) == 1:
+            positional = args[0]
+            if isinstance(positional, InventoryProductResult):
+                if inventory is not None:
+                    raise TypeError("InventoryProductResult was provided more than once.")
+                inventory = positional
+            elif isinstance(positional, SalesAnalysisResult):
+                if sales is not None:
+                    raise TypeError("SalesAnalysisResult was provided more than once.")
+                sales = positional
+            else:
+                raise TypeError("Third positional input must be InventoryProductResult or SalesAnalysisResult.")
+        elif len(args) == 2:
+            if inventory is not None or sales is not None:
+                raise TypeError("Do not mix positional sales/inventory inputs with their keywords.")
+            sales, inventory = args
+        elif len(args) > 2:
+            raise TypeError("PlanningInputs accepts at most four positional inputs.")
+        if inventory is None:
+            raise InputConsistencyError("InventoryProductResult is required and must be normalized.")
+        object.__setattr__(self, "request", request)
+        object.__setattr__(self, "trend", trend)
+        object.__setattr__(self, "inventory", inventory)
+        object.__setattr__(self, "sales", sales)
 
 
 @dataclass(frozen=True)
@@ -169,7 +208,7 @@ class ProductPlanningContext:
     trends: TrendResult
     sales: SalesAnalysisResult
     inventory: InventoryProductResult
-    input_statuses: Mapping[str, InputStatus]
+    input_statuses: Mapping[str, ContextInputStatus]
     styling_relationships: tuple[StylingRelationship, ...] = ()
     conflicts: tuple[ContextConflict, ...] = ()
     evidence_ids: tuple[str, ...] = ()
@@ -204,8 +243,9 @@ def _comparable_context(
     if request.channel:
         values["channel"]["request"] = request.channel
 
-    sales_seasons = _unique([item.season for item in inputs.sales.observations if item.season])
-    sales_categories = _unique([item.category for item in inputs.sales.observations if item.category])
+    sales_observations = inputs.sales.observations if inputs.sales else ()
+    sales_seasons = _unique([item.season for item in sales_observations if item.season])
+    sales_categories = _unique([item.category for item in sales_observations if item.category])
     if sales_seasons:
         values["season"]["sales"] = sales_seasons
     if sales_categories:
@@ -271,7 +311,7 @@ def _comparable_context(
                     signal.value
                 )
     sales_attributes: dict[str, set[object]] = {}
-    for observation in inputs.sales.observations:
+    for observation in sales_observations:
         for signal in observation.attributes:
             if signal.value is not None:
                 sales_attributes.setdefault(signal.name.strip().casefold(), set()).add(
@@ -338,20 +378,22 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         raise InputConsistencyError("PlanningRequest is required and must be normalized.")
     if not isinstance(inputs.trend, TrendResult):
         raise InputConsistencyError("TrendResult is required and must be normalized.")
-    if not isinstance(inputs.sales, SalesAnalysisResult):
-        raise InputConsistencyError("SalesAnalysisResult is required and must be normalized.")
     if not isinstance(inputs.inventory, InventoryProductResult):
         raise InputConsistencyError("InventoryProductResult is required and must be normalized.")
+    if inputs.sales is not None and not isinstance(inputs.sales, SalesAnalysisResult):
+        raise InputConsistencyError("Optional SalesAnalysisResult must be normalized when provided.")
     if not isinstance(inputs.request.result, AgentResult):
         raise InputConsistencyError("PlanningRequest must contain a normalized AgentResult.")
     if not isinstance(inputs.trend.result, AgentResult):
         raise InputConsistencyError("TrendResult must contain a normalized AgentResult.")
-    if not isinstance(inputs.sales.result, AgentResult):
+    if inputs.sales is not None and not isinstance(inputs.sales.result, AgentResult):
         raise InputConsistencyError("SalesAnalysisResult must contain a normalized AgentResult.")
     if not isinstance(inputs.inventory.result, AgentResult):
         raise InputConsistencyError("InventoryProductResult must contain a normalized AgentResult.")
 
-    results = [inputs.request.result, inputs.trend.result, inputs.sales.result, inputs.inventory.result]
+    results = [inputs.request.result, inputs.trend.result, inputs.inventory.result]
+    if inputs.sales is not None:
+        results.append(inputs.sales.result)
     request_ids = {result.request_id for result in results}
     if len(request_ids) != 1 or not next(iter(request_ids), ""):
         raise InputConsistencyError("Inputs must share one non-empty request_id.")
@@ -362,13 +404,14 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
             "Inputs must use one non-empty, compatible schema_version."
         )
 
-    statuses: dict[str, InputStatus] = {}
-    named_results = (
+    statuses: dict[str, ContextInputStatus] = {}
+    named_results = [
         ("planning_request", inputs.request.result),
         ("trend_result", inputs.trend.result),
-        ("sales_analysis_result", inputs.sales.result),
         ("inventory_product_result", inputs.inventory.result),
-    )
+    ]
+    if inputs.sales is not None:
+        named_results.append(("sales_analysis_result", inputs.sales.result))
     for input_name, result in named_results:
         if result.status not in {"ok", "partial", "no_results", "error"}:
             raise InputConsistencyError(
@@ -377,19 +420,35 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         if not result.agent_id:
             raise InputConsistencyError("Each upstream result must include an agent_id.")
         statuses[input_name] = result.status
+    if inputs.sales is None:
+        statuses["sales_analysis_result"] = "not_provided"
+
+    sales = inputs.sales or SalesAnalysisResult(
+        result=AgentResult(
+            "optional-historical-sales-extension",
+            next(iter(request_ids)),
+            next(iter(schema_versions)),
+            "no_results",
+            limitations=(
+                "The optional local historical-sales extension was not provided; "
+                "no sales source was queried or analyzed.",
+            ),
+        ),
+        observations=(),
+    )
 
     evidence_ids = _unique(
         [
             *inputs.request.result.evidence_ids,
             *inputs.trend.result.evidence_ids,
-            *inputs.sales.result.evidence_ids,
+            *(inputs.sales.result.evidence_ids if inputs.sales else ()),
             *inputs.inventory.result.evidence_ids,
-            *(evidence_id for observation in inputs.sales.observations for evidence_id in observation.evidence_ids),
+            *(evidence_id for observation in (inputs.sales.observations if inputs.sales else ()) for evidence_id in observation.evidence_ids),
             *(evidence_id for candidate in inputs.trend.candidates for evidence_id in candidate.evidence_ids),
             *(evidence_id for product in inputs.inventory.products for evidence_id in product.evidence_ids),
             *(evidence_id for attr in inputs.request.requested_attributes for evidence_id in attr.evidence_ids),
             *(evidence_id for candidate in inputs.trend.candidates for attr in candidate.attributes for evidence_id in attr.evidence_ids),
-            *(evidence_id for observation in inputs.sales.observations for attr in observation.attributes for evidence_id in attr.evidence_ids),
+            *(evidence_id for observation in (inputs.sales.observations if inputs.sales else ()) for attr in observation.attributes for evidence_id in attr.evidence_ids),
             *(evidence_id for product in inputs.inventory.products for attr in product.attributes for evidence_id in attr.evidence_ids),
         ]
     )
@@ -398,7 +457,7 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         [
             *inputs.request.result.limitations,
             *inputs.trend.result.limitations,
-            *inputs.sales.result.limitations,
+            *(inputs.sales.result.limitations if inputs.sales else sales.result.limitations),
             *inputs.inventory.result.limitations,
             *(
                 f"Inventory note ({product.note_origin}; not independently verified): {product.note}"
@@ -448,7 +507,7 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         schema_version=next(iter(schema_versions)),
         request=inputs.request,
         trends=inputs.trend,
-        sales=inputs.sales,
+        sales=sales,
         inventory=inputs.inventory,
         input_statuses=statuses,
         styling_relationships=styling_relationships,

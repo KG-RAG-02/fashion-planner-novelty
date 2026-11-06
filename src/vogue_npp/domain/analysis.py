@@ -91,6 +91,10 @@ def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysi
         limitations.append(f"TrendResult input status is '{trend_status}'; no trend claims were analyzed.")
     if sales_status in {"error", "no_results"}:
         limitations.append(f"SalesAnalysisResult status is '{sales_status}'; no sales observations were analyzed.")
+    elif sales_status == "not_provided":
+        limitations.append(
+            "Optional historical-sales evidence was not provided; no sales observations were analyzed."
+        )
     if inventory_status in {"error", "no_results"}:
         limitations.append(
             f"InventoryProductResult input status is '{inventory_status}'; "

@@ -349,6 +349,11 @@ def _validation_questions(
 ) -> tuple[str, ...]:
     questions = [*context.questions_for_validation, *analysis_questions]
     for input_name, status in context.input_statuses.items():
+        if input_name == "sales_analysis_result" and status == "not_provided":
+            questions.append(
+                "선택적 과거 판매 분석은 제공되지 않아 이 초안은 판매 근거를 사용하지 않았습니다."
+            )
+            continue
         if status in {"error", "no_results"}:
             questions.append(
                 f"{input_name} 상태가 '{status}'이므로 해당 입력을 사용하지 않았습니다. 재조회 또는 조건 확인이 필요합니다."
@@ -385,7 +390,10 @@ def _validation_questions(
         )
     ):
         questions.append("트렌드 후보를 뒷받침하는 Evidence 참조를 확인해 주세요.")
-    if not _input_usable(context, "sales_analysis_result") or not context.sales.observations:
+    sales_status = context.input_statuses.get("sales_analysis_result")
+    if sales_status != "not_provided" and (
+        not _input_usable(context, "sales_analysis_result") or not context.sales.observations
+    ):
         questions.append("요청 카테고리에 적용할 수 있는 판매 분석 결과를 확인해 주세요.")
     if not _input_usable(context, "inventory_product_result") or not context.inventory.products:
         questions.append("자사 상품 및 재고 자료의 범위와 조회 상태를 확인해 주세요.")

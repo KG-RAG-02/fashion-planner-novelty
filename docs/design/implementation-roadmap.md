@@ -9,7 +9,7 @@
 
 1. 5단계 파이프라인의 **3번 에이전트만** 구현합니다. 4번 Product Feasibility Agent는 이후 별도 저장소, 5번 Planning Review Agent는 별도 담당 경계입니다.
    - Project Workflow의 `VOGUE 기획 파이프라인` 토글은 과거 검토용 초안입니다. 경쟁상품 조사는 계속 제외합니다. H&M Kaggle 판매 집계는 사용자가 별도로 확정한 최신 범위이며 해당 과거 토글을 근거로 하지 않습니다.
-2. 내부 생성 입력은 `TrendResult + PlanningRequest + SalesAnalysisResult + InventoryProductResult → ProductConceptDraft` 순서로 분석합니다. 외부 `ProductConcept` 응답 adapter는 공통 계약 합의 후 연결합니다.
+2. 내부 생성의 핵심 입력은 `PlanningRequest + TrendResult + InventoryProductResult → ProductConceptDraft`입니다. H&M Kaggle `SalesAnalysisResult`는 선택형 로컬 과거 데이터 확장이고 공통 필수 입력이 아닙니다. 외부 `ProductConcept` 응답 adapter는 공통 계약 합의 후 연결합니다.
 3. 경쟁상품/외부상품 시장 조사는 범위에서 제외합니다. H&M Kaggle 거래 이력의 기간별 상품·채널 판매 집계는 추가된 분석 목표입니다. 현재 재고는 기준 시점 스냅샷이며 판매 추세와 구분합니다.
 4. 입력에서 확인한 사실, 해석, 제안, 가설, 미확정을 나눕니다. 고객 선호·시장 수요·가격·원가·생산 가능성을 만들어 사실처럼 쓰지 않습니다.
 5. 임시 구현 모델은 공통 계약이 아닙니다. 별도 `vogue-contracts` 저장소나 이 저장소 단독 기준 계약을 만들지 않습니다.
@@ -21,7 +21,7 @@
 
 | 영역 | 현재 상태 | 남은 핵심 공백 |
 | --- | --- | --- |
-| 입력 컨텍스트 | 필수 판매 분석·TrendResult·PlanningRequest·InventoryProductResult의 request/schema 일치, 차원 충돌, 슬롯별 상태·Evidence·제한 보존 | 공통 wire payload adapter, H&M 분류 taxonomy 합의, 비교 가능한 기간·상품 ID·단위 정의 |
+| 입력 컨텍스트 | 세 핵심 입력(PlanningRequest, TrendResult, InventoryProductResult)의 정합성·상태·Evidence·제한 보존. H&M 판매 확장은 선택 입력 | 공통 wire payload adapter, H&M 분류 taxonomy 합의, 비교 가능한 기간·상품 ID·단위 정의 |
 | 콘셉트 초안 | 결정적 기준선, `ConceptGenerator` 포트, 입력 Evidence 기반 트렌드/자사 상품 속성 비교 | 복수 엔진 adapter, 고정 컨텍스트 비교 harness, claim-level grounding 및 MD blind evaluation |
 | 출처 검사 | Evidence ID 존재 여부, 일부 claim/attribute 출처 형식 검사 | Evidence 권한·최신성·의미적 뒷받침은 입력/별도 평가 영역 |
 | 서비스 연결 | 공통 wire adapter와 외부 API 없음. `.env`와 provider-neutral settings 마련 | 공통 계약 확정 후 입력·출력 adapter, 이후 전송/API |
@@ -37,8 +37,8 @@ flowchart LR
     A[PlanningRequest] --> N[입력 검증 및 정규화]
     B[TrendResult] --> N
     C[InventoryProductResult] --> N
-    K[H&M Kaggle files] --> I[manifest·정제·주간 판매 집계]
-    I --> X
+    K[Optional local H&M Kaggle extension] --> I[manifest·정제·주간 판매 집계]
+    I -. optional historical evidence .-> X
     N --> X[조건 충돌·상태·Evidence 보존]
     X --> O[근거 기반 기획 기회 분석]
     O --> G[ConceptGenerator 포트: 규칙 기반 기준선 / 복수 Evidence-grounded LLM 엔진]

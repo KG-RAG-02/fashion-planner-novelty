@@ -7,7 +7,7 @@ VOGUE 프로젝트의 3번 **New Product Planning Agent**를 구현하는 저장
 - 현재 작업: 상품·판매 자료와 트렌드·고객 의견·재고 근거를 활용해 MD/디자이너가 검토하고 수정할 수 있는 신상품 브리프와 이미지 시안 흐름을 프로토타입으로 구현합니다.
 - 로컬 UI의 기회 분석·문서·재고·고객 의견 자료는 모두 가상 fixture이며 Kaggle 데이터 또는 실제 회사 데이터와 혼합하지 않습니다.
 - H&M Kaggle 파이프라인은 실제로 내려받은 상품 마스터와 거래 이력을 로컬 처리하고, 결과를 합성 데모와 분리된 **H&M 데이터** 화면에 표시합니다.
-- 내부 입력 모델: 필수 `TrendResult`, `PlanningRequest`, `SalesAnalysisResult`, `InventoryProductResult`
+- 핵심 내부 입력 모델: `PlanningRequest`, `TrendResult`, `InventoryProductResult`. H&M 과거 판매 분석은 선택형 로컬 확장입니다.
 - 내부 출력: `ProductConceptDraft`; 공통 `ProductConcept` adapter는 계약 합의 후 연결
 - H&M 내부 상품·판매 실적 분석을 포함합니다. 경쟁상품 조사는 현재 범위에서 제외합니다.
 - 원가·마진, 생산·조달, 고객 피드백 분석은 이 에이전트에서 구현하지 않습니다.
@@ -22,7 +22,7 @@ VOGUE 프로젝트의 3번 **New Product Planning Agent**를 구현하는 저장
 
 ## RAG·LLM 경계와 설정
 
-VOGUE 전체 흐름은 RAG 기반 LLM 에이전트 시스템입니다. 이 저장소의 3번 에이전트는 1번 Query & Trend Agent의 `TrendResult`, 2번 에이전트의 상품·재고 결과, 그리고 H&M Kaggle 파일에서 만든 버전·기간이 명시된 상품/판매 Evidence를 사용합니다. Kaggle 데이터는 로컬 배치 처리로 수집하며 실시간 운영 API로 취급하지 않습니다. 현재 `ConceptGenerator` 포트에는 결정적 기준선이 연결되어 있습니다. 향후 같은 정규화 입력과 Evidence를 여러 허용 엔진에 제공하고, 근거성·요청 준수·MD 유용성 등을 별도로 평가합니다.
+VOGUE 전체 흐름은 RAG 기반 LLM 에이전트 시스템입니다. 이 저장소의 3번 에이전트는 1번 Query & Trend Agent의 `TrendResult`와 2번 에이전트의 상품·재고 결과를 핵심 입력으로 사용합니다. H&M Kaggle 과거 판매 분석은 선택형 로컬 확장으로 제공하며, 공통 에이전트 입력 계약이나 운영 데이터 연결이 아닙니다. Kaggle 데이터는 로컬 배치 처리로 수집하며 실시간 운영 API로 취급하지 않습니다. 현재 `ConceptGenerator` 포트에는 결정적 기준선이 연결되어 있습니다. 향후 같은 정규화 입력과 Evidence를 여러 허용 엔진에 제공하고, 근거성·요청 준수·MD 유용성 등을 별도로 평가합니다.
 
 로컬 API 키 파일은 `.env`이며 현재 `LLM_API_KEY` 값은 비어 있습니다. `.env`는 Git에서 제외됩니다. 복제한 팀원이 참고할 수 있는 [`.env.example`](.env.example)도 제공합니다. 여러 엔진 연결 시 사용할 환경 변수 별칭과 설정은 엔진 선택 후 정하며, 실제 키를 Git에 올리지 않습니다. `requirements.txt`에는 `.env`를 읽기 위한 `python-dotenv`만 넣었으며, 모델 제공자가 결정되기 전까지 LLM SDK는 설치하지 않습니다. 설정을 읽는 [load_settings](src/vogue_npp/settings.py)는 키를 출력하거나 네트워크 요청을 보내지 않습니다.
 
@@ -31,10 +31,11 @@ VOGUE 전체 흐름은 RAG 기반 LLM 에이전트 시스템입니다. 이 저�
 - [Project Overview](https://app.notion.com/p/40d3269b1acd809c98c5dc5de4f61d24)
 - [Project Workflow](https://app.notion.com/p/40f3269b1acd81378143f35b599ef9a0)
 - [저장소 분리 협업 가이드](https://app.notion.com/p/40e3269b1acd81489fecc1052e033b54)
+- [Agent 3 책임 경계 및 현재 구현 대조](docs/design/agent-3-responsibility-map.md)
 
 Agent 3의 데이터 출처·Evidence 경계는 [데이터·Evidence 계획](docs/design/data-source-and-evidence-plan.md)에, Kaggle 원본의 수집·정제·집계 설계는 [H&M Kaggle 처리 계획](docs/design/hm-kaggle-data-pipeline.md)에 정리했습니다. 원본과 파생 데이터는 `data/` 아래에 저장하고 Git에서 제외합니다.
 
-네 입력의 분석 우선순위(트렌드 → 사용자 요청 → 판매 분석 → 자사 상품·재고), 내부 모델 매핑과 실패 동작은 [입력·출력 처리 흐름](docs/design/input-output-processing-flow.md)을 참고하세요. 우선순위는 분석 순서이며 요청 범위를 무시하거나 입력 간 충돌을 임의로 해소하는 근거가 아닙니다. 다만 버전 지정된 상·하의 역할 분류 규칙으로 코디 관계가 명확한 경우에는 서로 다른 카테고리를 충돌 대신 별도 코디 맥락으로 기록합니다. 네 입력은 모두 필수이며, `InventoryProductResult`에서 재고 필드가 부분적으로 비면 상태와 제한을 보존합니다. 외부 공통 계약 어댑터는 합의 후 연결합니다.
+세 핵심 입력의 내부 매핑과 실패 동작은 [입력·출력 처리 흐름](docs/design/input-output-processing-flow.md)을 참고하세요. 선택형 H&M 과거 판매 확장이 제공되면 추가 관찰로 검토하되, 미제공 시에도 핵심 입력만으로 초안을 만들고 판매 근거를 사용하지 않았음을 표시합니다. 입력 간 충돌은 임의로 해소하지 않습니다. 버전 지정된 상·하의 역할 분류 규칙으로 코디 관계가 명확한 경우에는 서로 다른 카테고리를 충돌 대신 별도 코디 맥락으로 기록합니다. `InventoryProductResult`의 재고 필드가 부분적으로 비면 상태와 제한을 보존합니다. 외부 공통 계약 어댑터는 합의 후 연결합니다.
 
 가공된 H&M Style 판매 요약은 `load_hm_sales_analysis()`로 `SalesAnalysisResult`에 매핑할 수 있습니다. Kaggle 상품 분류를 요청 카테고리로 연결하는 `source_category_map`과 `category_mapping_version`은 프로젝트 taxonomy와 대조해 호출자가 명시해야 하며, 데이터에 없는 시즌이나 채널 의미를 자동 추정하지 않습니다.
 
@@ -171,7 +172,8 @@ project_06/
 ```python
 from vogue_npp import PlanningInputs, build_planning_context, generate_concept_draft
 
-inputs = PlanningInputs(request=..., trend=..., sales=..., inventory=...)  # all four normalized inputs
+inputs = PlanningInputs(request=..., trend=..., inventory=...)  # three core normalized inputs
+# Optional local extension: PlanningInputs(request=..., trend=..., inventory=..., sales=...)
 context = build_planning_context(inputs)
 draft, validation_issues = generate_concept_draft(context)
 ```

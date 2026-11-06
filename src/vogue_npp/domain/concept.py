@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from typing import Literal, Mapping
 
 from .context import (
+    ContextInputStatus,
     ContextConflict,
     ContextOrigin,
-    InputStatus,
     ProductPlanningContext,
 )
 
@@ -71,7 +71,7 @@ class ProductConceptDraft:
     channel: tuple[str, ...] = ()
     request_constraints: tuple[str, ...] = ()
     field_origins: Mapping[str, ContextOrigin] = field(default_factory=dict)
-    input_statuses: Mapping[str, InputStatus] = field(default_factory=dict)
+    input_statuses: Mapping[str, ContextInputStatus] = field(default_factory=dict)
     input_conflicts: tuple[ContextConflict, ...] = ()
     evidence_ids: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
