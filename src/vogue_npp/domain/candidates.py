@@ -17,6 +17,36 @@ SCORER_VERSION = "opportunity-scorer-configurable-v1"
 SELECTOR_VERSION = "portfolio-selector-v1"
 
 
+def peer_percentile_scores(observations: Mapping[str, float | None]) -> dict[str, float | None]:
+    """Normalize a like-for-like peer cohort without max-scaling saturation.
+
+    Use only comparable observations (same category, period, channel, unit and
+    metric definition). Midranks keep genuine ties equal; a singleton cohort
+    receives 50 because its relative position is unknown. The top observed
+    item may reach 100, but cannot make every item score 100.
+    """
+    valid = [(key, value) for key, value in observations.items()
+             if value is not None and math.isfinite(value)]
+    ordered = sorted(valid, key=lambda item: (item[1], item[0]))
+    n = len(ordered)
+    result: dict[str, float | None] = {key: None for key in observations}
+    if not n:
+        return result
+    index = 0
+    while index < n:
+        end = index + 1
+        value = ordered[index][1]
+        while end < n and ordered[end][1] == value:
+            end += 1
+        # One-based average rank, mapped to 0..100. Ties share a midrank.
+        average_rank = ((index + 1) + end) / 2
+        percentile = 50.0 if n == 1 else 100 * (average_rank - 1) / (n - 1)
+        for key, _ in ordered[index:end]:
+            result[key] = round(percentile, 2)
+        index = end
+    return result
+
+
 @dataclass(frozen=True)
 class CandidateAttribute:
     name: str

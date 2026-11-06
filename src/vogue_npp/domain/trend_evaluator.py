@@ -16,7 +16,7 @@ from typing import Protocol, Sequence
 from .trend_batch import EvidenceDocument, TrendBatch, TrendInput
 
 
-EVALUATOR_VERSION = "trend-evaluator-rules-v1"
+EVALUATOR_VERSION = "trend-evaluator-category-affinity-v2"
 DEFAULT_TAXONOMY_VERSION = "unconfigured"
 
 
@@ -27,6 +27,16 @@ class Category:
     aliases: tuple[str, ...] = ()
     taxonomy_version: str = DEFAULT_TAXONOMY_VERSION
     relevant_attribute_types: tuple[str, ...] = ()
+    # Optional taxonomy-owned applicability values, keyed as "type:canonical value".
+    # These are category-fit judgements, not upstream trend popularity scores.
+    attribute_value_affinities: tuple[tuple[str, float], ...] = ()
+
+    def __post_init__(self) -> None:
+        keys = [normalize_text(key) for key, _ in self.attribute_value_affinities]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Category attribute affinity keys must be unique.")
+        if any(not math.isfinite(score) or score < 0 or score > 1 for _, score in self.attribute_value_affinities):
+            raise ValueError("Category attribute affinities must be within 0..1.")
 
 
 @dataclass(frozen=True)
@@ -199,8 +209,16 @@ def _category_fit(trend_id: str | None, trend_name: str, category: Category, att
         return TrendCategoryEvaluation(trend_id, trend_name, category.category_id, "insufficient_evidence", None,
             {"attribute_relevance": None, "evidence_verification": 1.0, "recency": None, "independence": None},
             evidence_ids, tuple(limitations), EVALUATOR_VERSION, taxonomy)
-    relevant = sum(item.attribute_type in category.relevant_attribute_types for item in supported)
-    relevance = min(1.0, relevant / max(1, len(category.relevant_attribute_types)))
+    affinities = {normalize_text(key): value for key, value in category.attribute_value_affinities}
+    applicable = [item for item in supported if item.attribute_type in category.relevant_attribute_types]
+    if not applicable:
+        relevance = 0.0
+    else:
+        # A broad type match (e.g. every trend is "style") is not enough to
+        # award full fit. Use an explicit category × attribute-value judgement
+        # when the taxonomy has one; otherwise preserve the legacy type match.
+        values = [affinities.get(normalize_text(f"{item.attribute_type}:{item.value}"), 1.0) for item in applicable]
+        relevance = sum(values) / len(values)
     verification = len(verified_docs) / max(1, len(evidence))
     # No target-season validity window or independent-source resolver exists
     # yet. Avoid making up recency/independence values; score only configured,
@@ -217,7 +235,7 @@ def _category_fit(trend_id: str | None, trend_name: str, category: Category, att
     weight_sum = weights.attribute_relevance + weights.evidence_verification
     score = round(100 * (weights.attribute_relevance * relevance + weights.evidence_verification * verification) / weight_sum, 2)
     return TrendCategoryEvaluation(trend_id, trend_name, category.category_id, "ok", score,
-        {"attribute_relevance": relevance, "evidence_verification": verification, "recency": None, "independence": None},
+        {"attribute_relevance": round(relevance, 4), "evidence_verification": round(verification, 4), "recency": None, "independence": None},
         evidence_ids, tuple((*limitations, f"fit weights: {weights.version}")), EVALUATOR_VERSION, taxonomy)
 
 
