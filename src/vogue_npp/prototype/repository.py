@@ -20,6 +20,16 @@ BRIEF_FIELDS = {
 }
 
 
+class _ClosingConnection(sqlite3.Connection):
+    """Make ``with connect()`` release file handles as well as its transaction."""
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> bool | None:
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -27,7 +37,7 @@ def utc_now() -> str:
 def connect() -> sqlite3.Connection:
     path = database_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, factory=_ClosingConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
     return conn

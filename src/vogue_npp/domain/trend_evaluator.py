@@ -160,6 +160,18 @@ def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip()).casefold()
 
 
+def _contains_term(text: str, term: str) -> bool:
+    """Match English tokens exactly while allowing Korean compound forms."""
+    normalized_text = normalize_text(text)
+    normalized_term = normalize_text(term)
+    if normalized_term.isascii():
+        return re.search(
+            rf"(?<![a-z0-9]){re.escape(normalized_term)}(?![a-z0-9])",
+            normalized_text,
+        ) is not None
+    return normalized_term in normalized_text
+
+
 _ATTRIBUTE_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("color", ("버건디", "burgundy", "red", "빨강", "레드", "blue", "파랑", "블루", "green", "초록", "그린", "brown", "브라운", "black", "검정", "화이트", "white")),
     ("material", ("가죽", "레더", "leather", "데님", "denim", "울", "wool", "캐시미어", "cashmere", "니트", "knit", "실크", "silk", "린넨", "linen", "코튼", "cotton")),
@@ -176,14 +188,21 @@ def extract_attributes(trend: TrendInput) -> tuple[ExtractedAttribute, ...]:
     evaluator's evidence-supported fit calculation.
     """
     haystack = normalize_text(f"{trend.name} {trend.description}")
-    evidence_text = " ".join(normalize_text(doc.excerpt or "") for doc in trend.evidence)
     found: list[ExtractedAttribute] = []
     for attribute_type, terms in _ATTRIBUTE_PATTERNS:
-        for term in terms:
-            normalized_term = normalize_text(term)
-            if normalized_term in haystack:
-                support = tuple(doc.document_id for doc in trend.evidence if normalized_term in normalize_text(doc.excerpt or ""))
-                found.append(ExtractedAttribute(attribute_type, term, "evidence_observation" if support else "hypothesis", support, 1.0 if support else None))
+        matches = [term for term in terms if _contains_term(haystack, term)]
+        # Prefer the longer matched phrase when one alias is contained in
+        # another (e.g. "minimalism" also contains the alias "minimal").
+        matches = [term for term in matches if not any(
+            term != other and normalize_text(term) in normalize_text(other)
+            for other in matches
+        )]
+        for term in matches:
+            support = tuple(
+                doc.document_id for doc in trend.evidence
+                if _contains_term(doc.excerpt or "", term)
+            )
+            found.append(ExtractedAttribute(attribute_type, term, "evidence_observation" if support else "hypothesis", support, 1.0 if support else None))
     # Deduplicate equivalent dictionary hits while preserving deterministic order.
     unique: dict[tuple[str, str], ExtractedAttribute] = {}
     for item in found:
@@ -192,14 +211,23 @@ def extract_attributes(trend: TrendInput) -> tuple[ExtractedAttribute, ...]:
 
 
 def _category_fit(trend_id: str | None, trend_name: str, category: Category, attributes: Sequence[ExtractedAttribute], evidence: Sequence[EvidenceAssessment], evidence_ids: tuple[str, ...], weights: TrendFitWeights | None) -> TrendCategoryEvaluation:
-    supported = [item for item in attributes if item.status == "evidence_observation" and item.evidence_ids]
     verified_docs = [item for item in evidence if item.verified]
+    verified_evidence_ids = {item.document_id for item in verified_docs}
+    # An excerpt match from an unverified document must not become an input to
+    # a scored category assessment merely because a different document in the
+    # same batch happened to verify successfully.
+    supported = [
+        item for item in attributes
+        if item.status == "evidence_observation"
+        and item.evidence_ids
+        and verified_evidence_ids.intersection(item.evidence_ids)
+    ]
     limitations: list[str] = []
     taxonomy = category.taxonomy_version
     if not supported:
         return TrendCategoryEvaluation(trend_id, trend_name, category.category_id, "insufficient_evidence", None,
             {"attribute_relevance": None, "evidence_verification": None, "recency": None, "independence": None},
-            evidence_ids, ("근거 인용으로 확인된 패션 속성이 없어 category fit 점수를 계산하지 않았습니다.",), EVALUATOR_VERSION, taxonomy)
+            evidence_ids, ("검증된 원문과 연결된 패션 속성이 없어 category fit 점수를 계산하지 않았습니다.",), EVALUATOR_VERSION, taxonomy)
     if not verified_docs:
         return TrendCategoryEvaluation(trend_id, trend_name, category.category_id, "insufficient_evidence", None,
             {"attribute_relevance": 0.0, "evidence_verification": 0.0, "recency": None, "independence": None},
@@ -210,14 +238,30 @@ def _category_fit(trend_id: str | None, trend_name: str, category: Category, att
             {"attribute_relevance": None, "evidence_verification": 1.0, "recency": None, "independence": None},
             evidence_ids, tuple(limitations), EVALUATOR_VERSION, taxonomy)
     affinities = {normalize_text(key): value for key, value in category.attribute_value_affinities}
-    applicable = [item for item in supported if item.attribute_type in category.relevant_attribute_types]
+    relevant_types = {normalize_text(value) for value in category.relevant_attribute_types}
+    applicable = [item for item in supported if normalize_text(item.attribute_type) in relevant_types]
     if not applicable:
         relevance = 0.0
     else:
-        # A broad type match (e.g. every trend is "style") is not enough to
-        # award full fit. Use an explicit category × attribute-value judgement
-        # when the taxonomy has one; otherwise preserve the legacy type match.
-        values = [affinities.get(normalize_text(f"{item.attribute_type}:{item.value}"), 1.0) for item in applicable]
+        # A broad type match (e.g. every trend is "style") cannot establish
+        # value-level product applicability. Do not silently treat a missing
+        # taxonomy judgement as full affinity.
+        missing_values = [
+            f"{item.attribute_type}:{item.value}" for item in applicable
+            if normalize_text(f"{item.attribute_type}:{item.value}") not in affinities
+        ]
+        if missing_values:
+            limitations.append(
+                "Category taxonomy에 속성값별 적합도 기준이 없어 점수를 보류했습니다: "
+                + ", ".join(missing_values)
+            )
+            return TrendCategoryEvaluation(
+                trend_id, trend_name, category.category_id, "unconfigured", None,
+                {"attribute_relevance": None, "evidence_verification": len(verified_docs) / max(1, len(evidence)),
+                 "recency": None, "independence": None},
+                evidence_ids, tuple(limitations), EVALUATOR_VERSION, taxonomy,
+            )
+        values = [affinities[normalize_text(f"{item.attribute_type}:{item.value}")] for item in applicable]
         relevance = sum(values) / len(values)
     verification = len(verified_docs) / max(1, len(evidence))
     # No target-season validity window or independent-source resolver exists
@@ -233,7 +277,10 @@ def _category_fit(trend_id: str | None, trend_name: str, category: Category, att
             {"attribute_relevance": relevance, "evidence_verification": verification, "recency": None, "independence": None},
             evidence_ids, tuple(limitations), EVALUATOR_VERSION, taxonomy)
     weight_sum = weights.attribute_relevance + weights.evidence_verification
-    score = round(100 * (weights.attribute_relevance * relevance + weights.evidence_verification * verification) / weight_sum, 2)
+    score = 0.0 if relevance == 0 else round(
+        100 * (weights.attribute_relevance * relevance + weights.evidence_verification * verification) / weight_sum,
+        2,
+    )
     return TrendCategoryEvaluation(trend_id, trend_name, category.category_id, "ok", score,
         {"attribute_relevance": round(relevance, 4), "evidence_verification": round(verification, 4), "recency": None, "independence": None},
         evidence_ids, tuple((*limitations, f"fit weights: {weights.version}")), EVALUATOR_VERSION, taxonomy)

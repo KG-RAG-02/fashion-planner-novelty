@@ -45,7 +45,10 @@ class TrendPlanningVisualTests(unittest.TestCase):
         batch = TrendBatch.from_mapping({"schema_version":"1.0", "batch_id":"B1", "target_season":"2027FW", "trends":[{
             "trend_id":"T1", "name":"Burgundy", "description":"Burgundy color fashion trend",
             "evidence":[{"document_id":"D1", "title":"Source", "excerpt":"Burgundy color fashion trend", "published_at":"2026-09-01"}]}]})
-        taxonomy = InMemoryCategoryTaxonomy((Category("outer", "Outerwear", relevant_attribute_types=("color",)),), "tax1")
+        taxonomy = InMemoryCategoryTaxonomy((Category(
+            "outer", "Outerwear", relevant_attribute_types=("color",),
+            attribute_value_affinities=(("color:burgundy", 1.0),),
+        ),), "tax1")
         ref = EvidenceRef("CAT1", "catalog", None, None, None, "permitted", True)
         catalog = InMemoryProductCatalogRepository(({
             "product_id":"P1", "category_id":"outer", "name":"Classic jacket",
@@ -68,6 +71,8 @@ class TrendPlanningVisualTests(unittest.TestCase):
         self.assertLessEqual(len(second.selection.selected), 5)
         self.assertEqual(len(second.briefs), len(second.selection.selected))
         self.assertTrue(all(brief.visual_status == "not_requested" for brief in second.briefs))
+        self.assertEqual(second.briefs[0].claims[0]["kind"], "proposal")
+        self.assertEqual(second.briefs[0].claims[0]["evidence_ids"], [])
 
     def test_prompt_retains_evidence_and_does_not_call_provider(self):
         item = candidate()

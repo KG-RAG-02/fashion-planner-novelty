@@ -280,7 +280,6 @@ def select_top_candidates(
         raise ValueError("min_score must be within the 0..100 score range.")
     excluded: dict[str, str] = {}
     eligible: list[tuple[Candidate, CandidateScore]] = []
-    seen: dict[str, str] = {}
     seen_candidate_ids: set[str] = set()
     for candidate in candidates:
         if candidate.candidate_id in seen_candidate_ids:
@@ -293,23 +292,37 @@ def select_top_candidates(
         if score.score < min_score:
             excluded[candidate.candidate_id] = "최소 점수 기준 미달입니다."
             continue
-        fingerprint = _fingerprint(candidate)
-        if fingerprint in seen:
-            excluded[candidate.candidate_id] = "중복 후보로 제외되었습니다."
-            continue
-        seen[fingerprint] = candidate.candidate_id
         eligible.append((candidate, score))
     eligible.sort(key=lambda pair: (-float(pair[1].score), -pair[1].coverage, pair[0].candidate_id))
+    # Deduplicate only after sorting so the strongest supported version of a
+    # concept survives even when generators emit a weaker duplicate first.
+    deduplicated: list[tuple[Candidate, CandidateScore]] = []
+    seen_fingerprints: set[str] = set()
+    for candidate, score in eligible:
+        fingerprint = _fingerprint(candidate)
+        if fingerprint in seen_fingerprints:
+            excluded[candidate.candidate_id] = "중복 후보로 제외되었습니다."
+            continue
+        seen_fingerprints.add(fingerprint)
+        deduplicated.append((candidate, score))
+    # A single requested category is a scope constraint, not a diversity
+    # dimension. Applying the default cap there would silently truncate a
+    # five-item brief to two candidates even when trend/type diversity exists.
+    effective_category_cap = (
+        max_per_category
+        if len({candidate.category_id for candidate, _ in deduplicated}) > 1
+        else None
+    )
     category_counts: dict[str, int] = {}
     trend_counts: dict[str, int] = {}
     type_counts: dict[str, int] = {}
     selected: list[Candidate] = []
-    for candidate, score in eligible:
+    for candidate, score in deduplicated:
         if len(selected) >= limit:
             excluded[candidate.candidate_id] = "선정 한도 초과입니다."
             continue
         category_count = category_counts.get(candidate.category_id, 0)
-        if category_count >= max_per_category:
+        if effective_category_cap is not None and category_count >= effective_category_cap:
             excluded[candidate.candidate_id] = "카테고리 다양성 제한을 초과했습니다."
             continue
         trend_key = candidate.responds_to_trend_ids[0] if candidate.responds_to_trend_ids else "unknown"

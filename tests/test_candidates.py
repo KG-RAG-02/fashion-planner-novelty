@@ -25,7 +25,10 @@ class CandidateTests(unittest.TestCase):
         batch = TrendBatch.from_mapping({"schema_version":"1.0", "batch_id":"B1", "trends":[{
             "trend_id":"T1", "name":"Burgundy", "description":"Burgundy color fashion trend",
             "evidence":[{"document_id":"D1", "title":"Source", "excerpt":"Burgundy color fashion trend", "published_at":"2026-09-01"}]}]})
-        taxonomy = InMemoryCategoryTaxonomy((Category("outer", "Outerwear", relevant_attribute_types=("color",)),), "tax1")
+        taxonomy = InMemoryCategoryTaxonomy((Category(
+            "outer", "Outerwear", relevant_attribute_types=("color",),
+            attribute_value_affinities=(("color:burgundy", 1.0),),
+        ),), "tax1")
         return evaluate_trend_batch(batch, taxonomy, VerifiedResolver(), TrendFitWeights(.7,.3,"test-v1"))[0]
 
     def test_new_candidate_requires_fit_and_verified_evidence(self):
@@ -80,6 +83,40 @@ class CandidateTests(unittest.TestCase):
         repeated_id = select_top_candidates((rows[0], rows[0]), scores, limit=5, max_per_category=5)
         self.assertEqual(len(repeated_id.selected), 1)
         self.assertNotIn(rows[0].candidate_id, repeated_id.excluded)
+
+    def test_duplicate_keeps_highest_scoring_candidate_even_if_generated_later(self):
+        def candidate(cid, trend_id):
+            return Candidate(cid, "existing_improvement", "Jacket improvement", "outer", None, (trend_id,), "P1",
+                (CandidateAttribute("color", "Black", "evidence_observation", ("E",)),),
+                (EvidenceRef("E", "S", None, None, None, "ok", True),), (), (), (), (), (), ())
+
+        weaker = candidate("weak", "T-1")
+        stronger = candidate("strong", "T-2")
+        scores = {
+            "weak": CandidateScore("weak", "scored", 72, {}, 1, "w", ("E",)),
+            "strong": CandidateScore("strong", "scored", 94, {}, 1, "w", ("E",)),
+        }
+        result = select_top_candidates((weaker, stronger), scores, max_per_trend=None, max_per_type=None)
+        self.assertEqual([item.candidate_id for item in result.selected], ["strong"])
+        self.assertEqual(result.excluded["weak"], "중복 후보로 제외되었습니다.")
+
+    def test_single_requested_category_can_fill_top_five_across_trends_and_types(self):
+        candidates = []
+        scores = {}
+        for index in range(5):
+            candidate_type = "existing_improvement" if index < 3 else "new_product"
+            item = Candidate(
+                f"short-{index}", candidate_type, f"Short concept {index}", "men-shorts", "2027SS",
+                (f"T-{index}",), f"P-{index}" if index < 3 else None,
+                (CandidateAttribute("style", f"direction-{index}", "proposal"),),
+                (EvidenceRef(f"E-{index}", "S", None, None, None, "ok", True),), (), (), (), (), (), (),
+            )
+            candidates.append(item)
+            scores[item.candidate_id] = CandidateScore(item.candidate_id, "scored", 95-index, {}, 1, "w", (f"E-{index}",))
+
+        result = select_top_candidates(candidates, scores)
+        self.assertEqual(len(result.selected), 5)
+        self.assertEqual({item.category_id for item in result.selected}, {"men-shorts"})
 
 
 if __name__ == "__main__":

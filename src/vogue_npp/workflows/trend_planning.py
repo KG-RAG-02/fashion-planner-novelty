@@ -105,7 +105,10 @@ def _run_id(request: PlanningRunRequest, taxonomy_version: str,
 def _brief(candidate: Candidate, score: CandidateScore) -> CandidateBrief:
     claims: list[Mapping[str, object]] = [{
         "field": "concept_direction", "value": candidate.title,
-        "kind": "proposal", "evidence_ids": list(dict.fromkeys(eid for ref in candidate.evidence_refs for eid in (ref.evidence_id,))),
+        # Source documents support their linked attributes, not this generated
+        # synthesis/title. Keeping this claim unsourced avoids overstating the
+        # Evidence-to-recommendation relationship in a review brief.
+        "kind": "proposal", "evidence_ids": [],
     }]
     claims.extend({
         "field": item.name, "value": item.value, "kind": item.kind,
