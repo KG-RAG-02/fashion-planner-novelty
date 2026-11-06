@@ -50,6 +50,10 @@ class RetrievalQuery:
     allowed_source_ids: tuple[str, ...] = ()
     limit: int = 50
 
+    def __post_init__(self) -> None:
+        if self.limit < 1 or self.limit > 500:
+            raise ValueError("retrieval limit must be between 1 and 500")
+
 
 class KnowledgeRetriever(Protocol):
     def retrieve(self, query: RetrievalQuery) -> RetrievalResult: ...
@@ -70,6 +74,12 @@ class SalesInventoryQuery:
     period_end: date
     channel_id: str | None
     inventory_as_of: datetime | None
+
+    def __post_init__(self) -> None:
+        if self.period_end <= self.period_start:
+            raise ValueError("period_end must be later than period_start")
+        if len(self.product_ids) > 10_000:
+            raise ValueError("product_ids exceeds the supported query limit")
 
 
 @dataclass(frozen=True)
@@ -108,6 +118,38 @@ class SalesInventoryResult:
 
 class MerchDataRepository(Protocol):
     def query_sales_inventory(self, query: SalesInventoryQuery) -> SalesInventoryResult: ...
+
+
+@dataclass(frozen=True)
+class ProductCatalogResult:
+    status: QueryStatus
+    products: tuple[Mapping[str, object], ...] = ()
+    limitations: tuple[str, ...] = ()
+
+
+class ProductCatalogRepository(Protocol):
+    def list_products(self, category_ids: Sequence[str]) -> ProductCatalogResult: ...
+
+
+@dataclass(frozen=True)
+class EmptyProductCatalogRepository:
+    def list_products(self, category_ids: Sequence[str]) -> ProductCatalogResult:
+        return ProductCatalogResult("error", limitations=("Operational product catalog is not configured.",))
+
+
+@dataclass(frozen=True)
+class InMemoryProductCatalogRepository:
+    products: tuple[Mapping[str, object], ...] = ()
+    query_status: str = "ok"
+
+    def list_products(self, category_ids: Sequence[str]) -> ProductCatalogResult:
+        if self.query_status != "ok":
+            return ProductCatalogResult("error", limitations=("Fixture configured to simulate catalog query failure.",))
+        allowed = set(category_ids)
+        rows = tuple(item for item in self.products if str(item.get("category_id", "")) in allowed)
+        if not rows:
+            return ProductCatalogResult("no_results", limitations=("No fixture products match the requested categories.",))
+        return ProductCatalogResult("ok", rows)
 
 
 @dataclass(frozen=True)

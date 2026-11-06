@@ -6,7 +6,7 @@ from datetime import date
 from vogue_npp.domain.trend_batch import TrendBatch
 from vogue_npp.domain.trend_evaluator import (
     Category, CategoryMapping, EvidenceAssessment, InMemoryCategoryTaxonomy,
-    evaluate_trend_batch,
+    TrendFitWeights, evaluate_trend_batch,
 )
 
 
@@ -36,11 +36,14 @@ class CategoryTests(unittest.TestCase):
         self.assertEqual(taxonomy.map_category("unknown").status, "unmapped")
 
     def test_evaluates_each_category_without_claiming_rank_and_preserves_evidence(self):
-        taxonomy = InMemoryCategoryTaxonomy((Category("outer", "Outerwear"), Category("knit", "Knitwear")), "tax-1")
-        result = evaluate_trend_batch(batch(), taxonomy, VerifiedResolver())[0]
+        taxonomy = InMemoryCategoryTaxonomy((
+            Category("outer", "Outerwear", relevant_attribute_types=("color",)),
+            Category("knit", "Knitwear", relevant_attribute_types=("material",)),
+        ), "tax-1")
+        result = evaluate_trend_batch(batch(), taxonomy, VerifiedResolver(), TrendFitWeights(.7,.3,"test-v1"))[0]
         self.assertEqual([item.category_id for item in result.category_evaluations], ["outer", "knit"])
-        self.assertTrue(all(item.score is None for item in result.category_evaluations))
-        self.assertTrue(all(item.status == "insufficient_evidence" for item in result.category_evaluations))
+        self.assertEqual([item.score for item in result.category_evaluations], [100.0, 30.0])
+        self.assertTrue(all(item.status == "ok" for item in result.category_evaluations))
         self.assertIn("D-1", result.attributes[0].evidence_ids)
         self.assertFalse(hasattr(result, "rank"))
 

@@ -11,7 +11,7 @@ from vogue_npp.domain.candidates import (
 from vogue_npp.domain.retrieval import EvidenceRef, SalesInventoryResult, SalesMetric
 from vogue_npp.domain.trend_batch import TrendBatch
 from vogue_npp.domain.trend_evaluator import (
-    Category, EvidenceAssessment, InMemoryCategoryTaxonomy, evaluate_trend_batch,
+    Category, EvidenceAssessment, InMemoryCategoryTaxonomy, TrendFitWeights, evaluate_trend_batch,
 )
 
 
@@ -26,7 +26,7 @@ class CandidateTests(unittest.TestCase):
             "trend_id":"T1", "name":"Burgundy", "description":"Burgundy color fashion trend",
             "evidence":[{"document_id":"D1", "title":"Source", "excerpt":"Burgundy color fashion trend", "published_at":"2026-09-01"}]}]})
         taxonomy = InMemoryCategoryTaxonomy((Category("outer", "Outerwear", relevant_attribute_types=("color",)),), "tax1")
-        return evaluate_trend_batch(batch, taxonomy, VerifiedResolver())[0]
+        return evaluate_trend_batch(batch, taxonomy, VerifiedResolver(), TrendFitWeights(.7,.3,"test-v1"))[0]
 
     def test_new_candidate_requires_fit_and_verified_evidence(self):
         trend = self._trend()
@@ -67,7 +67,7 @@ class CandidateTests(unittest.TestCase):
                 (EvidenceRef("E","S",None,None,None,"ok",True),), (), (), (), (), (), ())
         rows = [candidate("1","A","First"), candidate("2","A","Duplicate"), candidate("3","B","Third"), candidate("4","C","Fourth")]
         scores = {row.candidate_id: CandidateScore(row.candidate_id,"scored",90-i,{"trend_fit":90-i},1,"w",("E",)) for i,row in enumerate(rows)}
-        selection = select_top_candidates(rows, scores, limit=5, max_per_category=1)
+        selection = select_top_candidates(rows, scores, limit=5, max_per_category=1, max_per_type=None, max_per_trend=None)
         self.assertEqual(len(selection.selected), 3)
         self.assertIn("카테고리 다양성", selection.excluded["2"])
 

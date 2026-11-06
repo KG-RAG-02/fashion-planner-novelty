@@ -8,6 +8,7 @@ through explicit ports later.
 from __future__ import annotations
 
 import re
+import math
 from dataclasses import dataclass
 from datetime import date
 from typing import Protocol, Sequence
@@ -119,6 +120,18 @@ class TrendCategoryEvaluation:
 
 
 @dataclass(frozen=True)
+class TrendFitWeights:
+    attribute_relevance: float
+    evidence_verification: float
+    version: str
+
+    def __post_init__(self) -> None:
+        values = (self.attribute_relevance, self.evidence_verification)
+        if not self.version.strip() or any(not math.isfinite(value) or value < 0 for value in values) or sum(values) <= 0:
+            raise ValueError("Trend fit weights must be non-negative with a positive sum.")
+
+
+@dataclass(frozen=True)
 class EvaluatedTrend:
     batch_id: str
     trend_id: str | None
@@ -138,11 +151,11 @@ def normalize_text(value: str) -> str:
 
 
 _ATTRIBUTE_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("color", ("color", "colour", "컬러", "색상", "버건디", "burgundy", "red", "빨강", "레드", "blue", "파랑", "블루", "green", "초록", "그린", "brown", "브라운", "black", "검정", "화이트", "white")),
-    ("material", ("material", "fabric", "소재", "원단", "가죽", "레더", "leather", "데님", "denim", "울", "wool", "캐시미어", "cashmere", "니트", "knit")),
-    ("silhouette", ("silhouette", "핏", "실루엣", "오버사이즈", "oversized", "슬림핏", "wide-leg", "와이드핏")),
-    ("pattern", ("pattern", "패턴", "체크", "check", "스트라이프", "stripe", "플로럴", "floral", "프린트", "print")),
-    ("style", ("스타일", "style", "미니멀", "minimal", "레트로", "retro", "유틸리티", "utility", "고프코어", "gorpcore")),
+    ("color", ("버건디", "burgundy", "red", "빨강", "레드", "blue", "파랑", "블루", "green", "초록", "그린", "brown", "브라운", "black", "검정", "화이트", "white")),
+    ("material", ("가죽", "레더", "leather", "데님", "denim", "울", "wool", "캐시미어", "cashmere", "니트", "knit", "실크", "silk", "린넨", "linen", "코튼", "cotton")),
+    ("silhouette", ("오버사이즈", "oversized", "슬림핏", "wide-leg", "와이드핏", "크롭", "cropped", "테일러드", "tailored")),
+    ("pattern", ("체크", "check", "스트라이프", "stripe", "플로럴", "floral", "프린트", "print", "도트", "polka dot")),
+    ("style", ("미니멀", "minimal", "레트로", "retro", "유틸리티", "utility", "고프코어", "gorpcore", "보헤미안", "bohemian")),
 )
 
 
@@ -168,22 +181,22 @@ def extract_attributes(trend: TrendInput) -> tuple[ExtractedAttribute, ...]:
     return tuple(unique.values())
 
 
-def _category_fit(category: Category, attributes: Sequence[ExtractedAttribute], evidence: Sequence[EvidenceAssessment], evidence_ids: tuple[str, ...]) -> TrendCategoryEvaluation:
+def _category_fit(trend_id: str | None, trend_name: str, category: Category, attributes: Sequence[ExtractedAttribute], evidence: Sequence[EvidenceAssessment], evidence_ids: tuple[str, ...], weights: TrendFitWeights | None) -> TrendCategoryEvaluation:
     supported = [item for item in attributes if item.status == "evidence_observation" and item.evidence_ids]
     verified_docs = [item for item in evidence if item.verified]
     limitations: list[str] = []
     taxonomy = category.taxonomy_version
     if not supported:
-        return TrendCategoryEvaluation(None, "", category.category_id, "insufficient_evidence", None,
+        return TrendCategoryEvaluation(trend_id, trend_name, category.category_id, "insufficient_evidence", None,
             {"attribute_relevance": None, "evidence_verification": None, "recency": None, "independence": None},
             evidence_ids, ("근거 인용으로 확인된 패션 속성이 없어 category fit 점수를 계산하지 않았습니다.",), EVALUATOR_VERSION, taxonomy)
     if not verified_docs:
-        return TrendCategoryEvaluation(None, "", category.category_id, "insufficient_evidence", None,
+        return TrendCategoryEvaluation(trend_id, trend_name, category.category_id, "insufficient_evidence", None,
             {"attribute_relevance": 0.0, "evidence_verification": 0.0, "recency": None, "independence": None},
             evidence_ids, ("문서 원문 검증기가 연결되지 않아 점수를 산출하지 않았습니다.",), EVALUATOR_VERSION, taxonomy)
     if not category.relevant_attribute_types:
         limitations.append("Category별 속성 taxonomy가 아직 연결되지 않아 적합도 점수는 보류했습니다.")
-        return TrendCategoryEvaluation(None, "", category.category_id, "insufficient_evidence", None,
+        return TrendCategoryEvaluation(trend_id, trend_name, category.category_id, "insufficient_evidence", None,
             {"attribute_relevance": None, "evidence_verification": 1.0, "recency": None, "independence": None},
             evidence_ids, tuple(limitations), EVALUATOR_VERSION, taxonomy)
     relevant = sum(item.attribute_type in category.relevant_attribute_types for item in supported)
@@ -196,16 +209,23 @@ def _category_fit(category: Category, attributes: Sequence[ExtractedAttribute], 
         limitations.append("근거의 독립 출처 그룹을 모두 확인할 수 없어 독립성 평가는 누락했습니다.")
     if any(item.published_at is None for item in evidence):
         limitations.append("발행일 미상 문서가 있어 최신성 평가는 누락했습니다.")
-    score = round(100 * (0.5 * relevance + 0.5 * verification), 2)
-    return TrendCategoryEvaluation(None, "", category.category_id, "ok", score,
+    if weights is None:
+        limitations.append("Trend × Category 점수 가중치가 설정되지 않아 점수를 계산하지 않았습니다.")
+        return TrendCategoryEvaluation(trend_id, trend_name, category.category_id, "unconfigured", None,
+            {"attribute_relevance": relevance, "evidence_verification": verification, "recency": None, "independence": None},
+            evidence_ids, tuple(limitations), EVALUATOR_VERSION, taxonomy)
+    weight_sum = weights.attribute_relevance + weights.evidence_verification
+    score = round(100 * (weights.attribute_relevance * relevance + weights.evidence_verification * verification) / weight_sum, 2)
+    return TrendCategoryEvaluation(trend_id, trend_name, category.category_id, "ok", score,
         {"attribute_relevance": relevance, "evidence_verification": verification, "recency": None, "independence": None},
-        evidence_ids, tuple(limitations), EVALUATOR_VERSION, taxonomy)
+        evidence_ids, tuple((*limitations, f"fit weights: {weights.version}")), EVALUATOR_VERSION, taxonomy)
 
 
 def evaluate_trend_batch(
     batch: TrendBatch,
     taxonomy: CategoryTaxonomy,
     evidence_resolver: EvidenceResolver | None = None,
+    fit_weights: TrendFitWeights | None = None,
 ) -> tuple[EvaluatedTrend, ...]:
     """Evaluate each trend against each configured category without using input order."""
     resolver = evidence_resolver or MetadataOnlyEvidenceResolver()
@@ -215,7 +235,7 @@ def evaluate_trend_batch(
         evidence = tuple(resolver.assess(doc) for doc in trend.evidence)
         attributes = extract_attributes(trend)
         evidence_ids = tuple(dict.fromkeys(doc.document_id for doc in trend.evidence))
-        evaluations = tuple(_category_fit(category, attributes, evidence, evidence_ids) for category in categories)
+        evaluations = tuple(_category_fit(trend.trend_id, trend.name, category, attributes, evidence, evidence_ids, fit_weights) for category in categories)
         limitations = tuple(dict.fromkeys(
             limitation
             for assessment in evidence for limitation in assessment.limitations

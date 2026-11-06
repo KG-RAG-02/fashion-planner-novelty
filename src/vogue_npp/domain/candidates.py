@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from dataclasses import dataclass
 from typing import Mapping, Sequence
@@ -69,24 +70,27 @@ def generate_existing_candidates(
     data: SalesInventoryResult,
     *,
     target_season: str | None = None,
+    evidence_refs: Sequence[EvidenceRef] = (),
+    kg_paths: Sequence[KGPath] = (),
 ) -> CandidateGenerationResult:
-    if data.status != "ok":
-        return CandidateGenerationResult(data.status, (), data.limitations)
     candidates: list[Candidate] = []
     for product in products:
         product_id = str(product.get("product_id", "")).strip()
         if not product_id or str(product.get("category_id", "")) != category_id:
             continue
+        product_evidence_refs = tuple(ref for ref in product.get("evidence_refs", ()) if isinstance(ref, EvidenceRef))
+        combined_evidence_refs = tuple({ref.evidence_id: ref for ref in (*product_evidence_refs, *evidence_refs)}.values())
+        verified_evidence_ids = {ref.evidence_id for ref in combined_evidence_refs if ref.verified}
         attributes_raw = product.get("attributes", {})
         attributes: list[CandidateAttribute] = []
         if isinstance(attributes_raw, Mapping):
             for name, value in attributes_raw.items():
                 if value is not None:
                     evidence_ids = tuple(product.get("attribute_evidence", {}).get(name, ())) if isinstance(product.get("attribute_evidence", {}), Mapping) else ()
-                    attributes.append(CandidateAttribute(str(name), value, "evidence_observation" if evidence_ids else "unknown", evidence_ids))
+                    is_verified = bool(evidence_ids) and set(evidence_ids).issubset(verified_evidence_ids)
+                    attributes.append(CandidateAttribute(str(name), value, "evidence_observation" if is_verified else "unknown", evidence_ids))
         evidence_ids = tuple(dict.fromkeys(eid for attr in attributes for eid in attr.evidence_ids))
-        evidence_refs = tuple(ref for ref in product.get("evidence_refs", ()) if isinstance(ref, EvidenceRef))
-        evidence_ids += tuple(ref.evidence_id for ref in evidence_refs)
+        evidence_ids += tuple(ref.evidence_id for ref in combined_evidence_refs)
         related_sales = tuple(row for row in data.sales if row.sku_id.split(":", 1)[0] == product_id)
         related_inventory = tuple(row for row in data.inventory if row.sku_id.split(":", 1)[0] == product_id)
         sql_refs = tuple(dict.fromkeys([row.source_id for row in (*related_sales, *related_inventory)]))
@@ -94,14 +98,18 @@ def generate_existing_candidates(
             _stable_id("existing_improvement", trend, category_id, product_id, "existing-v1"),
             "existing_improvement", f"{product.get('name', product_id)} 개선 검토", category_id,
             target_season,
-            (trend.trend_id,) if trend.trend_id else (), product_id, tuple(attributes), evidence_refs,
-            sql_refs, (),
+            (trend.trend_id,) if trend.trend_id else (), product_id, tuple(attributes), combined_evidence_refs,
+            sql_refs, tuple(kg_paths),
             ("트렌드 속성을 기존 상품에 적용하는 방향은 검토 제안입니다.",),
             (() if attributes else ("기존 상품 속성을 제공 자료에서 확인하지 못했습니다.",)),
             ("판매·재고 snapshot은 미래 수요나 생산 가능성을 입증하지 않습니다.",),
             ("MD가 적용할 트렌드 속성과 수정 범위를 확인해야 합니다.",),
         ))
-    return CandidateGenerationResult("ok" if candidates else "no_results", tuple(candidates), () if candidates else ("해당 카테고리에 매핑된 기존 상품이 없습니다.",))
+    result_status = ("partial" if candidates else "error") if data.status == "error" else ("ok" if candidates else "no_results")
+    limitations = list(data.limitations if data.status in {"no_results", "error"} else ())
+    if not candidates:
+        limitations.append("해당 카테고리에 매핑된 기존 상품이 없습니다.")
+    return CandidateGenerationResult(result_status, tuple(candidates), tuple(limitations))
 
 
 def generate_new_candidate(
@@ -146,7 +154,7 @@ class ScoreWeights:
 
     def __post_init__(self) -> None:
         values = (self.trend_fit, self.sales_observation, self.product_fit, self.inventory_signal, self.evidence_confidence)
-        if any(value < 0 for value in values) or sum(values) <= 0:
+        if not self.version.strip() or any(not math.isfinite(value) or value < 0 for value in values) or sum(values) <= 0:
             raise ValueError("Score weights must be non-negative with a positive sum.")
 
 
@@ -179,7 +187,13 @@ def score_candidate(
         "inventory_signal": inventory_signal,
         "evidence_confidence": evidence_confidence,
     }
-    evidence_ids = tuple(dict.fromkeys(eid for ref in candidate.evidence_refs for eid in (ref.evidence_id,)))
+    for name, value in components.items():
+        if value is not None and (not math.isfinite(value) or value < 0 or value > 100):
+            raise ValueError(f"{name} must be within the 0..100 score range.")
+    evidence_ids = tuple(dict.fromkeys((
+        *(ref.evidence_id for ref in candidate.evidence_refs),
+        *(eid for attribute in candidate.attributes for eid in attribute.evidence_ids),
+    )))
     coverage = sum(value is not None for value in components.values()) / len(components)
     if weights is None:
         return CandidateScore(candidate.candidate_id, "unconfigured", None, components, coverage, "none", evidence_ids,
@@ -192,9 +206,10 @@ def score_candidate(
         "evidence_confidence": weights.evidence_confidence,
     }
     active_weight = sum(weight_values[name] for name, value in components.items() if value is not None)
-    if coverage < 0.8 or active_weight <= 0 or not evidence_ids:
+    has_verified_evidence = any(ref.verified for ref in candidate.evidence_refs)
+    if coverage < 0.8 or active_weight <= 0 or not evidence_ids or not has_verified_evidence:
         return CandidateScore(candidate.candidate_id, "insufficient_data", None, components, coverage, weights.version, evidence_ids,
-                              ("score coverage is below 0.8 or candidate evidence is missing.",))
+                              ("score coverage is below 0.8, candidate evidence is missing, or no verified evidence reference is attached.",))
     score = sum(float(value) * weight_values[name] for name, value in components.items() if value is not None) / active_weight
     return CandidateScore(candidate.candidate_id, "scored", round(score, 4), components, coverage, weights.version, evidence_ids)
 
@@ -219,12 +234,16 @@ def select_top_candidates(
     limit: int = 5,
     min_score: float = 0,
     max_per_category: int = 2,
+    max_per_trend: int | None = 2,
+    max_per_type: int | None = 3,
 ) -> PortfolioSelection:
-    if limit < 1 or max_per_category < 1:
+    if limit < 1 or max_per_category < 1 or (max_per_trend is not None and max_per_trend < 1) or (max_per_type is not None and max_per_type < 1):
         raise ValueError("limit and max_per_category must be positive.")
+    if min_score < 0 or min_score > 100:
+        raise ValueError("min_score must be within the 0..100 score range.")
     excluded: dict[str, str] = {}
     eligible: list[tuple[Candidate, CandidateScore]] = []
-    seen: set[str] = set()
+    seen: dict[str, str] = {}
     for candidate in candidates:
         score = scores.get(candidate.candidate_id)
         if score is None or score.status != "scored" or score.score is None:
@@ -237,10 +256,12 @@ def select_top_candidates(
         if fingerprint in seen:
             excluded[candidate.candidate_id] = "중복 후보로 제외되었습니다."
             continue
-        seen.add(fingerprint)
+        seen[fingerprint] = candidate.candidate_id
         eligible.append((candidate, score))
     eligible.sort(key=lambda pair: (-float(pair[1].score), -pair[1].coverage, pair[0].candidate_id))
     category_counts: dict[str, int] = {}
+    trend_counts: dict[str, int] = {}
+    type_counts: dict[str, int] = {}
     selected: list[Candidate] = []
     for candidate, score in eligible:
         if len(selected) >= limit:
@@ -250,7 +271,16 @@ def select_top_candidates(
         if category_count >= max_per_category:
             excluded[candidate.candidate_id] = "카테고리 다양성 제한을 초과했습니다."
             continue
+        trend_key = candidate.responds_to_trend_ids[0] if candidate.responds_to_trend_ids else "unknown"
+        if max_per_trend is not None and trend_counts.get(trend_key, 0) >= max_per_trend:
+            excluded[candidate.candidate_id] = "트렌드 다양성 제한을 초과했습니다."
+            continue
+        if max_per_type is not None and type_counts.get(candidate.candidate_type, 0) >= max_per_type:
+            excluded[candidate.candidate_id] = "기존/신규 후보 유형 다양성 제한을 초과했습니다."
+            continue
         selected.append(candidate)
         category_counts[candidate.category_id] = category_count + 1
+        trend_counts[trend_key] = trend_counts.get(trend_key, 0) + 1
+        type_counts[candidate.candidate_type] = type_counts.get(candidate.candidate_type, 0) + 1
     return PortfolioSelection(tuple(selected), excluded, "ok" if selected else "no_eligible_candidates")
 

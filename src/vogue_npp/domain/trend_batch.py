@@ -157,9 +157,6 @@ class TrendBatch:
         trend_ids = [item.trend_id for item in trends if item.trend_id]
         if len(set(trend_ids)) != len(trend_ids):
             raise TrendBatchValidationError("TrendBatch contains duplicate trend_id values.")
-        all_document_ids = [doc.document_id for item in trends for doc in item.evidence]
-        if len(set(all_document_ids)) != len(all_document_ids):
-            raise TrendBatchValidationError("TrendBatch contains duplicate document_id values.")
         return cls(schema_version, batch_id, trends, received_at, target_season)
 
     @classmethod

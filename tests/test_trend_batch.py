@@ -61,11 +61,10 @@ class TrendBatchTests(unittest.TestCase):
         with self.assertRaisesRegex(TrendBatchValidationError, "payload exceeds"):
             TrendBatch.from_json(b" " * 1_000_001)
 
-    def test_rejects_duplicate_document_ids_and_bad_url(self) -> None:
+    def test_allows_shared_source_documents_across_trends_and_rejects_bad_url(self) -> None:
         data = payload()
-        data["trends"][0]["evidence"].append(data["trends"][0]["evidence"][0])
-        with self.assertRaisesRegex(TrendBatchValidationError, "duplicate document_id"):
-            TrendBatch.from_mapping(data)
+        data["trends"].append(data["trends"][0] | {"name":"Burgundy jackets"})
+        self.assertEqual(len(TrendBatch.from_mapping(data).trends), 2)
         data = payload()
         data["trends"][0]["evidence"][0]["source_url"] = "file:///etc/passwd"
         with self.assertRaisesRegex(TrendBatchValidationError, r"HTTP\(S\)"):
