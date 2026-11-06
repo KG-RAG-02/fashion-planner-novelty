@@ -296,8 +296,13 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                     })
                 successes = sum(result["status"] == "generated" for result in results)
                 status = "generated" if successes == len(results) else "partial" if successes else "failed"
+                failed_models = [
+                    f"{result['model']}: {result['error_code'] or result['status']}"
+                    for result in results if result["status"] != "generated"
+                ]
                 self._json(200 if successes else 502, {
                     "status": status,
+                    "error": None if successes else "이미지 생성에 실패했습니다. " + "; ".join(failed_models),
                     "requested_models": models,
                     "results": results,
                     "sales_status": sales.result.status,
