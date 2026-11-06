@@ -23,16 +23,16 @@ H&M 거래 집계는 데이터의 기간·채널·단위와 출처가 있는 과
 ## 2. 처리 흐름
 
 ```text
-SalesAnalysisResult + TrendResult + PlanningRequest + InventoryProductResult
+TrendResult + PlanningRequest + SalesAnalysisResult + InventoryProductResult
   → 네 입력의 구조·요청 ID·계약 버전·상태 검증
   → H&M 상품·거래 데이터 manifest 및 집계 Evidence 로드
   → request_id 및 입력 계약 버전 정합성 확인
   → 시즌·시장·채널·카테고리·요청 속성 정합성 확인
   → 입력 상태와 Evidence 참조 보존
-  → 1순위 판매 관찰 분석
-  → 2순위 트렌드 Evidence 연결
-  → 3순위 쿼리 조건을 반영하고 충돌을 표시
-  → 4순위 자사 상품·재고 맥락을 보조적으로 참고
+  → 1순위 트렌드 Evidence로 콘셉트 방향 검토
+  → 2순위 쿼리 조건으로 적용 범위 확인 및 충돌 표시
+  → 3순위 판매 관찰을 보조 근거로 검토
+  → 4순위 자사 상품·재고 맥락을 마지막 보조 근거로 검토
   → 기회, 대상 고객/착용 상황 가설, 상품 정의·속성 제안
   → ProductConcept 조립
 ```
@@ -45,7 +45,7 @@ SalesAnalysisResult + TrendResult + PlanningRequest + InventoryProductResult
 - 입력 `no_results`는 데이터 값 0과 구분합니다. 조회 실패, 자료 없음, 실제 0을 재해석하지 않습니다.
 - 네 입력은 모두 필수입니다. 판매 분석 결과, 트렌드, 요청, 상품·재고 입력 중 하나가 빠지면 유효 초안으로 가장하지 않고 입력 오류를 반환합니다. 다만 각 입력의 `partial`, `no_results`, `error` 상태는 계약상 가능한 제한 모드로 보존합니다.
 - 상품 속성과 재고 수량은 의미를 구분합니다. `InventoryProductResult`는 필수지만 개별 데이터에 재고 수량이 없으면 미확정으로 표시하고 상품 속성만 활용합니다. 수량은 `quantity`, `unit`, `inventory_definition`, `as_of`, Evidence를 함께 확인한 경우에만 스냅샷 사실로 기록합니다.
-- 데이터 우선순위는 판매 분석 → 트렌드 → 사용자 쿼리 → 자사 상품·재고입니다. 이는 산술 점수가 아니며, 쿼리 범위를 무시하는 권한도 아닙니다. 충돌은 숨기지 않고 영향받는 주장과 검토 질문을 표시합니다.
+- 분석 우선순위는 트렌드 → 사용자 쿼리 → 판매 분석 → 자사 상품·재고입니다. 이는 점수나 사용자 요청을 무시하는 권한이 아닙니다. 요청은 적용 범위를 정하고, 트렌드와 요청이 충돌하면 둘 다 보존해 확인 질문을 표시합니다. 판매와 재고는 보조 맥락으로 사용합니다.
 - 사용 권한이 확인되지 않은 원문이나 이미지를 추가로 조회·저장·재배포하지 않습니다.
 - 각 제안 속성은 사용자 요청, 입력 근거 기반 관찰, 에이전트 제안, 미확정 중 하나로 출처 성격을 표시합니다.
 
@@ -58,7 +58,7 @@ SalesAnalysisResult + TrendResult + PlanningRequest + InventoryProductResult
 | 입력 어댑터 | transport에서 입력을 읽고 공통 계약으로 변환 | API 경계에 한정 |
 | 계약 검증 | 버전, 공통 envelope, 필수 구조, enum 값 검증 | 없음 |
 | 정합성 검사 | 네 입력의 요청·기간·상품 식별·분류 기준 비교 | 없음 |
-| 기회 분석 | 판매 관찰을 먼저 정리하고 트렌드 Evidence와 자사 상품/재고 관계를 순서대로 비교 | 없음 |
+| 기회 분석 | 트렌드 Evidence로 방향을 먼저 검토하고, 요청 범위를 확인한 뒤 판매 관찰과 자사 상품/재고 관계를 순서대로 비교 | 없음 |
 | Kaggle 데이터 pipeline | H&M competition 원본 수집, 정제, 품질 요약, 기간·article·channel 집계 및 Evidence manifest | 파일 다운로드/로컬 처리. raw data는 Git/외부 전송 금지 |
 | 콘셉트 제안기 | 규칙 기반 기준선과 Evidence-grounded LLM 생성기를 같은 포트 뒤에서 실행 | 복수 엔진 비교는 허용 모델·자료 전송 범위 합의 후 실행 |
 | 실험 실행기 | 고정된 입력/Evidence를 각 생성 엔진에 재생하고 설정·출력을 기록 | API 키·민감 원문을 기록하지 않음 |

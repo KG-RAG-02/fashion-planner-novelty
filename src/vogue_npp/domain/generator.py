@@ -147,19 +147,8 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
             evidence_ids=evidence_ids,
         )
 
-    # Preserve the configured analysis order in the prompt/context: sales,
-    # trend evidence, user constraints, then own-product/stock references.
-    if _input_usable(context, "sales_analysis_result"):
-        for observation in context.sales.observations:
-            if (
-                not context.request.category
-                or not observation.category
-                or context.request.category.strip().casefold() != observation.category.strip().casefold()
-                or (observation.season and context.request.season and observation.season.strip().casefold() != context.request.season.strip().casefold())
-            ):
-                continue
-            for signal in observation.attributes:
-                add(signal, trend_signal=True)
+    # Keep the agreed synthesis order: trend evidence, request scope,
+    # historical sales support, then own-product/stock context.
     candidates = (
         context.trends.candidates
         if _input_usable(context, "trend_result")
@@ -174,6 +163,17 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
     if _input_usable(context, "planning_request"):
         for signal in context.request.requested_attributes:
             add(signal)
+    if _input_usable(context, "sales_analysis_result"):
+        for observation in context.sales.observations:
+            if (
+                not context.request.category
+                or not observation.category
+                or context.request.category.strip().casefold() != observation.category.strip().casefold()
+                or (observation.season and context.request.season and observation.season.strip().casefold() != context.request.season.strip().casefold())
+            ):
+                continue
+            for signal in observation.attributes:
+                add(signal, trend_signal=True)
     if _input_usable(context, "inventory_product_result"):
         for product in context.inventory.products:
             for signal in product.attributes:
@@ -247,8 +247,6 @@ def _product_definition(context: ProductPlanningContext) -> SourcedClaim:
     ]
     evidenced_trends = _usable_trend_candidates(context)
     fragments = [f"{prefix} 콘셉트 검토 초안"]
-    if requested_attributes:
-        fragments.append("요청 속성: " + ", ".join(dict.fromkeys(requested_attributes)))
     if evidenced_trends:
         fragments.append(
             "입력된 트렌드 방향: "
@@ -275,6 +273,8 @@ def _product_definition(context: ProductPlanningContext) -> SourcedClaim:
             hypothesis = _trend_design_hypothesis(candidate)
             if hypothesis:
                 fragments.append(hypothesis)
+    if requested_attributes:
+        fragments.append("요청 속성: " + ", ".join(dict.fromkeys(requested_attributes)))
     return SourcedClaim(
         value=". ".join(fragment.rstrip(".") for fragment in fragments) + ".",
         kind="proposal",

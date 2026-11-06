@@ -97,6 +97,62 @@ def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysi
         )
 
     request_usable = request_status in {"ok", "partial"}
+    candidates = (
+        context.trends.candidates
+        if request_usable and trend_status in {"ok", "partial"}
+        else ()
+    )
+    products = (
+        context.inventory.products
+        if request_usable
+        and context.inventory is not None
+        and inventory_status in {"ok", "partial"}
+        else ()
+    )
+    eligible_candidates: list[TrendCandidate] = []
+    eligible_products: list[InventoryProduct] = []
+    trend_findings: list[OpportunityFinding] = []
+
+    # Establish the evidence-backed trend direction first, then check it
+    # against the user's requested scope without silently overriding either.
+    requested_values = _requested_values(context.request)
+    for candidate in candidates:
+        mismatches = dimension_mismatches(context.request, candidate)
+        if mismatches:
+            questions.append(
+                f"트렌드 후보 '{candidate.name or '(이름 없음)'}'의 "
+                f"{', '.join(mismatches)}가 요청 조건과 달라 기획 근거로 사용하지 않았습니다."
+            )
+            continue
+        if not candidate.name.strip() or not candidate.evidence_ids:
+            questions.append("이름 또는 Evidence가 부족한 트렌드 후보는 비교에서 제외했습니다.")
+            continue
+        eligible_candidates.append(candidate)
+        for attribute in _evidence_attributes(candidate.attributes):
+            trend_findings.append(
+                OpportunityFinding(
+                    statement=SourcedClaim(
+                        value=(
+                            f"근거 연결 트렌드 후보 '{candidate.name}'에서 "
+                            f"{attribute.name}={attribute.value}가 관찰되었습니다."
+                        ),
+                        kind="evidence_observation",
+                        evidence_ids=attribute.evidence_ids,
+                    ),
+                    trend_name=candidate.name,
+                    attribute_name=attribute.name,
+                )
+            )
+
+            requested = requested_values.get(_key(attribute.name), set())
+            if requested and _key(attribute.value) not in requested:
+                questions.append(
+                    f"사용자 요청의 {attribute.name} 값과 트렌드 후보 "
+                    f"'{candidate.name}'의 근거 속성 값이 다릅니다. "
+                    "두 입력을 임의로 조정하지 않았으니 적용 방향을 확인해 주세요."
+                )
+    findings.extend(trend_findings)
+
     sales_findings: list[OpportunityFinding] = []
     eligible_sales: list[SalesObservation] = []
     if request_usable and sales_status in {"ok", "partial"}:
@@ -142,53 +198,12 @@ def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysi
             )
     if not sales_findings:
         limitations.append(
-            "요청 카테고리와 매핑된 유효 판매 관찰이 없어 판매 데이터 우선 분석을 수행할 수 없습니다."
+            "요청 카테고리와 매핑된 유효 판매 관찰이 없어 판매 보조 분석을 수행할 수 없습니다."
         )
         questions.append("판매 데이터의 상품 분류 매핑과 적용 가능한 관측 기간을 확인해 주세요.")
-    candidates = (
-        context.trends.candidates
-        if request_usable and trend_status in {"ok", "partial"}
-        else ()
-    )
-    products = (
-        context.inventory.products
-        if request_usable
-        and context.inventory is not None
-        and inventory_status in {"ok", "partial"}
-        else ()
-    )
     findings.extend(sales_findings)
-    eligible_candidates: list[TrendCandidate] = []
-    eligible_products: list[InventoryProduct] = []
-
-    for candidate in candidates:
-        mismatches = dimension_mismatches(context.request, candidate)
-        if mismatches:
-            questions.append(
-                f"트렌드 후보 '{candidate.name or '(이름 없음)'}'의 "
-                f"{', '.join(mismatches)}가 요청 조건과 달라 기획 근거로 사용하지 않았습니다."
-            )
-            continue
-        if not candidate.name.strip() or not candidate.evidence_ids:
-            questions.append("이름 또는 Evidence가 부족한 트렌드 후보는 비교에서 제외했습니다.")
-            continue
-        eligible_candidates.append(candidate)
-
-    for product in products:
-        mismatches = dimension_mismatches(context.request, product)
-        if mismatches:
-            questions.append(
-                f"자사 상품 '{product.style_id or '(Style ID 없음)'}'의 "
-                f"{', '.join(mismatches)}가 요청 조건과 달라 비교에서 제외했습니다."
-            )
-            continue
-        if not product.style_id or not product.style_id.strip() or not product.evidence_ids:
-            questions.append("Style ID 또는 Evidence가 부족한 자사 상품은 비교에서 제외했습니다.")
-            continue
-        eligible_products.append(product)
-
-    # Sales is the primary signal; add its directly evidenced attribute
-    # relationships with trend inputs before the lower-priority own-stock view.
+    # Sales is a supporting historical observation, connected to trend
+    # evidence after the trend-first and request-scope checks above.
     for observation in eligible_sales:
         for candidate in eligible_candidates:
             for sales_attribute in _evidence_attributes(observation.attributes):
@@ -230,7 +245,21 @@ def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysi
                     )
                     questions.extend(relation_questions)
 
-    requested_values = _requested_values(context.request)
+    # Own-product and stock context is reviewed after trend, request, and
+    # historical sales evidence have been assembled.
+    for product in products:
+        mismatches = dimension_mismatches(context.request, product)
+        if mismatches:
+            questions.append(
+                f"자사 상품 '{product.style_id or '(Style ID 없음)'}'의 "
+                f"{', '.join(mismatches)}가 요청 조건과 달라 비교에서 제외했습니다."
+            )
+            continue
+        if not product.style_id or not product.style_id.strip() or not product.evidence_ids:
+            questions.append("Style ID 또는 Evidence가 부족한 자사 상품은 비교에서 제외했습니다.")
+            continue
+        eligible_products.append(product)
+
     compared = 0
     for candidate in eligible_candidates:
         trend_attributes = _evidence_attributes(candidate.attributes)

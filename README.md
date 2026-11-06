@@ -7,7 +7,7 @@ VOGUE 프로젝트의 3번 **New Product Planning Agent**를 구현하는 저장
 - 현재 작업: 상품·판매 자료와 트렌드·고객 의견·재고 근거를 활용해 MD/디자이너가 검토하고 수정할 수 있는 신상품 브리프와 이미지 시안 흐름을 프로토타입으로 구현합니다.
 - 로컬 UI의 기회 분석·문서·재고·고객 의견 자료는 모두 가상 fixture이며 Kaggle 데이터 또는 실제 회사 데이터와 혼합하지 않습니다.
 - H&M Kaggle 파이프라인은 실제로 내려받은 상품 마스터와 거래 이력을 로컬 처리하고, 결과를 합성 데모와 분리된 **H&M 데이터** 화면에 표시합니다.
-- 내부 입력 모델: 필수 `SalesAnalysisResult`, `TrendResult`, `PlanningRequest`, `InventoryProductResult`
+- 내부 입력 모델: 필수 `TrendResult`, `PlanningRequest`, `SalesAnalysisResult`, `InventoryProductResult`
 - 내부 출력: `ProductConceptDraft`; 공통 `ProductConcept` adapter는 계약 합의 후 연결
 - H&M 내부 상품·판매 실적 분석을 포함합니다. 경쟁상품 조사는 현재 범위에서 제외합니다.
 - 원가·마진, 생산·조달, 고객 피드백 분석은 이 에이전트에서 구현하지 않습니다.
@@ -34,7 +34,7 @@ VOGUE 전체 흐름은 RAG 기반 LLM 에이전트 시스템입니다. 이 저�
 
 Agent 3의 데이터 출처·Evidence 경계는 [데이터·Evidence 계획](docs/design/data-source-and-evidence-plan.md)에, Kaggle 원본의 수집·정제·집계 설계는 [H&M Kaggle 처리 계획](docs/design/hm-kaggle-data-pipeline.md)에 정리했습니다. 원본과 파생 데이터는 `data/` 아래에 저장하고 Git에서 제외합니다.
 
-네 입력의 중요도 순서(판매 분석 → 트렌드 → 사용자 쿼리 → 자사 상품·재고), 내부 모델 매핑과 실패 동작은 [입력·출력 처리 흐름](docs/design/input-output-processing-flow.md)을 참고하세요. 네 입력은 모두 필수이며, `InventoryProductResult`에서 재고 필드가 부분적으로 비면 상태와 제한을 보존합니다. 외부 공통 계약 어댑터는 합의 후 연결합니다.
+네 입력의 분석 우선순위(트렌드 → 사용자 요청 → 판매 분석 → 자사 상품·재고), 내부 모델 매핑과 실패 동작은 [입력·출력 처리 흐름](docs/design/input-output-processing-flow.md)을 참고하세요. 우선순위는 분석 순서이며 요청 범위를 무시하거나 입력 간 충돌을 임의로 해소하는 근거가 아닙니다. 네 입력은 모두 필수이며, `InventoryProductResult`에서 재고 필드가 부분적으로 비면 상태와 제한을 보존합니다. 외부 공통 계약 어댑터는 합의 후 연결합니다.
 
 가공된 H&M Style 판매 요약은 `load_hm_sales_analysis()`로 `SalesAnalysisResult`에 매핑할 수 있습니다. Kaggle 상품 분류를 요청 카테고리로 연결하는 `source_category_map`과 `category_mapping_version`은 프로젝트 taxonomy와 대조해 호출자가 명시해야 하며, 데이터에 없는 시즌이나 채널 의미를 자동 추정하지 않습니다.
 

@@ -9,7 +9,7 @@
 
 1. 5단계 파이프라인의 **3번 에이전트만** 구현합니다. 4번 Product Feasibility Agent는 이후 별도 저장소, 5번 Planning Review Agent는 별도 담당 경계입니다.
    - Project Workflow의 `VOGUE 기획 파이프라인` 토글은 과거 검토용 초안입니다. 경쟁상품 조사는 계속 제외합니다. H&M Kaggle 판매 집계는 사용자가 별도로 확정한 최신 범위이며 해당 과거 토글을 근거로 하지 않습니다.
-2. 내부 생성 흐름은 `SalesAnalysisResult + TrendResult + PlanningRequest + InventoryProductResult → ProductConceptDraft`입니다. 외부 `ProductConcept` 응답 adapter는 공통 계약 합의 후 연결합니다.
+2. 내부 생성 입력은 `TrendResult + PlanningRequest + SalesAnalysisResult + InventoryProductResult → ProductConceptDraft` 순서로 분석합니다. 외부 `ProductConcept` 응답 adapter는 공통 계약 합의 후 연결합니다.
 3. 경쟁상품/외부상품 시장 조사는 범위에서 제외합니다. H&M Kaggle 거래 이력의 기간별 상품·채널 판매 집계는 추가된 분석 목표입니다. 현재 재고는 기준 시점 스냅샷이며 판매 추세와 구분합니다.
 4. 입력에서 확인한 사실, 해석, 제안, 가설, 미확정을 나눕니다. 고객 선호·시장 수요·가격·원가·생산 가능성을 만들어 사실처럼 쓰지 않습니다.
 5. 임시 구현 모델은 공통 계약이 아닙니다. 별도 `vogue-contracts` 저장소나 이 저장소 단독 기준 계약을 만들지 않습니다.
