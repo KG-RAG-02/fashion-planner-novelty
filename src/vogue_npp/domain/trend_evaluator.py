@@ -155,7 +155,7 @@ _ATTRIBUTE_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("material", ("가죽", "레더", "leather", "데님", "denim", "울", "wool", "캐시미어", "cashmere", "니트", "knit", "실크", "silk", "린넨", "linen", "코튼", "cotton")),
     ("silhouette", ("오버사이즈", "oversized", "슬림핏", "wide-leg", "와이드핏", "크롭", "cropped", "테일러드", "tailored")),
     ("pattern", ("체크", "check", "스트라이프", "stripe", "플로럴", "floral", "프린트", "print", "도트", "polka dot")),
-    ("style", ("미니멀", "minimal", "레트로", "retro", "유틸리티", "utility", "고프코어", "gorpcore", "보헤미안", "bohemian")),
+    ("style", ("미니멀리즘", "minimalism", "minimalist", "미니멀", "minimal", "맥시멀리즘", "maximalism", "maximalist", "레트로", "retro", "유틸리티", "utility", "고프코어", "gorpcore", "발레코어", "balletcore", "ballet-core", "보헤미안", "bohemian")),
 )
 
 

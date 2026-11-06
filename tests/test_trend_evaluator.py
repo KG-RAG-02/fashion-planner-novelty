@@ -24,6 +24,29 @@ class VerifiedResolver:
 
 
 class CategoryTests(unittest.TestCase):
+    def test_requested_four_trend_names_are_extracted_as_supported_style_values(self):
+        names = ("미니멀리즘", "맥시멀리즘", "고프코어", "발레코어")
+        batch_data = {
+            "schema_version": "1.0", "batch_id": "TB-FOUR-STYLES",
+            "trends": [{
+                "trend_id": f"T-{index}", "name": name,
+                "description": f"{name} 패션 방향",
+                "evidence": [{
+                    "document_id": f"DOC-{index}", "title": f"{name} report",
+                    "excerpt": f"{name} 패션 방향", "published_at": "2026-09-01",
+                }],
+            } for index, name in enumerate(names, 1)],
+        }
+        evaluated = evaluate_trend_batch(
+            TrendBatch.from_mapping(batch_data),
+            InMemoryCategoryTaxonomy((Category("men-shorts", "Men's shorts", relevant_attribute_types=("style",)),), "tax-1"),
+            VerifiedResolver(), TrendFitWeights(0.7, 0.3, "test-fit-v1"),
+        )
+        extracted = list(evaluated)
+        self.assertEqual([item.attributes[0].value for item in extracted], list(names))
+        self.assertTrue(all(item.attributes[0].status == "evidence_observation" for item in extracted))
+        self.assertTrue(all(item.category_evaluations[0].status == "ok" for item in extracted))
+
     def test_taxonomy_exact_alias_ambiguous_unmapped(self):
         taxonomy = InMemoryCategoryTaxonomy((
             Category("outer", "Outerwear", ("coat",)),
