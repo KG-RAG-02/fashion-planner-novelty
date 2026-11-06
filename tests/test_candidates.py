@@ -59,6 +59,13 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(scored.status, "scored")
         self.assertAlmostEqual(scored.score, 70.0)
         self.assertEqual(scored.coverage, 1.0)
+        unverified = Candidate(candidate.candidate_id, candidate.candidate_type, candidate.title, candidate.category_id,
+            candidate.target_season, candidate.responds_to_trend_ids, candidate.product_id, candidate.attributes,
+            (EvidenceRef("D1", "SRC1", None, None, None, "unverified", False),), candidate.sql_metric_refs,
+            candidate.kg_paths, candidate.assumptions, candidate.unknowns, candidate.risks, candidate.validation_questions)
+        rejected = score_candidate(unverified, trend_fit=80, sales_observation=60, product_fit=70,
+            inventory_signal=50, evidence_confidence=90, weights=weights)
+        self.assertEqual(rejected.status, "insufficient_data")
 
     def test_selector_deduplicates_and_caps_category_without_filling_invalid_slots(self):
         def candidate(cid, category, title):
@@ -70,6 +77,9 @@ class CandidateTests(unittest.TestCase):
         selection = select_top_candidates(rows, scores, limit=5, max_per_category=1, max_per_type=None, max_per_trend=None)
         self.assertEqual(len(selection.selected), 3)
         self.assertIn("카테고리 다양성", selection.excluded["2"])
+        repeated_id = select_top_candidates((rows[0], rows[0]), scores, limit=5, max_per_category=5)
+        self.assertEqual(len(repeated_id.selected), 1)
+        self.assertNotIn(rows[0].candidate_id, repeated_id.excluded)
 
 
 if __name__ == "__main__":

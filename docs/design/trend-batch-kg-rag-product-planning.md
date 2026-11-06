@@ -423,7 +423,29 @@ Baseline와 변경 후는 동일한 고정 TrendBatch, 문서 snapshot, SQL snap
 
 현 코드에서 재사용할 수 있는 것은 내부 입력 context, conservative opportunity comparison, Evidence allowlist validation, H&M offline adapter, brief/image workflow 일부다. 이를 새 설계의 완성 구현이라고 간주하지 않고 얇은 adapter와 단계별 migration으로 연결한다.
 
-## 13. 확정 사항과 미정 사항
+## 13. 구현 기준선 사용과 검증 결과
+
+내부 use case를 호출하는 예시는 다음과 같다. 아래 weight 값은 fixture 전용 예시일 뿐 운영 추천값이 아니다. 실제 실행에는 승인된 taxonomy, 근거 resolver, catalog/merch/retrieval adapters 및 metric component provider를 전달해야 한다.
+
+```python
+result = run_trend_planning(
+    request,
+    taxonomy=approved_taxonomy_adapter,
+    evidence_resolver=authorized_document_resolver,
+    trend_fit_weights=approved_trend_fit_weights,
+    catalog=authorized_product_catalog,
+    merch_data=authorized_sales_inventory_repository,
+    knowledge=approved_kg_rag_retriever,
+    weights=approved_opportunity_weights,
+    score_components=calculated_candidate_components,
+)
+```
+
+현재 기본값만으로는 원문 검증기와 운영 데이터 source가 구성되지 않으므로 Trend × Category가 보류되고 후보/TOP5가 비어 있을 수 있다. 이것은 누락 데이터를 사실이나 점수로 채우지 않기 위한 의도된 동작이다. `run_id`는 입력 내용과 기간/필터, taxonomy/score config 버전 및 source snapshot IDs로 결정되지만 결과 저장·재실행 방지·HTTP idempotency는 제공하지 않는다.
+
+검증: `PYTHONPATH=src python3 -m unittest discover -s tests -v` 실행 결과 **52 tests passed**. H&M Kaggle와 synthetic scenario의 기존 테스트에서 SQLite `ResourceWarning`이 출력되었으나 실패는 아니었다. 이 테스트는 로컬 fixture/회귀 검증이며 승인된 실제 상품기획 holdout이나 MD 평가를 대신하지 않는다.
+
+## 14. 확정 사항과 미정 사항
 
 ### 요청/대화에서 확정된 제품 방향
 
@@ -448,7 +470,7 @@ Baseline와 변경 후는 동일한 고정 TrendBatch, 문서 snapshot, SQL snap
 - MD reviewer와 holdout 데이터 및 평가 통과 기준.
 - 기존 VOGUE 에이전트 공통 API 및 후속 Feasibility/MD review와의 정확한 계약.
 
-## 14. 참고하는 저장소 문서
+## 15. 참고하는 저장소 문서
 
 - [프로젝트 README](../../README.md)
 - [New Product Planning Agent 설계 제안](new-product-planning-agent.md)

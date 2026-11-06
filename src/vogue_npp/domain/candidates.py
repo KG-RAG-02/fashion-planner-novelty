@@ -94,6 +94,13 @@ def generate_existing_candidates(
         related_sales = tuple(row for row in data.sales if row.sku_id.split(":", 1)[0] == product_id)
         related_inventory = tuple(row for row in data.inventory if row.sku_id.split(":", 1)[0] == product_id)
         sql_refs = tuple(dict.fromkeys([row.source_id for row in (*related_sales, *related_inventory)]))
+        unknowns: list[str] = []
+        if not related_sales:
+            unknowns.append("선택 기간의 상품 판매 관측이 없어 판매 성과를 평가하지 않았습니다.")
+        if not related_inventory:
+            unknowns.append("조회 가능한 재고 snapshot이 없어 현재 재고를 평가하지 않았습니다.")
+        if not attributes:
+            unknowns.append("기존 상품 속성을 제공 자료에서 확인하지 못했습니다.")
         candidates.append(Candidate(
             _stable_id("existing_improvement", trend, category_id, product_id, "existing-v1"),
             "existing_improvement", f"{product.get('name', product_id)} 개선 검토", category_id,
@@ -101,7 +108,7 @@ def generate_existing_candidates(
             (trend.trend_id,) if trend.trend_id else (), product_id, tuple(attributes), combined_evidence_refs,
             sql_refs, tuple(kg_paths),
             ("트렌드 속성을 기존 상품에 적용하는 방향은 검토 제안입니다.",),
-            (() if attributes else ("기존 상품 속성을 제공 자료에서 확인하지 못했습니다.",)),
+            tuple(unknowns),
             ("판매·재고 snapshot은 미래 수요나 생산 가능성을 입증하지 않습니다.",),
             ("MD가 적용할 트렌드 속성과 수정 범위를 확인해야 합니다.",),
         ))
@@ -244,7 +251,11 @@ def select_top_candidates(
     excluded: dict[str, str] = {}
     eligible: list[tuple[Candidate, CandidateScore]] = []
     seen: dict[str, str] = {}
+    seen_candidate_ids: set[str] = set()
     for candidate in candidates:
+        if candidate.candidate_id in seen_candidate_ids:
+            continue
+        seen_candidate_ids.add(candidate.candidate_id)
         score = scores.get(candidate.candidate_id)
         if score is None or score.status != "scored" or score.score is None:
             excluded[candidate.candidate_id] = "점수가 없거나 데이터가 불충분합니다."
