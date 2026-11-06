@@ -17,7 +17,7 @@ from .concept import (
     ValidationIssue,
     validate_concept_draft,
 )
-from .context import AttributeSignal, ProductPlanningContext
+from .context import AttributeSignal, ProductPlanningContext, TrendCandidate
 from .analysis import analyze_opportunities, dimension_mismatches
 
 
@@ -44,6 +44,63 @@ def _attribute_kind(signal: AttributeSignal) -> ClaimKind:
     if signal.value is None:
         return "unknown"
     return "to_validate"
+
+
+def _usable_trend_candidates(
+    context: ProductPlanningContext,
+) -> tuple[TrendCandidate, ...]:
+    """Return named, evidenced trends that match the normalized request."""
+    if not (
+        _input_usable(context, "trend_result")
+        and _input_usable(context, "planning_request")
+    ):
+        return ()
+    return tuple(
+        candidate
+        for candidate in context.trends.candidates
+        if candidate.name.strip()
+        and candidate.evidence_ids
+        and not dimension_mismatches(context.request, candidate)
+    )
+
+
+def _trend_design_hypothesis(candidate: TrendCandidate) -> str | None:
+    """Translate the supplied phrase into a clearly labeled review hypothesis.
+
+    This deliberately supports only the explicit example phrase. Other trend
+    names remain intact without guessing at their semantics.
+    """
+    normalized = candidate.name.strip().casefold().replace(" ", "")
+    if "절제된" not in normalized or "맥시멀" not in normalized:
+        return None
+    observed_patterns = [
+        str(signal.value)
+        for signal in candidate.attributes
+        if signal.value is not None
+        and signal.name.strip().casefold() in {"pattern", "print", "패턴", "프린트"}
+        and signal.evidence_ids
+    ]
+    if observed_patterns:
+        pattern_text = ", ".join(dict.fromkeys(observed_patterns))
+        return (
+            "디자인 방향 가설: 절제된 베이스에 근거로 전달된 "
+            f"{pattern_text}를 강조 요소로 제한적으로 배치하는 방향을 검토합니다. "
+            "배치 비율과 실제 적용은 MD 확인이 필요합니다."
+        )
+    return (
+        "디자인 방향 가설: 절제된 베이스와 강조 요소의 균형을 검토합니다. "
+        "구체적인 강조 요소는 입력 근거에 없어 MD 확인이 필요합니다."
+    )
+
+
+def _korean_object_particle(value: str) -> str:
+    """Return 을/를 for a Korean name, defaulting safely for other scripts."""
+    if not value:
+        return "을"
+    codepoint = ord(value[-1])
+    if 0xAC00 <= codepoint <= 0xD7A3:
+        return "을" if (codepoint - 0xAC00) % 28 else "를"
+    return "을"
 
 
 def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttribute, ...]:
@@ -188,33 +245,47 @@ def _product_definition(context: ProductPlanningContext) -> SourcedClaim:
         and signal.name.strip()
         and signal.origin == "user_requested"
     ]
-    evidenced_trends = [
-        candidate
-        for candidate in (
-            context.trends.candidates
-            if request_usable and _input_usable(context, "trend_result")
-            else ()
-        )
-        if candidate.evidence_ids
-        and candidate.name.strip()
-        and not dimension_mismatches(context.request, candidate)
-    ]
+    evidenced_trends = _usable_trend_candidates(context)
     fragments = [f"{prefix} 콘셉트 검토 초안"]
     if requested_attributes:
         fragments.append("요청 속성: " + ", ".join(dict.fromkeys(requested_attributes)))
     if evidenced_trends:
         fragments.append(
-            "참고할 근거 연결 트렌드 후보: "
-            + ", ".join(dict.fromkeys(candidate.name for candidate in evidenced_trends))
+            "입력된 트렌드 방향: "
+            + ", ".join(
+                dict.fromkeys(
+                    f"{candidate.name} ({candidate.qualification})"
+                    for candidate in evidenced_trends
+                )
+            )
         )
+        observed_trend_attributes = tuple(
+            dict.fromkeys(
+                f"{signal.name.strip()}={signal.value}"
+                for candidate in evidenced_trends
+                for signal in candidate.attributes
+                if signal.value is not None and signal.evidence_ids
+            )
+        )
+        if observed_trend_attributes:
+            fragments.append(
+                "트렌드 근거 관찰 속성: " + ", ".join(observed_trend_attributes)
+            )
+        for candidate in evidenced_trends:
+            hypothesis = _trend_design_hypothesis(candidate)
+            if hypothesis:
+                fragments.append(hypothesis)
     return SourcedClaim(
-        value=". ".join(fragments) + ".",
+        value=". ".join(fragment.rstrip(".") for fragment in fragments) + ".",
         kind="proposal",
         evidence_ids=tuple(
             dict.fromkeys(
                 evidence_id
                 for candidate in evidenced_trends
-                for evidence_id in candidate.evidence_ids
+                for evidence_id in (
+                    *candidate.evidence_ids,
+                    *(evidence_id for signal in candidate.attributes for evidence_id in signal.evidence_ids),
+                )
             )
         ),
     )
@@ -301,11 +372,29 @@ def generate_concept_draft(
         finding.attribute_name == "purchase_rows" for finding in analysis.findings
     )
     relationship_count = len(analysis.findings) - sales_observation_count
+    evidenced_trends = _usable_trend_candidates(context)
+    trend_names = tuple(dict.fromkeys(candidate.name for candidate in evidenced_trends))
+    trend_summary = (
+        "입력 트렌드명 "
+        + ", ".join(
+            f"'{name}'{_korean_object_particle(name)}" for name in trend_names
+        )
+        + "을 기획 검토 방향으로 반영했습니다."
+        if trend_names
+        else "근거 연결 트렌드명을 사용할 수 없습니다."
+    )
     opportunity_summary = (
-        f"판매 데이터 관찰 {sales_observation_count}건을 우선 정리하고, "
-        f"트렌드·자사 상품 관계 {relationship_count}건을 검토 대상으로 구성했습니다. "
-        "이는 미래 수요나 상품 채택 결론이 아니며 MD 검토가 필요합니다."
+        (
+            f"{trend_summary} 판매 데이터 관찰 {sales_observation_count}건과 "
+            f"트렌드·자사 상품 관계 {relationship_count}건을 검토 대상으로 구성했습니다. "
+            "이는 미래 수요나 상품 채택 결론이 아니며 MD 검토가 필요합니다."
+        )
         if analysis.findings
+        else (
+            f"{trend_summary} 트렌드명과 관찰 속성을 기획 콘셉트 가설로 정리했으며 "
+            "MD 검토가 필요합니다. 이는 미래 수요나 상품 채택 결론이 아닙니다."
+        )
+        if evidenced_trends
         else "요청 범위에 적용할 수 있는 입력 근거가 부족해 구체적인 기획 기회를 판단하지 않았습니다."
     )
     draft = ProductConceptDraft(
@@ -340,8 +429,19 @@ def generate_concept_draft(
         limitations=tuple(dict.fromkeys((*context.limitations, *analysis.limitations))),
         opportunity=SourcedClaim(
             value=opportunity_summary,
-            kind="proposal" if analysis.findings else "to_validate",
-            evidence_ids=analysis_evidence_ids,
+            kind="proposal" if analysis.findings or evidenced_trends else "to_validate",
+            evidence_ids=tuple(
+                dict.fromkeys(
+                    (
+                        *analysis_evidence_ids,
+                        *(
+                            evidence_id
+                            for candidate in evidenced_trends
+                            for evidence_id in candidate.evidence_ids
+                        ),
+                    )
+                )
+            ),
         ),
         target_customer=SourcedClaim(
             value=None,
