@@ -106,12 +106,30 @@ class SalesObservation:
 
 @dataclass(frozen=True)
 class SalesAnalysisResult:
-    """Sales analysis produced from the local, versioned source-data pipeline."""
+    """Legacy local sales input; proposed Project 07 results map here only temporarily.
+
+    This compatibility model is not the agreed Project 07 wire contract.
+    Project 06 does not query or own a sales source.
+    """
 
     result: AgentResult
     observations: tuple[SalesObservation, ...] = ()
     category_mapping_version: str = "unversioned"
     dataset_label: str = "sales data"
+    # Proposed Project 07 provenance fields. These remain optional until the
+    # two owners agree on names and wire semantics.
+    source: str | None = None
+    locator: str | None = None
+    geography: tuple[str, ...] = ()
+    channel: tuple[str, ...] = ()
+    product_mapping: str | None = None
+    unit: str | None = None
+    currency: str | None = None
+    metric_definitions: tuple[str, ...] = ()
+    calculation_references: tuple[str, ...] = ()
+    missing_data: tuple[str, ...] = ()
+    errors: tuple[str, ...] = ()
+    follow_up_questions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -141,11 +159,11 @@ class InventoryProductResult:
 
 @dataclass(frozen=True, init=False)
 class PlanningInputs:
-    """Three shared inputs plus an optional local historical-sales extension.
+    """Three shared inputs plus a compatibility slot for proposed sales results.
 
-    Positional compatibility is retained for the former four-argument form
-    ``(request, trend, sales, inventory)``. New three-input callers may pass
-    inventory as the third positional argument or by keyword.
+    Project 06 no longer owns a sales source. The optional slot only allows
+    callers to pass a Project 07 result-shaped value while the teams agree on
+    the wire schema; it is not an operational adapter.
     """
 
     request: PlanningRequest
@@ -214,6 +232,7 @@ class ProductPlanningContext:
     evidence_ids: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
     questions_for_validation: tuple[str, ...] = ()
+    sales_market_result: SalesAnalysisResult | None = None
 
 
 def _unique(values: Sequence[str]) -> tuple[str, ...]:
@@ -422,19 +441,17 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         statuses[input_name] = result.status
     if inputs.sales is None:
         statuses["sales_analysis_result"] = "not_provided"
-
-    sales = inputs.sales or SalesAnalysisResult(
+    # Preserve the former read-only convenience shape for local callers. This
+    # placeholder is not an upstream result: status stays not_provided and the
+    # draft handoff slot remains None, so it cannot be rendered as a zero.
+    sales_context = inputs.sales or SalesAnalysisResult(
         result=AgentResult(
-            "optional-historical-sales-extension",
+            "not-provided",
             next(iter(request_ids)),
             next(iter(schema_versions)),
             "no_results",
-            limitations=(
-                "The optional local historical-sales extension was not provided; "
-                "no sales source was queried or analyzed.",
-            ),
-        ),
-        observations=(),
+            limitations=("Project_07 sales/market result was not provided; no sales source was queried.",),
+        )
     )
 
     evidence_ids = _unique(
@@ -457,7 +474,7 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         [
             *inputs.request.result.limitations,
             *inputs.trend.result.limitations,
-            *(inputs.sales.result.limitations if inputs.sales else sales.result.limitations),
+            *(inputs.sales.result.limitations if inputs.sales else ()),
             *inputs.inventory.result.limitations,
             *(
                 f"Inventory note ({product.note_origin}; not independently verified): {product.note}"
@@ -507,7 +524,7 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         schema_version=next(iter(schema_versions)),
         request=inputs.request,
         trends=inputs.trend,
-        sales=sales,
+        sales=sales_context,
         inventory=inputs.inventory,
         input_statuses=statuses,
         styling_relationships=styling_relationships,
@@ -515,4 +532,5 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         evidence_ids=evidence_ids,
         limitations=limitations,
         questions_for_validation=questions,
+        sales_market_result=inputs.sales,
     )

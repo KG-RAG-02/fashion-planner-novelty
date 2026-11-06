@@ -40,7 +40,7 @@ flowchart LR
   I --> J
 ```
 
-웹 화면은 합성 데모 기회, 실제 H&M Kaggle 집계, 문서 근거, 브리프 편집, 이미지 시안, 검토 이력으로 나뉜다. 합성 Evidence ID를 누르면 원천 메타데이터와 해당 합성 레코드를 확인할 수 있다. Kaggle 섹션은 `hm_analysis.json` 기반 과거 상품·거래 집계를 별도로 보여주며 synthetic inventory/reviews/trends 또는 brief와 병합하지 않는다. 숫자 집계는 결정적 Python 로직으로 계산하며 문서 검색은 합성 문서 구절의 단순 로컬 키워드 점수다. 생성형 모델은 수치 계산에 사용하지 않는다.
+웹 화면은 합성 데모 기회, 실제 H&M Kaggle 집계, 문서 근거, 브리프 편집, 이미지 시안, 검토 이력으로 나뉜다. 합성 Evidence ID를 누르면 원천 메타데이터와 해당 합성 레코드를 확인할 수 있다. Kaggle 섹션은 `hm_analysis.json` 기반 과거 상품·거래 집계를 별도로 보여주며 synthetic inventory/reviews/trends 또는 brief와 병합하지 않는다. 이 두 판매 분석 UX는 Project_07 조율 후보이며, 현재 Project_07 운영 결과가 연결된 곳은 없다. 숫자 집계는 결정적 Python 로직으로 계산하며 문서 검색은 합성 문서 구절의 단순 로컬 키워드 점수다. 생성형 모델은 수치 계산에 사용하지 않는다.
 
 `03 기획·운영 데이터` 섹션은 [상품기획·운영 데이터 계약](planning-operations-data-contract.md)에 정의한 로컬 조회 API를 사용한다. 라인 플랜·마크다운 시나리오·KPI 목표·상세 속성·캠페인은 합성 예시임을 표시하고, 실제 측정값이 연결되지 않은 KPI와 캠페인 결과는 비워 둔다. 실제 Kaggle article 조회에서는 원천 설명만 반환하며 합성 소재·관리·사이즈 속성을 덧붙이지 않는다.
 

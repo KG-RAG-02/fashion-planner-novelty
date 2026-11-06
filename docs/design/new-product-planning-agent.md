@@ -1,9 +1,9 @@
-# New Product Planning Agent 설계 제안
+# Project_06 Planning Agent 설계 제안
 
-- 상태: 내부 구현 기준 · 공통 계약/transport 미확정
-- 작성 목적: 3번 New Product Planning Agent의 구현 경계와 계약 공백을 명확히 하고, 자료에 근거한 LLM 생성 및 복수 엔진 비교 목표를 팀과 검토합니다.
-- 적용 범위: `KG-RAG-02/new-product-planning-agent` 저장소
-- 후속 Product Feasibility Agent: 별도 신규 저장소에서 구현하기로 합의했으며, 이 저장소에는 포함하지 않습니다.
+- 상태: 역할 경계 정렬안 · Project_07 결과 및 공통 계약 미합의
+- 작성 목적: Project_06 Planning Agent 경계와 Project_07 handoff 후보를 명확히 합니다.
+- 적용 범위: `KG-RAG-02/new-product-planning-agent` 저장소 (현재 연결 remote)
+- Project_07 저장소명은 `market-research-agent`로 확인됨. 구현 범위, 자료원, 결과 필드와 이관 대상은 미정이며 추측하지 않습니다.
 - 구현 상태: 입력 정합성 검사, 컨텍스트 조립, 출처 검증과 결정적 규칙 기반 초안 생성기가 임시 기본값으로 추가되었습니다. 공통 wire schema와 API 어댑터는 미정입니다.
 
 ## 1. 확정 요구사항
@@ -12,29 +12,29 @@
 
 | 구분 | 책임 |
 | --- | --- |
-| 입력 | 핵심 `PlanningRequest`, `TrendResult`, `InventoryProductResult`; H&M 과거 판매 `SalesAnalysisResult`는 선택형 로컬 확장 |
-| 내부 출력 | `ProductConceptDraft`; 공통 `ProductConcept` adapter는 합의 후 연결 |
-| 수행 | H&M Kaggle 자료의 로컬 수집·정제·판매 실적 집계, 입력 정합성 확인, 자사 상품·실적 관계와 기회 분석, RAG 근거 기반 콘셉트 생성, claim-level Evidence 연결 및 복수 생성 엔진 평가 |
+| 입력 | 사용자 요청을 담은 `PlanningRequest`, `TrendResult`, `InventoryProductResult`, Project_07 판매·시장 조사 결과 |
+| 내부 출력 | 제안명 `PlanningDraft`; 기존 `ProductConceptDraft`는 현재 내부 호환 모델이며 콘셉트는 초안 내부 요소 |
+| 수행 | 입력 정합성 확인, 전달 자료 기반 기회 분석, 콘셉트·근거 통합 기획안 작성, claim/attribute/proposal-level Evidence 연결, MD 검토 지원 |
 | 보존 | `request_id`, 계약 버전, 입력 상태, Evidence 참조, 누락·불일치·제약 |
-| 제외 | 트렌드 원천 검색/인덱스, 실시간 상품·재고 API 소유, 경쟁상품 조사, 원가·마진/생산·조달/고객 피드백 분석, 최종 기획안 렌더링·MD 승인 기록 |
+| 제외 | 판매 원천 조회·분석 소유, 시장자료 원천 조회·분석 소유, 트렌드 검색, 실시간 상품·재고 API 소유, 자동 확정/발주 |
 
 H&M 거래 집계는 데이터의 기간·채널·단위와 출처가 있는 과거 관찰로 사용합니다. 관측된 판매 패턴만으로 미래 수요나 인과적 고객 니즈를 단정하지 않습니다. 근거 없는 고객 니즈는 가설로, 미입력 가격대·소재·핏은 미정으로 표시합니다. 재고 스냅샷은 수요나 판매 추세와 구분하며, 상품 채택·가격·발주·외부 공개를 결정하거나 실행하지 않습니다.
 
 ## 2. 처리 흐름
 
 ```text
-TrendResult + PlanningRequest + SalesAnalysisResult + InventoryProductResult
+PlanningRequest + TrendResult + InventoryProductResult + Project_07 Sales & Market Data result
   → 세 핵심 입력의 구조·요청 ID·계약 버전·상태 검증
-  → 선택형 H&M 상품·거래 manifest 및 집계 Evidence가 제공되면 추가 검증
+  → Project_07 결과가 전달되면 출처·기간·단위·정의·매핑·상태 검증
   → request_id 및 입력 계약 버전 정합성 확인
   → 시즌·시장·채널·카테고리·요청 속성 정합성 확인
   → 입력 상태와 Evidence 참조 보존
   → 1순위 트렌드 Evidence로 콘셉트 방향 검토
   → 2순위 쿼리 조건으로 적용 범위 확인 및 충돌 표시
-  → 3순위 판매 관찰을 보조 근거로 검토
+  → Project_07 판매·시장 관찰을 제한이 명시된 보조 근거로 검토
   → 4순위 자사 상품·재고 맥락을 마지막 보조 근거로 검토
   → 기회, 대상 고객/착용 상황 가설, 상품 정의·속성 제안
-  → ProductConcept 조립
+  → 콘셉트를 구성요소로 포함한 PlanningDraft 작성 → MD 검토
 ```
 
 ### 정합성 및 부분 결과 처리
@@ -43,10 +43,12 @@ TrendResult + PlanningRequest + SalesAnalysisResult + InventoryProductResult
 - 시즌·시장·속성이 다르면 충돌 필드를 기록하고, 충돌을 해소할 수 없는 주장은 콘셉트 근거로 사용하지 않습니다. 요청 상품과 재고 상품의 카테고리가 다르더라도 내부 `outfit-role-pairing-v1` 규칙이 상·하의 코디 보완 관계를 명확히 찾으면 재고 상품을 요청 상품으로 병합하지 않고 별도의 코디 제안으로 기록합니다. 역할 분류가 없거나 애매하면 기존처럼 충돌/확인 질문을 남깁니다.
 - 입력 `partial`은 확보된 정보와 누락 사유를 함께 전달합니다.
 - 입력 `no_results`는 데이터 값 0과 구분합니다. 조회 실패, 자료 없음, 실제 0을 재해석하지 않습니다.
-- `PlanningRequest`, `TrendResult`, `InventoryProductResult`는 핵심 입력입니다. 선택형 H&M 판매 확장이 없으면 초안에서 판매 근거를 사용하지 않았다고 표시하며, 이를 실제 판매 0이나 조회 실패로 바꾸지 않습니다. 제공된 입력의 `partial`, `no_results`, `error` 상태는 보존합니다.
+- Project_07 결과가 미제공이면 판매 관찰을 생성하지 않고 `not_provided`로 구분합니다. 실제 판매량 0, 조건에 맞는 자료 없음(`no_results`), 조회 실패/timeout(`error`), 권한 부족, 상품 ID 매핑 실패 및 정의 불일치를 서로 구별합니다.
+- `partial/no_results/error`, 입력별 누락·충돌·제한, Evidence ID, 기간, 단위, 통화 및 지표 정의를 기획안 초안에 보존합니다. 이름과 구체 필드는 팀 합의 전 제안입니다.
+- 판매 관측은 미래 수요·고객 선호·시장 성장 증거가 아닙니다. 재고 스냅샷은 판매 추세 대리값이 아닙니다. 출처/기간/정의/단위가 없으면 숫자를 추정하지 않습니다.
 - 상품 속성과 재고 수량은 의미를 구분합니다. `InventoryProductResult`는 필수지만 개별 데이터에 재고 수량이 없으면 미확정으로 표시하고 상품 속성만 활용합니다. 수량은 `quantity`, `unit`, `inventory_definition`, `as_of`, Evidence를 함께 확인한 경우에만 스냅샷 사실로 기록합니다.
 - 코디 목적의 내부 역할 정규화는 `PlanningRequest.product_role`, `InventoryProduct.product_role`, 또는 명확한 상/하의 상품 분류 문구를 사용할 수 있습니다. `outfit-role-pairing-v1`은 상의와 하의를 분리해 코디 후보로 연결할 뿐, 수요·선호·재고 소진 효과를 입증하지 않습니다. Upstream adapter에서 역할/메모 필드를 전달할 수 있는지와 분류 용어를 담당자와 합의해야 하며, 이 내부 필드들을 공통 wire contract로 간주하지 않습니다.
-- 분석 우선순위는 트렌드 → 사용자 쿼리 → 판매 분석 → 자사 상품·재고입니다. 이는 점수나 사용자 요청을 무시하는 권한이 아닙니다. 요청은 적용 범위를 정하고, 트렌드와 요청이 충돌하면 둘 다 보존해 확인 질문을 표시합니다. 판매와 재고는 보조 맥락으로 사용합니다.
+- 처리 순서는 Query & Trend → Product & Inventory → Project_07 Sales & Market Data → Project_06 Planning입니다. 이 순서는 앞 단계의 실패나 미제공을 사실로 대체하지 않습니다.
 - 사용 권한이 확인되지 않은 원문이나 이미지를 추가로 조회·저장·재배포하지 않습니다.
 - 각 제안 속성은 사용자 요청, 입력 근거 기반 관찰, 에이전트 제안, 미확정 중 하나로 출처 성격을 표시합니다.
 
@@ -70,7 +72,11 @@ TrendResult + PlanningRequest + SalesAnalysisResult + InventoryProductResult
 
 ## 4. `ProductConcept` 계약 초안
 
-아래는 현재 Workflow의 개념 예시를 정리한 제안입니다. **합의된 스키마가 아니며**, 구현에서 그대로 확정하지 않습니다.
+아래는 이름부터 합의 전인 의미 제안입니다. **공용 wire schema나 운영 계약이 아닙니다.**
+
+`SalesMarketDataResult (proposed)`는 `schema_version`, `request_id`, `agent_id`, `status`, `summary`, `findings`, 판매 관측 및/또는 시장 결과, Evidence(`source`, `locator`, 기간/as-of, 지역, 채널, 상품 매핑), 단위·통화·metric 정의·계산 참조, 제한·결측·오류·후속 질문을 포함할 수 있습니다. 해당 의미를 유지하는 임시 내부 호환 필드를 도메인에 두었으나 필드명과 envelope는 담당자 합의가 필요합니다.
+
+`PlanningDraft` 역시 제안명입니다. 기존 `ProductConceptDraft` 내부 모델은 이행 중 유지되며, 공용 출력 serializer/nesting은 확정하지 않습니다. `PlanningDraft`에는 하나 이상의 콘셉트 요소, 근거 주장·속성·제안별 Evidence ID, 상태 및 입력별 제한이 포함되어야 합니다.
 
 ```json
 {
@@ -115,7 +121,7 @@ TrendResult + PlanningRequest + SalesAnalysisResult + InventoryProductResult
 }
 ```
 
-### 스키마에 대한 계약 검토 항목
+### Project_07 / 공용 스키마 합의 항목
 
 1. Workflow 예시는 `ProductConcept` 도메인 객체 형태지만 공통 envelope 예시의 `findings`·`evidence` 위치와 완전히 정렬되어 있지 않습니다. 출력 nesting을 먼저 합의해야 합니다.
 2. 최상위 `evidence_ids`와 공통 `evidence` 배열 중 어느 표현을 사용할지, 중복 참조를 어떻게 피할지 정해야 합니다.

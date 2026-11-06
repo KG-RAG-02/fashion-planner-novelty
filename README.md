@@ -1,20 +1,22 @@
-# VOGUE New Product Planning Agent
+# VOGUE Project_06 Planning Agent
 
-VOGUE 프로젝트의 3번 **New Product Planning Agent**를 구현하는 저장소입니다.
+VOGUE **Project_06 기획안 에이전트(Planning Agent)**를 구현하는 저장소입니다. 상품 기회·콘셉트 생성과 근거 통합 `PlanningDraft` 작성, MD 검토 지원을 한 에이전트 책임으로 정렬 중입니다. 콘셉트는 기획안 내부 구성요소이며 별도 새 상품 생성 에이전트를 운영 단계로 두지 않습니다.
 
 ## 범위
 
-- 현재 작업: 상품·판매 자료와 트렌드·고객 의견·재고 근거를 활용해 MD/디자이너가 검토하고 수정할 수 있는 신상품 브리프와 이미지 시안 흐름을 프로토타입으로 구현합니다.
-- 로컬 UI의 기회 분석·문서·재고·고객 의견 자료는 모두 가상 fixture이며 Kaggle 데이터 또는 실제 회사 데이터와 혼합하지 않습니다.
-- H&M Kaggle 파이프라인은 실제로 내려받은 상품 마스터와 거래 이력을 로컬 처리하고, 결과를 합성 데모와 분리된 **H&M 데이터** 화면에 표시합니다.
-- 핵심 내부 입력 모델: `PlanningRequest`, `TrendResult`, `InventoryProductResult`. H&M 과거 판매 분석은 선택형 로컬 확장입니다.
-- 내부 출력: `ProductConceptDraft`; 공통 `ProductConcept` adapter는 계약 합의 후 연결
-- H&M 내부 상품·판매 실적 분석을 포함합니다. 경쟁상품 조사는 현재 범위에서 제외합니다.
+- 현재 역할: `PlanningRequest`, `TrendResult`, `InventoryProductResult`, Project_07 판매·시장 결과를 입력으로 받아 Evidence 기반 상품 기회·콘셉트와 검토용 기획안 초안을 작성합니다.
+- 목표 순서: 사용자 쿼리 → 쿼리·트렌드 에이전트 → 자사 상품·재고 에이전트 → Project_07 판매·시장 데이터 에이전트 → Project_06 기획안 에이전트 → MD 최종 판단.
+- 로컬 UI의 기회 분석·문서·재고·고객 의견 자료는 모두 가상 fixture이며 Kaggle 데이터 또는 실제 회사 데이터와 혼합하지 않습니다. 이 합성 판매 분석 UI는 레거시 이관 검토 후에도 담당자 합의 전 유지합니다.
+- 기존 H&M Kaggle 파이프라인은 실제로 내려받은 공개 상품 마스터와 과거 거래 이력을 로컬 처리하고, 결과를 합성 데모와 분리된 **H&M 데이터** 화면에 표시합니다. 이는 Project_06 운영 데이터 연결이 아닙니다. 판매 분석 책임은 Project_07로 조율할 이관 후보로 문서화했으며 합의 전 삭제·이동하지 않습니다.
+- 핵심 내부 입력 모델: `PlanningRequest`, `TrendResult`, `InventoryProductResult`; Project_07 결과 입력은 담당자 합의 전 제안입니다.
+- 내부 출력: `ProductConceptDraft`는 현재 호환 내부 모델. 목표 출력 `PlanningDraft`와 공통 adapter는 계약 합의 후 연결
+- Project_06은 판매 원천을 조회하거나 판매·시장 분석을 소유하지 않습니다. 기존 H&M 분석 코드·UI·fixture는 보존 중이며 현 사용처/이관 후보를 [책임 맵](docs/design/agent-3-responsibility-map.md)에 기록했습니다.
+- Project_06은 가격·원가·수량·발주·최종 채택을 확정하지 않습니다. MD가 최종 판단합니다.
 - 원가·마진, 생산·조달, 고객 피드백 분석은 이 에이전트에서 구현하지 않습니다.
 
 ## 저장소 경계
 
-이 저장소는 3번 **New Product Planning Agent**만 담당합니다. 4번 **Product Feasibility Agent**는 추후 별도 신규 저장소에서 진행하기로 합의했습니다. 두 에이전트 간 연동은 공통 계약으로 맞추며, 4번 에이전트 코드를 이 저장소에 추가하지 않습니다.
+이 저장소는 Project_06 **Planning Agent**를 담당합니다. Project_07은 **Sales & Market Data Agent** 역할이며 저장소명은 `market-research-agent`입니다. Project_07의 결과가 먼저 전달된 후 Project_06이 초안을 만듭니다. Project_07의 구현 범위, 자료원, 계약 필드와 이관 범위는 담당자 합의 전입니다.
 
 ## 기술 선택
 
@@ -37,7 +39,7 @@ Agent 3의 데이터 출처·Evidence 경계는 [데이터·Evidence 계획](doc
 
 세 핵심 입력의 내부 매핑과 실패 동작은 [입력·출력 처리 흐름](docs/design/input-output-processing-flow.md)을 참고하세요. 선택형 H&M 과거 판매 확장이 제공되면 추가 관찰로 검토하되, 미제공 시에도 핵심 입력만으로 초안을 만들고 판매 근거를 사용하지 않았음을 표시합니다. 입력 간 충돌은 임의로 해소하지 않습니다. 버전 지정된 상·하의 역할 분류 규칙으로 코디 관계가 명확한 경우에는 서로 다른 카테고리를 충돌 대신 별도 코디 맥락으로 기록합니다. `InventoryProductResult`의 재고 필드가 부분적으로 비면 상태와 제한을 보존합니다. 외부 공통 계약 어댑터는 합의 후 연결합니다.
 
-가공된 H&M Style 판매 요약은 `load_hm_sales_analysis()`로 `SalesAnalysisResult`에 매핑할 수 있습니다. Kaggle 상품 분류를 요청 카테고리로 연결하는 `source_category_map`과 `category_mapping_version`은 프로젝트 taxonomy와 대조해 호출자가 명시해야 하며, 데이터에 없는 시즌이나 채널 의미를 자동 추정하지 않습니다.
+기존 H&M Style 판매 요약은 `load_hm_sales_analysis()`로 내부 `SalesAnalysisResult`에 매핑할 수 있습니다. 이는 현재 Project_06의 legacy compatibility 경로이며 판매 분석 소유권을 뜻하지 않습니다. Project_07 handoff가 연결되면 이관 후보로 검토합니다. Kaggle 상품 분류를 요청 카테고리로 연결하는 map/version은 호출자가 명시해야 하며, 데이터에 없는 시즌이나 채널 의미를 자동 추정하지 않습니다.
 
 ### 콘셉트 초안에서 이미지 시안 생성
 
@@ -126,7 +128,11 @@ docker compose up --build -d
 
 로컬 프로토타입은 H&M 과거 Article 거래 근거 조회, 후보 선택/반대근거 저장, Evidence와 가설을 구분하는 버전형 기획 브리프, 브리프별 사람 검토 기록까지 지원합니다. 신규 도메인 workflow는 정규화된 입력으로 프롬프트를 구성하고, 설정과 호출별 확인을 거쳐 OpenAI 이미지 API를 선택 호출할 수 있습니다. 웹 프로토타입의 H&M 브리프 편집 흐름과는 아직 자동 연결되지 않았습니다. 실제 H&M의 승인된 내부 RAG, 트렌드·재고·원가·고객 데이터, 사용자 인증, 운영 배포와 모니터링은 구현되지 않아 운영용 상품기획 시스템 완료 상태가 아닙니다. 외부 전송 전 데이터 권한, 보존·삭제, 모델 비용 및 이미지 권리를 검토해야 합니다.
 
-에이전트 입력·출력 계약과 향후 통합 경계는 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. 도메인 코어는 기존 입력 정합성 검사, 기획 기회 비교, 내부 콘셉트 초안 생성과 출처 안전 검사를 유지합니다. 별도 로컬 웹 프로토타입은 가상 자료에서만 브리프·평가 흐름을 시연하며, 공통 에이전트 API나 운영용 LLM 생성기로 간주하지 않습니다.
+에이전트 입력·출력 계약과 향후 통합 경계는 [Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. 도메인 코어는 기회 비교, 내부 콘셉트 초안, 출처 안전 검사를 수행합니다. 별도 로컬 웹 프로토타입의 합성/과거 판매 분석은 공통 API나 운영 데이터로 간주하지 않습니다.
+
+Project_07과 협의할 결과는 현재 `SalesMarketDataResult (proposed)` 의미 초안입니다. 제안 결과는 상태, summary/findings, 판매 관측 및/또는 시장 결과, Evidence(출처·locator·기간/as-of·지역·채널·상품 매핑), 단위·통화·지표 정의·산식 참조, 제한·결측·오류·후속 질문을 담을 수 있습니다. 이름과 필드는 합의 전이며 운영 계약이 아닙니다. 판매량 0, 조건 자료 없음, 조회 실패/timeout, 권한 부족, ID 매핑 실패, 기간·채널·단위·통화 정의 불일치는 서로 다른 상태로 처리합니다.
+
+현재 Project_07 판매·시장 데이터의 adapter, 사내 원장/API/DB 연결은 없습니다. 실제 연결 가능한 자료원도 확인되지 않았습니다. 자료원·기간·정의·단위가 없는 값은 추정하지 않으며, 판매 관측을 미래 수요·고객 선호·시장 성장으로 바꾸지 않습니다.
 
 Notion 요구사항을 기준으로 한 다음 구현 순서와 통합 경계는 [향후 작업 설계](docs/design/implementation-roadmap.md)에 정리했습니다.
 

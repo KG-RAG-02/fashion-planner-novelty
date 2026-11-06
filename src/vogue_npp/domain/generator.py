@@ -165,7 +165,7 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
         for signal in context.request.requested_attributes:
             add(signal)
     if _input_usable(context, "sales_analysis_result"):
-        for observation in context.sales.observations:
+        for observation in context.sales.observations if context.sales else ():
             if (
                 not context.request.category
                 or not observation.category
@@ -391,8 +391,10 @@ def _validation_questions(
     ):
         questions.append("트렌드 후보를 뒷받침하는 Evidence 참조를 확인해 주세요.")
     sales_status = context.input_statuses.get("sales_analysis_result")
-    if sales_status != "not_provided" and (
-        not _input_usable(context, "sales_analysis_result") or not context.sales.observations
+    if sales_status not in {"not_provided", None} and (
+        not _input_usable(context, "sales_analysis_result")
+        or not context.sales
+        or not context.sales.observations
     ):
         questions.append("요청 카테고리에 적용할 수 있는 판매 분석 결과를 확인해 주세요.")
     if not _input_usable(context, "inventory_product_result") or not context.inventory.products:
@@ -517,6 +519,7 @@ def generate_concept_draft(
             for limitation in tuple(dict.fromkeys((*context.limitations, *analysis.limitations)))
         ),
         questions_for_validation=_validation_questions(context, analysis.questions),
+        sales_market_result=context.sales_market_result,
     )
     return draft, validate_concept_draft(context, draft)
 

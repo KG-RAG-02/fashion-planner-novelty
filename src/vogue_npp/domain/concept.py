@@ -16,6 +16,7 @@ from .context import (
     ContextConflict,
     ContextOrigin,
     ProductPlanningContext,
+    SalesAnalysisResult,
 )
 
 
@@ -81,6 +82,10 @@ class ProductConceptDraft:
     differentiation: tuple[SourcedClaim, ...] = ()
     risks: tuple[SourcedClaim, ...] = ()
     questions_for_validation: tuple[str, ...] = ()
+    # Optional Project 07 handoff payload, retained verbatim until the shared
+    # result schema is agreed. It is deliberately an internal compatibility
+    # field and must not be serialized as an approved wire contract.
+    sales_market_result: SalesAnalysisResult | None = None
 
 
 @dataclass(frozen=True)
@@ -166,6 +171,15 @@ def validate_concept_draft(
                 path="request_id",
                 code="REQUEST_ID_MISMATCH",
                 message="The concept draft must retain the input request_id.",
+            )
+        )
+
+    if draft.sales_market_result != context.sales_market_result:
+        issues.append(
+            ValidationIssue(
+                path="sales_market_result",
+                code="SALES_MARKET_RESULT_NOT_PRESERVED",
+                message="The Project 07 result and its provenance must be retained unchanged in the draft.",
             )
         )
 
