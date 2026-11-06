@@ -163,3 +163,5 @@ PYTHONPATH=src python3 examples/synthetic_demo.py
 ```
 
 복수 엔진 비교 방식, 근거성·요청 준수·MD 유용성 지표와 아직 측정하지 않은 항목은 [근거 기반 생성 및 엔진 비교 평가 계획](docs/design/generator-evaluation-plan.md)에 적었습니다.
+
+GraphRAG 트렌드 배치 입력(순위·유사도 없음)과 Trend × Category 평가, 기존/신규 후보, KG-RAG adapter, 점수화·포트폴리오 선정을 위한 **내부 계약과 use case 기준선**은 [GraphRAG TrendBatch 기반 상품기획 설계](docs/design/trend-batch-kg-rag-product-planning.md)를 참고하세요. 코드에는 의존성 없는 TrendBatch validator, 보수적 Trend Evaluator, 상품/판매/재고 및 KG/RAG repository ports, 후보 생성기, 설정형 scorer/selector와 use case가 있습니다. Pydantic/HTTP 운영 API, 원문 resolver, 운영 SQL/KG/vector 연결과 승인된 scoring 설정은 아직 연결되지 않았습니다. 기본 구성은 데이터를 조회하지 않았거나 점수 기준이 없음을 명시하며 TOP 5를 억지로 만들지 않습니다.
