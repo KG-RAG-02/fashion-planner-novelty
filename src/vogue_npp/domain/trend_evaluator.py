@@ -25,6 +25,7 @@ class Category:
     name: str
     aliases: tuple[str, ...] = ()
     taxonomy_version: str = DEFAULT_TAXONOMY_VERSION
+    relevant_attribute_types: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -180,12 +181,24 @@ def _category_fit(category: Category, attributes: Sequence[ExtractedAttribute], 
         return TrendCategoryEvaluation(None, "", category.category_id, "insufficient_evidence", None,
             {"attribute_relevance": 0.0, "evidence_verification": 0.0, "recency": None, "independence": None},
             evidence_ids, ("문서 원문 검증기가 연결되지 않아 점수를 산출하지 않았습니다.",), EVALUATOR_VERSION, taxonomy)
-    # Without a category-to-attribute ontology the relevance component cannot
-    # be responsibly scored; deliberately abstain instead of using an LLM-like
-    # guessed number. A configured evaluator can replace this function later.
-    limitations.append("Category별 속성 taxonomy가 아직 연결되지 않아 적합도 점수는 보류했습니다.")
-    return TrendCategoryEvaluation(None, "", category.category_id, "insufficient_evidence", None,
-        {"attribute_relevance": None, "evidence_verification": 1.0, "recency": None, "independence": None},
+    if not category.relevant_attribute_types:
+        limitations.append("Category별 속성 taxonomy가 아직 연결되지 않아 적합도 점수는 보류했습니다.")
+        return TrendCategoryEvaluation(None, "", category.category_id, "insufficient_evidence", None,
+            {"attribute_relevance": None, "evidence_verification": 1.0, "recency": None, "independence": None},
+            evidence_ids, tuple(limitations), EVALUATOR_VERSION, taxonomy)
+    relevant = sum(item.attribute_type in category.relevant_attribute_types for item in supported)
+    relevance = min(1.0, relevant / max(1, len(category.relevant_attribute_types)))
+    verification = len(verified_docs) / max(1, len(evidence))
+    # No target-season validity window or independent-source resolver exists
+    # yet. Avoid making up recency/independence values; score only configured,
+    # observed components and identify the missing dimensions.
+    if len(evidence) > 1 and len({item.independence_group for item in verified_docs if item.independence_group}) < len(verified_docs):
+        limitations.append("근거의 독립 출처 그룹을 모두 확인할 수 없어 독립성 평가는 누락했습니다.")
+    if any(item.published_at is None for item in evidence):
+        limitations.append("발행일 미상 문서가 있어 최신성 평가는 누락했습니다.")
+    score = round(100 * (0.5 * relevance + 0.5 * verification), 2)
+    return TrendCategoryEvaluation(None, "", category.category_id, "ok", score,
+        {"attribute_relevance": relevance, "evidence_verification": verification, "recency": None, "independence": None},
         evidence_ids, tuple(limitations), EVALUATOR_VERSION, taxonomy)
 
 
