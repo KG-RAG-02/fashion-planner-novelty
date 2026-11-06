@@ -34,9 +34,32 @@ VOGUE 전체 흐름은 RAG 기반 LLM 에이전트 시스템입니다. 이 저�
 
 Agent 3의 데이터 출처·Evidence 경계는 [데이터·Evidence 계획](docs/design/data-source-and-evidence-plan.md)에, Kaggle 원본의 수집·정제·집계 설계는 [H&M Kaggle 처리 계획](docs/design/hm-kaggle-data-pipeline.md)에 정리했습니다. 원본과 파생 데이터는 `data/` 아래에 저장하고 Git에서 제외합니다.
 
-네 입력의 분석 우선순위(트렌드 → 사용자 요청 → 판매 분석 → 자사 상품·재고), 내부 모델 매핑과 실패 동작은 [입력·출력 처리 흐름](docs/design/input-output-processing-flow.md)을 참고하세요. 우선순위는 분석 순서이며 요청 범위를 무시하거나 입력 간 충돌을 임의로 해소하는 근거가 아닙니다. 네 입력은 모두 필수이며, `InventoryProductResult`에서 재고 필드가 부분적으로 비면 상태와 제한을 보존합니다. 외부 공통 계약 어댑터는 합의 후 연결합니다.
+네 입력의 분석 우선순위(트렌드 → 사용자 요청 → 판매 분석 → 자사 상품·재고), 내부 모델 매핑과 실패 동작은 [입력·출력 처리 흐름](docs/design/input-output-processing-flow.md)을 참고하세요. 우선순위는 분석 순서이며 요청 범위를 무시하거나 입력 간 충돌을 임의로 해소하는 근거가 아닙니다. 다만 버전 지정된 상·하의 역할 분류 규칙으로 코디 관계가 명확한 경우에는 서로 다른 카테고리를 충돌 대신 별도 코디 맥락으로 기록합니다. 네 입력은 모두 필수이며, `InventoryProductResult`에서 재고 필드가 부분적으로 비면 상태와 제한을 보존합니다. 외부 공통 계약 어댑터는 합의 후 연결합니다.
 
 가공된 H&M Style 판매 요약은 `load_hm_sales_analysis()`로 `SalesAnalysisResult`에 매핑할 수 있습니다. Kaggle 상품 분류를 요청 카테고리로 연결하는 `source_category_map`과 `category_mapping_version`은 프로젝트 taxonomy와 대조해 호출자가 명시해야 하며, 데이터에 없는 시즌이나 채널 의미를 자동 추정하지 않습니다.
+
+### 콘셉트 초안에서 이미지 시안 생성
+
+정규화 입력으로 만든 콘셉트 초안을 검토용 이미지 프롬프트로 연결하려면 `run_concept_to_image(context, ...)`를 사용합니다. 기본 실행은 프롬프트만 구성하고 외부 요청은 보내지 않습니다. 실제 OpenAI 이미지 생성을 사용하려면 로컬 `.env`에 `OPENAI_API_KEY`를 설정하고 `VOGUE_IMAGE_GENERATION_ENABLED=true`로 활성화한 뒤, 호출 시 `confirm_image_generation=True`를 명시해야 합니다. 생성 이미지는 `data/local/generated_images/`에 request ID·프롬프트 해시와 연결해 저장하며, 이 경로는 Git에서 제외됩니다.
+
+```python
+from vogue_npp import OpenAIImageProvider, load_settings, run_concept_to_image
+
+settings = load_settings()
+provider = (
+    OpenAIImageProvider(api_key=settings.image_generation_api_key)
+    if settings.image_generation_api_key else None
+)
+result = run_concept_to_image(
+    context,
+    provider=provider,
+    image_generation_enabled=settings.image_generation_enabled,
+    confirm_image_generation=True,  # 이 호출에서 실제 이미지 생성을 요청
+)
+print(result.image.status, result.image.image_path)
+```
+
+모델은 현재 `gpt-image-2.5-sunburst`이며 한 번에 이미지 1장을 생성합니다. 모델은 `OpenAIImageProvider(model=...)`로 지정할 수 있습니다. 공통 의류 디자이너 지침은 `IMAGE_DESIGNER_SYSTEM_PROMPT`에 보관하고, 각 `ImageGenerationRequest.system_prompt`에 포함합니다. Images API는 별도 system role 필드를 받지 않으므로 provider가 이 지침과 요청별 디자인 브리프를 구분 표기해 하나의 prompt로 전달합니다. 변경 시 `PROMPT_VERSION`도 갱신합니다. 생성 결과는 검토용 제안 시안이고 소재·핏·생산 가능성 또는 수요를 확인하지 않습니다. 트렌드 Evidence가 없으면 해당 트렌드명을 이미지 지시로 쓰지 않으며, 해소되지 않은 범주 충돌이 있으면 외부 호출을 막습니다. 상·하의 보완 관계가 역할 분류 규칙으로 확인되면 요청 상품과 재고 상품을 구분한 코디 제안으로 프롬프트에 전달합니다. Kaggle 원자료나 고객 단위 데이터는 이미지 API에 보내지 않고, 조립된 프롬프트에 들어가는 정규화된 속성도 Evidence·사용자 조건·가설로 구분해야 합니다.
 
 현재 처리 산출물의 데이터 품질과 Style 대표 분류의 유형별 편차는 아래 명령으로 재현할 수 있습니다. 결과 JSON에는 스키마·결측·중복·article 연결 상태, 판매 집계 행 수, 카탈로그 분류 충돌 및 Article 기준과 Style 대표 분류 기준의 유형별 차이가 기록됩니다.
 
@@ -58,7 +81,7 @@ PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_data
 PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_planning_analysis
 ```
 
-결과 `hm_planning_analysis.json`은 UI의 **상품유형 전체 분석**에 제공됩니다. MD가 후보 선택 근거를 저장하거나 선택 후보의 결정적 브리프 초안을 생성하면 합성 데모 브리프와 분리된 `hm_planning_reviews`/`hm_planning_briefs` 테이블에 보존됩니다. 브리프는 Evidence 사실, MD 가설, unknown을 구분하고 이미지 생성 입력 JSON을 만듭니다. 실제 LLM·이미지 생성 API 호출은 하지 않습니다. 판매 월은 월요일 시작 주의 시작월이며, 실제 MD 시즌으로 추정하지 않습니다. 연도별 변화는 불완전한 연도와 상품 노출 기간을 보정하지 않은 서술 통계입니다. 상대 가격 구간은 원천 수치 분위 구간으로, 통화나 판매가 제안이 아닙니다. 기획 후보는 과거 판매 규모를 탐색하는 용도입니다.
+결과 `hm_planning_analysis.json`은 UI의 **상품유형 전체 분석**에 제공됩니다. MD가 후보 선택 근거를 저장하거나 선택 후보의 결정적 브리프 초안을 생성하면 합성 데모 브리프와 분리된 `hm_planning_reviews`/`hm_planning_briefs` 테이블에 보존됩니다. 브리프는 Evidence 사실, MD 가설, unknown을 구분하고 이미지 생성 입력 JSON을 만듭니다. 해당 브라우저 흐름은 외부 이미지 API를 자동 호출하지 않습니다. 도메인 입력에서 프롬프트 구성과 선택적 OpenAI 이미지 생성을 실행하는 별도 workflow는 아래 설명을 참고하세요. 판매 월은 월요일 시작 주의 시작월이며, 실제 MD 시즌으로 추정하지 않습니다. 연도별 변화는 불완전한 연도와 상품 노출 기간을 보정하지 않은 서술 통계입니다. 상대 가격 구간은 원천 수치 분위 구간으로, 통화나 판매가 제안이 아닙니다. 기획 후보는 과거 판매 규모를 탐색하는 용도입니다.
 
 결과는 Git에서 제외되는 `data/processed/hm-personalized-fashion-recommendations/` 아래 상품 카탈로그, 주간 거래 집계, Style·상품군·색상·채널·월별 분석 CSV, `hm_analysis.json`, `manifest.json`으로 생성됩니다. 완료된 실제 파일 점검과 제한은 [H&M Kaggle 처리 계획](docs/design/hm-kaggle-data-pipeline.md)에 기록했습니다. 분석 산출물은 아래 웹 앱의 **H&M 데이터** 섹션에 합성 데모와 분리해 표시합니다.
 
@@ -70,9 +93,9 @@ PYTHONPATH=src python3 -m vogue_npp.sources.hm.hm_planning_analysis
 PYTHONPATH=src python3 -m vogue_npp.prototype.server
 ```
 
-브라우저에서 [http://127.0.0.1:8765](http://127.0.0.1:8765)을 열면 카테고리·시즌 선택, 수치 기반 기회 탐색, 문서 검색과 근거 확인, 브리프 편집/버전 관리, 이미지 시안 비교, MD/디자이너 평가 이력을 한 흐름으로 시연할 수 있습니다. 생성 모델로 만든 실제 의류 콘셉트 사진 1개가 포함되며, 추가 시안은 API 키 없이 로컬 SVG 목업으로 생성됩니다. 서버는 이 컴퓨터 내부 주소에만 바인딩합니다. 중지하려면 실행 터미널에서 `Ctrl+C`를 누르세요.
+브라우저에서 [http://127.0.0.1:8765](http://127.0.0.1:8765)을 열면 카테고리·시즌 선택, 수치 기반 기회 탐색, 문서 검색과 근거 확인, 브리프 편집/버전 관리, 이미지 시안 비교, MD/디자이너 평가 이력을 한 흐름으로 시연할 수 있습니다. 06 이미지 시안에는 예시 입력을 수정해 실제 OpenAI 이미지 API를 요청하는 별도 폼이 있습니다. 이를 사용하려면 `.env`에 `OPENAI_API_KEY`를 설정하고 `VOGUE_IMAGE_GENERATION_ENABLED=true PYTHONPATH=src python3 -m vogue_npp.prototype.server`로 실행한 뒤, 화면에서 외부 전송 확인란을 체크합니다. 실제 생성 결과는 기존 시안 카드 목록의 첫 카드로 저장되며 평가와 Evidence 확인이 가능합니다. 다른 시안 비교는 API 키 없이 로컬 SVG 목업으로 생성됩니다. 서버는 이 컴퓨터 내부 주소에만 바인딩합니다. 중지하려면 실행 터미널에서 `Ctrl+C`를 누르세요.
 
-브라우저 결과와 데이터 흐름·fixture 스키마·지표 산식·제한사항은 [프로토타입 실행·설계 안내](docs/design/prototype-runbook.md)에 문서화했습니다. 화면의 브리프·시안·평가는 로컬 Git 제외 SQLite 파일 `data/local/prototype.sqlite3`에 기록됩니다. 실제 Kaggle의 과거 상품·거래 분석은 별도 섹션에서 조회하며, 합성 재고/리뷰/트렌드 또는 기획 브리프와 자동 병합하지 않습니다. 포함된 ImageGen 사진은 프로젝트에 고정된 콘셉트 예시이며 앱에서 외부 이미지 API를 실시간 호출하지 않습니다.
+브라우저 결과와 데이터 흐름·fixture 스키마·지표 산식·제한사항은 [프로토타입 실행·설계 안내](docs/design/prototype-runbook.md)에 문서화했습니다. 화면의 브리프·시안·평가는 로컬 Git 제외 SQLite 파일 `data/local/prototype.sqlite3`에 기록됩니다. 실제 Kaggle의 과거 상품·거래 분석은 별도 섹션에서 조회하며, 합성 재고/리뷰/트렌드 또는 기획 브리프와 자동 병합하지 않습니다. 기존 고정 ImageGen 사진과 UI 예시 폼에서 생성한 이미지는 구분해 시안 카드에 표시합니다. UI 브리프 편집 흐름은 도메인 입력 폼과 자동 병합되지 않습니다.
 
 상품기획·운영 자료의 가용성 조사, 합성 fixture, 응답 계약과 로컬 조회 화면은 [상품기획·운영 데이터 계약](docs/design/planning-operations-data-contract.md)에 정리했습니다. `03 기획·운영 데이터` 메뉴에서는 합성 라인 플랜·마크다운 시나리오·KPI 정의·상품 상세·캠페인과 연결 상태를 볼 수 있습니다. 미연결 KPI/캠페인 결과는 null로 남기며, 실제 Kaggle 상품 카탈로그 조회는 관측 데이터로 별도 표시합니다.
 
@@ -100,7 +123,7 @@ docker compose up --build -d
 
 ### 실제 데이터 상품기획 흐름 상태
 
-로컬 프로토타입은 H&M 과거 Article 거래 근거 조회, 후보 선택/반대근거 저장, Evidence와 가설을 구분하는 버전형 기획 브리프, 브리프별 사람 검토 기록까지 지원합니다. 브리프 생성은 결정적 템플릿이며 실제 H&M의 승인된 내부 RAG, 트렌드·재고·원가·고객 데이터, 사용자 인증, LLM/이미지 공급자 연결은 아직 없습니다. 따라서 운영용 상품기획 시스템 완료 상태가 아닙니다. 다음 제품화 단계의 데이터 권한, 로그인/역할, 보존·삭제, 모델 공급자/비용, 이미지 권리, 배포 및 모니터링은 [H&M 데이터 흐름 문서](docs/design/hm-kaggle-data-pipeline.md)의 미완료 경계를 기준으로 결정해야 합니다.
+로컬 프로토타입은 H&M 과거 Article 거래 근거 조회, 후보 선택/반대근거 저장, Evidence와 가설을 구분하는 버전형 기획 브리프, 브리프별 사람 검토 기록까지 지원합니다. 신규 도메인 workflow는 정규화된 입력으로 프롬프트를 구성하고, 설정과 호출별 확인을 거쳐 OpenAI 이미지 API를 선택 호출할 수 있습니다. 웹 프로토타입의 H&M 브리프 편집 흐름과는 아직 자동 연결되지 않았습니다. 실제 H&M의 승인된 내부 RAG, 트렌드·재고·원가·고객 데이터, 사용자 인증, 운영 배포와 모니터링은 구현되지 않아 운영용 상품기획 시스템 완료 상태가 아닙니다. 외부 전송 전 데이터 권한, 보존·삭제, 모델 비용 및 이미지 권리를 검토해야 합니다.
 
 에이전트 입력·출력 계약과 향후 통합 경계는 [New Product Planning Agent 설계 제안](docs/design/new-product-planning-agent.md)에 정리했습니다. 도메인 코어는 기존 입력 정합성 검사, 기획 기회 비교, 내부 콘셉트 초안 생성과 출처 안전 검사를 유지합니다. 별도 로컬 웹 프로토타입은 가상 자료에서만 브리프·평가 흐름을 시연하며, 공통 에이전트 API나 운영용 LLM 생성기로 간주하지 않습니다.
 
@@ -160,6 +183,12 @@ draft, validation_issues = generate_concept_draft(context)
 ```bash
 python3 -m pip install -r requirements.txt
 PYTHONPATH=src python3 examples/synthetic_demo.py
+```
+
+이 예제는 콘셉트 초안과 이미지 프롬프트를 함께 출력합니다. 실제 이미지 생성은 `.env`에서 `OPENAI_API_KEY`와 `VOGUE_IMAGE_GENERATION_ENABLED=true`를 설정하고 아래처럼 명시 요청한 경우에만 수행되며, 비용이 발생할 수 있습니다.
+
+```bash
+PYTHONPATH=src python3 examples/synthetic_demo.py --generate-image
 ```
 
 복수 엔진 비교 방식, 근거성·요청 준수·MD 유용성 지표와 아직 측정하지 않은 항목은 [근거 기반 생성 및 엔진 비교 평가 계획](docs/design/generator-evaluation-plan.md)에 적었습니다.

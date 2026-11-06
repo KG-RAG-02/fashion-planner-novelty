@@ -54,7 +54,10 @@ def initialize() -> None:
                 variant_id TEXT PRIMARY KEY, brief_version INTEGER NOT NULL,
                 image_type TEXT NOT NULL, title TEXT NOT NULL, palette TEXT NOT NULL,
                 prompt TEXT NOT NULL, model TEXT NOT NULL, created_at TEXT NOT NULL,
-                svg TEXT NOT NULL
+                svg TEXT NOT NULL, image_url TEXT NOT NULL DEFAULT '',
+                image_source TEXT NOT NULL DEFAULT 'local_svg_mock',
+                evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+                prompt_version TEXT NOT NULL DEFAULT '', review_only INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS evaluations (
                 evaluation_id TEXT PRIMARY KEY, variant_id TEXT NOT NULL,
@@ -83,6 +86,17 @@ def initialize() -> None:
                 FOREIGN KEY(brief_id) REFERENCES hm_planning_briefs(brief_id)
             );
         """)
+        variant_columns = {row["name"] for row in db.execute("PRAGMA table_info(variants)").fetchall()}
+        variant_migrations = {
+            "image_url": "TEXT NOT NULL DEFAULT ''",
+            "image_source": "TEXT NOT NULL DEFAULT 'local_svg_mock'",
+            "evidence_ids_json": "TEXT NOT NULL DEFAULT '[]'",
+            "prompt_version": "TEXT NOT NULL DEFAULT ''",
+            "review_only": "INTEGER NOT NULL DEFAULT 0",
+        }
+        for column, definition in variant_migrations.items():
+            if column not in variant_columns:
+                db.execute(f"ALTER TABLE variants ADD COLUMN {column} {definition}")
         version = db.execute("SELECT value FROM app_meta WHERE key='fixture_version'").fetchone()
         fixture = load_fixture()
         if version is None or version["value"] != fixture["schema_version"]:
@@ -177,7 +191,7 @@ def generate_variant(payload: dict[str, Any], image_type: str, count: int) -> li
             )
             svg = _mock_svg(image_type, color, title, str(payload.get("title", "Concept")), index)
             db.execute(
-                "INSERT INTO variants VALUES(?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO variants(variant_id,brief_version,image_type,title,palette,prompt,model,created_at,svg) VALUES(?,?,?,?,?,?,?,?,?)",
                 (variant_id, brief["version"], image_type, title, color, prompt, "Local SVG Mock v1", created_at, svg),
             )
             variants.append({
@@ -186,6 +200,50 @@ def generate_variant(payload: dict[str, Any], image_type: str, count: int) -> li
                 "created_at": created_at, "image_url": f"/api/variants/{variant_id}.svg",
             })
     return variants
+
+
+def save_generated_image_variant(
+    *,
+    variant_id: str,
+    image_type: str,
+    title: str,
+    image_url: str,
+    prompt: str,
+    model: str,
+    evidence_ids: list[str],
+    prompt_version: str,
+    review_only: bool = True,
+) -> dict[str, Any]:
+    """Persist a real generated image in the same reviewable variant list."""
+    initialize()
+    clean_id = str(variant_id).strip()[:80]
+    clean_url = str(image_url).strip()[:300]
+    if not clean_id or not clean_url.startswith("/api/generated-images/"):
+        raise ValueError("실제 생성 시안 식별자 또는 이미지 경로가 올바르지 않습니다.")
+    brief_version = get_brief()["version"]
+    created_at = utc_now()
+    clean_evidence = list(dict.fromkeys(str(value)[:200] for value in evidence_ids if value))[:100]
+    clean_prompt = str(prompt)[:30000]
+    clean_title = str(title).strip()[:200]
+    clean_model = str(model).strip()[:120]
+    clean_prompt_version = str(prompt_version).strip()[:120]
+    with connect() as db:
+        db.execute(
+            """INSERT OR REPLACE INTO variants
+               (variant_id,brief_version,image_type,title,palette,prompt,model,created_at,svg,
+                image_url,image_source,evidence_ids_json,prompt_version,review_only)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (clean_id, brief_version, image_type, clean_title, "", clean_prompt, clean_model,
+             created_at, "", clean_url, "model_generated",
+             json.dumps(clean_evidence, ensure_ascii=False), clean_prompt_version, int(review_only)),
+        )
+    return {
+        "variant_id": clean_id, "brief_version": brief_version, "image_type": image_type,
+        "title": clean_title, "palette": "", "prompt": clean_prompt, "model": clean_model,
+        "created_at": created_at, "image_url": clean_url, "image_source": "model_generated",
+        "evidence_ids": clean_evidence, "prompt_version": clean_prompt_version,
+        "review_only": review_only,
+    }
 
 
 def _mock_svg(image_type: str, color: str, title: str, brief_title: str, variant_index: int) -> str:
@@ -226,15 +284,23 @@ def list_variants() -> list[dict[str, Any]]:
     initialize()
     with connect() as db:
         rows = db.execute(
-            "SELECT variant_id,brief_version,image_type,title,palette,prompt,model,created_at FROM variants "
-            "ORDER BY CASE WHEN variant_id=? THEN 0 ELSE 1 END, created_at DESC",
-            (IMAGEGEN_VARIANT_ID,),
+            "SELECT variant_id,brief_version,image_type,title,palette,prompt,model,created_at,image_url,image_source,evidence_ids_json,prompt_version,review_only FROM variants "
+            "ORDER BY CASE WHEN image_source='model_generated' AND variant_id<>? THEN 0 WHEN variant_id=? THEN 1 ELSE 2 END, created_at DESC",
+            (IMAGEGEN_VARIANT_ID, IMAGEGEN_VARIANT_ID),
         ).fetchall()
-    return [{
-        **dict(row),
-        "image_url": IMAGEGEN_ASSET if row["variant_id"] == IMAGEGEN_VARIANT_ID else f"/api/variants/{row['variant_id']}.svg",
-        "image_source": "model_generated" if row["variant_id"] == IMAGEGEN_VARIANT_ID else "local_svg_mock",
-    } for row in rows]
+    variants = []
+    for row in rows:
+        item = dict(row)
+        item["image_url"] = (
+            item["image_url"] or
+            (IMAGEGEN_ASSET if row["variant_id"] == IMAGEGEN_VARIANT_ID else f"/api/variants/{row['variant_id']}.svg")
+        )
+        if row["variant_id"] == IMAGEGEN_VARIANT_ID:
+            item["image_source"] = "model_generated"
+        item["evidence_ids"] = json.loads(item.pop("evidence_ids_json") or "[]")
+        item["review_only"] = bool(item["review_only"])
+        variants.append(item)
+    return variants
 
 
 def save_evaluation(payload: dict[str, Any]) -> dict[str, Any]:
@@ -269,7 +335,8 @@ def list_evaluations() -> list[dict[str, Any]]:
     initialize()
     with connect() as db:
         rows = db.execute("""
-            SELECT e.*,v.title AS variant_title,v.image_type,v.image_url
+                SELECT e.*,v.title AS variant_title,v.image_type,
+                    COALESCE(NULLIF(v.image_url,''), '/api/variants/' || v.variant_id || '.svg') AS image_url
             FROM evaluations e LEFT JOIN (
                 SELECT variant_id,title,image_type,'/api/variants/' || variant_id || '.svg' AS image_url FROM variants
             ) v USING(variant_id)

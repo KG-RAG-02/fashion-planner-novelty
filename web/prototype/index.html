@@ -29,6 +29,7 @@
 
     <nav class="step-nav" aria-label="프로토타입 단계">
       <button class="step active" data-target="opportunities"><span>01</span> 합성 데모</button>
+      <button class="step" data-target="trend-planning-demo"><span>02</span> 트렌드 기획 데모</button>
       <button class="step" data-target="hm-analysis"><span>02</span> H&M 데이터</button>
       <button class="step" data-target="planning-ops"><span>03</span> 기획·운영 데이터</button>
       <button class="step" data-target="documents"><span>04</span> 문서 근거</button>
@@ -36,6 +37,15 @@
       <button class="step" data-target="concepts"><span>06</span> 이미지 시안</button>
       <button class="step" data-target="reviews"><span>07</span> 검토 기록</button>
     </nav>
+
+    <section class="section-block trend-planning-demo" id="trend-planning-demo">
+      <div class="section-heading"><div><div class="eyebrow">TREND BATCH · END-TO-END TEST</div><h2>S/S 남성 반바지 기획 시나리오</h2><p>트렌드·재고 메모·상품·판매·KG 근거가 모두 도착했다고 가정한 검토용 실행 결과입니다.</p></div><span class="data-status-tag status-synthetic">완료된 테스트 fixture</span></div>
+      <div class="notice"><span class="notice-icon">i</span><div><b>테스트 시나리오 · 운영 데이터 아님</b><span>숫자와 근거 문서는 시연용 가정입니다. 트렌드 입력에는 순위·유사도 점수가 없으며, 트렌드별 카테고리 적합성을 표시합니다.</span></div><span class="notice-tag">FIXTURE</span></div>
+      <div id="trendDemoSummary" class="trend-demo-summary"><div class="loading">시나리오 결과를 불러오는 중…</div></div>
+      <div class="trend-demo-layout"><article class="hm-panel"><div class="panel-heading"><div><h3>평가된 트렌드</h3><p>근거 문서 확인 완료 · 값별 Category affinity × 근거 검증</p></div></div><div id="trendDemoTrends" class="trend-demo-trends"></div></article><article class="hm-panel"><div class="panel-heading"><div><h3>선정 TOP 5</h3><p>기존 상품 개선과 신규 콘셉트 · 점수 breakdown을 함께 표시</p></div><span class="data-status-tag status-unknown">미승인 점수 가설</span></div><div id="trendDemoTop5" class="trend-demo-top5"></div></article></div>
+      <article class="hm-panel trend-demo-image-panel"><div class="panel-heading"><div><h3>검토용 시안 · 트렌드 방향 4종</h3><p>화이트 티셔츠는 코디 참고 맥락으로만 반영했습니다.</p></div><span class="data-status-tag status-user_input">디자인 제안</span></div><img id="trendDemoImage" src="/api/trend-planning-demo/image" alt="미니멀리즘, 맥시멀리즘, 고프코어, 발레코어 방향의 S/S 남성 반바지 4분할 시안"><small>상품 사양이나 승인된 디자인이 아닌 검토용 이미지입니다.</small></article>
+      <div id="trendDemoLimitations" class="method-note"></div>
+    </section>
 
     <section class="section-block" id="opportunities">
       <div class="section-heading">
@@ -130,8 +140,31 @@
 
     <section class="section-block alt" id="concepts">
       <div class="section-heading">
-        <div><div class="eyebrow">06 / VISUAL EXPLORATION</div><h2>이미지 시안</h2><p>로컬 SVG 목업으로 여러 방향을 비교합니다. 실제 생성 모델 연결 없이 동작합니다.</p></div>
-        <span class="mock-mode">✦ ImageGen 실사 시안 1개 포함 · 추가 생성은 로컬 SVG 목업</span>
+        <div><div class="eyebrow">06 / VISUAL EXPLORATION</div><h2>이미지 시안</h2><p>예시 입력으로 실제 이미지 생성을 실행하거나, 로컬 목업 시안을 비교합니다.</p></div>
+        <span class="mock-mode">✦ 실제 API 생성은 별도 확인 필요 · 비교 시안은 로컬 SVG 목업</span>
+      </div>
+      <div class="real-image-panel">
+        <div class="subheading"><div><h3>예시 입력으로 모델 비교 생성</h3><p>같은 디자이너 프롬프트를 선택한 GPT Image 모델 각각에 보내 결과를 비교합니다.</p></div><span id="imageApiState" class="image-api-state">연결 상태 확인 중</span></div>
+        <p class="image-api-note">트렌드 Evidence와 H&amp;M 판매 집계는 시연 예시입니다. 청바지 수량·기준일·재고 Evidence ID도 테스트 가정값이며 실제 재고가 아닙니다. 아래 확인란을 선택하면 입력 프롬프트가 외부 이미지 API로 전송되고 비용이 발생할 수 있습니다.</p>
+        <form id="actualImageForm" class="actual-image-form">
+          <label class="wide"><span>사용자 요청</span><input name="original_query" value="27년 겨울 유행할 아웃도어 상의 제안해줘" required></label>
+          <label><span>시즌</span><input name="season" value="2027FW" required></label>
+          <label><span>카테고리</span><input name="category" value="outdoor" required></label>
+          <label class="wide"><span>트렌드명</span><input name="trend_name" value="절제된 맥시멀리즘" required></label>
+          <label><span>트렌드 색상 관찰</span><input name="trend_color" value="deep burgundy" required></label>
+          <label><span>색상 Evidence ID · 예시</span><input name="color_evidence_id" value="query-trend:E-001" required></label>
+          <label><span>트렌드 패턴 관찰</span><input name="trend_pattern" value="oversized floral" required></label>
+          <label><span>패턴 Evidence ID · 예시</span><input name="pattern_evidence_id" value="query-trend:E-002" required></label>
+          <label class="wide"><span>재고 메모</span><input name="inventory_note" value="청바지가 많이 남는다" required></label>
+          <label><span>재고 수량 · 테스트 가정</span><input name="inventory_quantity" type="number" min="0" value="250" required></label>
+          <label><span>기준일 · 테스트 가정</span><input name="inventory_as_of" type="date" value="2026-11-06" required></label>
+          <label class="wide"><span>재고 Evidence ID · 테스트 가정</span><input name="inventory_evidence_id" value="inventory:TEST-E-001" required></label>
+          <fieldset class="model-picker wide"><legend>비교할 GPT Image 모델</legend><label><input type="checkbox" name="models" value="gpt-image-2.5-sunburst" checked><span><b>GPT Image 2.5 · Sunburst</b><small>현재 사용 모델 · 정밀한 이미지 작업</small></span></label><label><input type="checkbox" name="models" value="gpt-image-2.5-flare" checked><span><b>GPT Image 2.5 · Flare</b><small>빠른 고품질 생성</small></span></label><label><input type="checkbox" name="models" value="gpt-image-2" checked><span><b>GPT Image 2</b><small>비교용 기본 이미지 모델</small></span></label></fieldset>
+          <label class="image-api-confirm wide"><input name="confirm_image_generation" type="checkbox" required><span>선택한 모델마다 1회씩 외부 OpenAI 이미지 생성 API를 호출합니다. 선택 모델 수만큼 별도 이미지와 비용이 발생할 수 있음을 확인했습니다.</span></label>
+          <div class="actual-image-actions wide"><button id="actualImageButton" class="primary-button" type="submit">선택 모델로 비교 생성 <span>✦</span></button><span id="actualImageStatus" class="inline-status" aria-live="polite"></span></div>
+        </form>
+        <div class="comparison-history-heading"><div><h4>모델 비교 회차</h4><p>최대 20회 보관 · 새로고침 후에도 이 브라우저에 남습니다.</p></div><span>같은 프롬프트 지문으로 결과 확인</span></div>
+        <div id="actualImageResult" class="actual-image-result" aria-live="polite"></div>
       </div>
       <div class="generation-bar">
         <label>이미지 유형<select id="imageType"><option value="product">상품 단독 콘셉트</option><option value="lookbook">착장 콘셉트</option></select></label>

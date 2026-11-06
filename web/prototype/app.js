@@ -1,4 +1,4 @@
-const state = { analysis: null, hmAnalysis: null, brief: null, briefVersions: [], variants: [], evaluations: [], dirty: false, selected: new Set() };
+const state = { analysis: null, hmAnalysis: null, brief: null, briefVersions: [], variants: [], evaluations: [], dirty: false, selected: new Set(), modelComparisons: [] };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -89,8 +89,8 @@ function renderVariants() {
   grid.innerHTML = state.variants.map(variant => `<article class="variant-card ${state.selected.has(variant.variant_id) ? 'selected' : ''}" data-variant-card="${escapeHtml(variant.variant_id)}">
     <img class="variant-image" src="${escapeHtml(variant.image_url)}" alt="${escapeHtml(variant.title)} 목업 시안">
     <div class="variant-body"><div class="variant-title-row"><h4>${escapeHtml(variant.title)}</h4><label><input type="checkbox" data-select-variant="${escapeHtml(variant.variant_id)}" ${state.selected.has(variant.variant_id) ? 'checked' : ''}> 비교</label></div>
-      <div class="variant-meta">${variant.image_source === 'model_generated' ? 'ImageGen · 실사 콘셉트 사진' : '로컬 SVG 목업'} · ${escapeHtml(variant.image_type === 'product' ? '상품 단독' : '착장 콘셉트')} · Brief v${variant.brief_version} · ${escapeHtml(variant.model)} · ${escapeHtml(variant.created_at)}</div>
-      <details class="prompt-details"><summary>사용 입력과 생성 정보</summary><p>${escapeHtml(variant.prompt)}</p></details>
+      <div class="variant-meta">${variant.image_source === 'model_generated' ? '실제 API · 검토용 콘셉트 이미지' : '로컬 SVG 목업'} · ${escapeHtml(variant.image_type === 'product' ? '상품 단독' : '착장 콘셉트')} · Brief v${variant.brief_version} · ${escapeHtml(variant.model)}${variant.prompt_version ? ` · ${escapeHtml(variant.prompt_version)}` : ''} · ${escapeHtml(variant.created_at)}</div>
+      <details class="prompt-details"><summary>사용 입력과 생성 정보</summary><p>${escapeHtml(variant.prompt)}</p>${variant.evidence_ids?.length ? `<p>Evidence IDs: ${variant.evidence_ids.map(id => `<code>${escapeHtml(id)}</code>`).join(' ')}</p>` : ''}${variant.review_only ? '<p>검토용 시안 · 생산 지시가 아닙니다.</p>' : ''}</details>
       <details class="eval-form"><summary>이 시안 평가하기</summary><form data-eval-form="${escapeHtml(variant.variant_id)}">
         <div class="eval-grid">${ratingField('brand_fit','브랜드 적합성')}${ratingField('customer_need','고객 니즈')}${ratingField('differentiation','차별성')}${ratingField('price_feasibility','가격 검토')}${ratingField('production_feasibility','생산 검토')}</div>
         <label class="adopt-row"><input type="checkbox" name="adopted"> 채택 후보로 표시</label>
@@ -342,6 +342,7 @@ function renderBriefHistory(items) {
 
 async function bootstrap() {
   try {
+    await loadTrendPlanningDemo();
     const payload = await request('/api/bootstrap');
     state.analysis = payload.analysis;
     state.variants = payload.variants;
@@ -362,9 +363,27 @@ async function bootstrap() {
     $('#searchStatus').textContent = `${search.results.length}개 구절 · 합성 문서 · 로컬 키워드 검색`;
     await loadHmAnalysis();
     await loadPlanningOperations();
+    await loadActualImageStatus();
   } catch (error) {
     $('#opportunityGrid').innerHTML = `<div class="empty-result">앱 초기화 실패: ${escapeHtml(error.message)}. 서버가 실행 중인지 확인하고 페이지를 새로고침하세요.</div>`;
   }
+}
+
+async function loadTrendPlanningDemo() {
+  const data = await request('/api/trend-planning-demo');
+  const inputs = data.user_inputs;
+  const values = data.fixture_only_values;
+  $('#trendDemoSummary').innerHTML = `
+    <div class="trend-demo-query"><span>요청</span><b>S/S 남성용 반바지 기획</b><small>시즌 ${escapeHtml(inputs.season)} · 카테고리 ${escapeHtml(inputs.category)}</small></div>
+    <div class="trend-demo-query"><span>재고 에이전트 메모</span><b>${escapeHtml(inputs.inventory_note)}</b><small>정량 재고 ${Number(values.white_tshirt_inventory.available_units).toLocaleString()}장 · ${escapeHtml(values.white_tshirt_inventory.as_of)} · 테스트 가정</small></div>
+    <div class="trend-demo-query"><span>파이프라인</span><b>후보 ${Number(data.candidate_count)}개 → TOP ${data.selected_top5.length}</b><small>실행 ${escapeHtml(data.run_id)}</small></div>`;
+  $('#trendDemoTrends').innerHTML = data.evaluated_trends.map(trend => `<article class="trend-demo-trend"><b>${escapeHtml(trend.name)}</b><span>${escapeHtml(inputs.category)} 적합성</span><strong>${Number(trend.category_fit).toFixed(1)}<small>/100</small></strong><small>속성 적합도 ${(Number(trend.fit_components.category_attribute_affinity) * 100).toFixed(0)} · 근거 검증 ${(Number(trend.fit_components.evidence_verification) * 100).toFixed(0)}</small><small>${escapeHtml(trend.evidence_ids.join(', '))} · ${escapeHtml(trend.status)}</small></article>`).join('');
+  $('#trendDemoTop5').innerHTML = data.selected_top5.map((item, index) => {
+    const trend = data.evaluated_trends.find(row => item.trend_ids.includes(row.trend_id));
+    const contribution = item.score_contribution || {};
+    return `<article class="trend-demo-candidate"><span class="trend-demo-rank">0${index + 1}</span><div><b>${escapeHtml(item.title)}</b><small>${item.type === 'existing_improvement' ? '기존 상품 개선' : '신규 상품'} · ${escapeHtml(trend?.name || item.trend_ids.join(', '))}</small><small>트렌드 적합도 ${Number(trend?.category_fit || 0).toFixed(1)} → 가중 기여 ${Number(contribution.trend_fit || 0).toFixed(2)}점 · 기타 fixture 기여 ${Number(contribution.other_fixture_dimensions_weighted || 0).toFixed(2)}점</small></div><strong>${Number(item.score).toFixed(2)}</strong></article>`;
+  }).join('');
+  $('#trendDemoLimitations').innerHTML = data.limitations.map(item => `<span>${escapeHtml(item)}</span>`).join('');
 }
 
 async function saveBrief(event) {
@@ -396,6 +415,92 @@ async function generateVariants() {
     status.textContent = `${result.variants.length}개 로컬 목업 생성 완료. 시안은 실제 상품 샘플이 아닙니다.`;
   } catch (error) { status.textContent = error.message; }
   finally { $('#generateButton').disabled = false; }
+}
+
+async function loadActualImageStatus() {
+  const badge = $('#imageApiState');
+  try {
+    const status = await request('/api/image-generation-status');
+    if (status.api_key_present && status.enabled) {
+      badge.className = 'image-api-state ready';
+      badge.textContent = `실제 API 사용 가능 · ${status.comparison_models.length}개 모델 비교`;
+    } else {
+      badge.className = 'image-api-state off';
+      badge.textContent = status.api_key_present ? '서버 이미지 생성 비활성' : 'API 키 미설정';
+    }
+  } catch (_error) {
+    badge.className = 'image-api-state off';
+    badge.textContent = 'API 상태 확인 실패';
+  }
+}
+
+async function generateActualImage(event) {
+  event.preventDefault();
+  const form = $('#actualImageForm');
+  const status = $('#actualImageStatus');
+  const button = $('#actualImageButton');
+  const resultBox = $('#actualImageResult');
+  if (!form.reportValidity()) return;
+  const formValues = Object.fromEntries(new FormData(form).entries());
+  formValues.models = $$('input[name="models"]:checked', form).map(input => input.value);
+  if (!formValues.models.length) {
+    status.textContent = '비교할 모델을 하나 이상 선택해 주세요.';
+    return;
+  }
+  formValues.inventory_quantity = Number(formValues.inventory_quantity);
+  formValues.confirm_image_generation = form.elements.namedItem('confirm_image_generation').checked;
+  const callCount = formValues.models.length;
+  button.disabled = true;
+  status.textContent = `이번 회차 · ${callCount}회 호출 중… 이전 결과는 아래에 보존됩니다.`;
+  try {
+    const generated = await request('/api/concept-image', { method: 'POST', body: JSON.stringify(formValues) });
+    const run = {
+      run_id: `CMP-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}-${Math.random().toString(16).slice(2, 6).toUpperCase()}`,
+      created_at: new Date().toISOString(),
+      models: formValues.models,
+      prompt_sha256: generated.results[0]?.prompt_sha256 || '',
+      sales_purchase_rows: generated.sales_purchase_rows,
+      sales_period: generated.sales_period,
+      results: generated.results,
+    };
+    state.modelComparisons.unshift(run);
+    state.modelComparisons = state.modelComparisons.slice(0, 20);
+    try { localStorage.setItem('vogueModelComparisons', JSON.stringify(state.modelComparisons)); } catch (_error) { /* keep current session visible if storage is unavailable */ }
+    renderModelComparisons();
+    const newVariants = generated.results.map(result => result.variant).filter(Boolean);
+    if (newVariants.length) {
+      const ids = new Set(newVariants.map(item => item.variant_id));
+      state.variants = [...newVariants, ...state.variants.filter(item => !ids.has(item.variant_id))];
+      renderVariants();
+      resultBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    status.textContent = `비교 회차 ${state.modelComparisons.length} · ${newVariants.length}/${generated.results.length}개 생성 완료 · API 호출 ${callCount}회`;
+  } catch (error) {
+    resultBox.innerHTML = `<div class="actual-image-error">생성 실패: ${escapeHtml(error.message)}</div>`;
+    status.textContent = '기획 입력은 유지됩니다.';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function renderModelComparisons() {
+  const box = $('#actualImageResult');
+  if (!box) return;
+  box.innerHTML = state.modelComparisons.map((run, index) => {
+    const cards = run.results.map(result => {
+      if (result.status !== 'generated' || !result.image_url) return `<article class="actual-image-card model-error"><div class="actual-image-meta"><h4>${escapeHtml(result.model)} · 생성 실패</h4><p>${escapeHtml(result.error_code || result.status)}</p></div></article>`;
+      const evidence = (result.evidence_ids || []).map(id => `<code>${escapeHtml(id)}</code>`).join('');
+      return `<article class="actual-image-card"><img src="${escapeHtml(result.image_url)}" alt="${escapeHtml(result.model)}로 생성한 검토용 콘셉트 시안"><div class="actual-image-meta"><h4>${escapeHtml(result.model)}</h4><p>${escapeHtml(result.provider)} · ${escapeHtml(result.status)}</p><p>Image ID · ${escapeHtml(result.image_id)}</p><p>프롬프트 · ${escapeHtml(result.prompt_version)}</p><p>프롬프트 지문 · <code>${escapeHtml(result.prompt_sha256)}</code></p><div class="actual-image-evidence">${evidence}</div><p>검토용 시안 · 판매는 미래 수요 근거가 아니며 재고 수량은 테스트 가정입니다.</p></div></article>`;
+    }).join('');
+    const allSamePrompt = run.results.every(item => item.prompt_sha256 === run.prompt_sha256);
+    return `<section class="comparison-run"><header><div><span>COMPARISON ${String(state.modelComparisons.length - index).padStart(2, '0')}</span><h4>${escapeHtml(run.run_id)}</h4><small>${escapeHtml(new Date(run.created_at).toLocaleString())} · API ${run.models.length}회 · ${run.results.filter(item => item.status === 'generated').length}/${run.results.length}개 성공</small></div><button type="button" class="comparison-copy" data-copy-run="${escapeHtml(run.run_id)}">모델명 복사</button></header><p class="comparison-prompt-note">${allSamePrompt ? '동일한 입력·프롬프트로 비교' : '프롬프트 지문이 다른 결과가 포함됨'} · ${escapeHtml(run.prompt_sha256)}<br>H&amp;M 과거 관측 ${Number(run.sales_purchase_rows).toLocaleString()} purchase rows · ${escapeHtml((run.sales_period || []).join(' — '))}</p><div class="model-comparison-grid">${cards}</div></section>`;
+  }).join('');
+  $$('[data-copy-run]').forEach(button => button.addEventListener('click', async () => {
+    const run = state.modelComparisons.find(item => item.run_id === button.dataset.copyRun);
+    if (!run) return;
+    const text = run.results.map(item => `${item.model}\t${item.status}\t${item.image_id || ''}\t${item.prompt_sha256 || ''}`).join('\n');
+    try { await navigator.clipboard.writeText(text); button.textContent = '복사됨'; } catch (_error) { button.textContent = '복사 실패'; }
+  }));
 }
 
 async function saveEvaluation(event) {
@@ -449,6 +554,7 @@ function bindUI() {
     $('#briefStatus').textContent = '저장하지 않은 수정사항이 있습니다.';
   });
   $('#generateButton').addEventListener('click', generateVariants);
+  $('#actualImageForm')?.addEventListener('submit', generateActualImage);
   $('#hmPlanningForm')?.addEventListener('submit', saveHmPlanningReview);
   $('#hmBriefGenerateButton')?.addEventListener('click', generateHmBrief);
   $('#opsProductLookupForm')?.addEventListener('submit', lookupPlanningProduct);
@@ -480,4 +586,6 @@ function bindUI() {
 }
 
 bindUI();
+try { state.modelComparisons = JSON.parse(localStorage.getItem('vogueModelComparisons') || '[]'); } catch (_error) { state.modelComparisons = []; }
+renderModelComparisons();
 bootstrap();

@@ -126,6 +126,17 @@ class PlanningOperationsApiTests(unittest.TestCase):
         self.assertFalse(payload["markdown_comparison"]["causal_effect_claim"])
         self.assertNotIn("KAGGLE", json.dumps(payload))
 
+    def test_trend_planning_demo_and_review_image_are_available_from_repository(self) -> None:
+        payload = self.get_json("/api/trend-planning-demo")
+        self.assertEqual(payload["demo_id"], "ss-mens-shorts-all-inputs-received-test-20261106")
+        self.assertEqual(len(payload["evaluated_trends"]), 4)
+        self.assertIn("trend-planning-demo.png", payload["image"])
+
+        with urlopen(self.base_url + "/api/trend-planning-demo/image", timeout=5) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers.get_content_type(), "image/png")
+            self.assertTrue(response.read().startswith(b"\x89PNG\r\n\x1a\n"))
+
     def test_product_endpoint_returns_actual_catalog_text_without_synthetic_enrichment(self) -> None:
         payload = self.get_json("/api/products/0999991001")
         self.assertEqual(payload["data_status"], "observed")
