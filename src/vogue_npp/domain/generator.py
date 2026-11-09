@@ -309,6 +309,14 @@ def _product_definition(context: ProductPlanningContext) -> SourcedClaim:
             fragments.append(
                 "트렌드 근거 관찰 속성: " + ", ".join(observed_trend_attributes)
             )
+        descriptions = tuple(dict.fromkeys(
+            candidate.description.strip()
+            for candidate in evidenced_trends
+            if candidate.description and candidate.description.strip()
+            and candidate.description_evidence_ids
+        ))
+        if descriptions:
+            fragments.append("트렌드 분석 설명(근거 연결): " + " / ".join(descriptions))
         for candidate in evidenced_trends:
             hypothesis = _trend_design_hypothesis(candidate)
             if hypothesis:
@@ -324,6 +332,7 @@ def _product_definition(context: ProductPlanningContext) -> SourcedClaim:
                 for candidate in evidenced_trends
                 for evidence_id in (
                     *candidate.evidence_ids,
+                    *candidate.description_evidence_ids,
                     *(evidence_id for signal in candidate.attributes for evidence_id in signal.evidence_ids),
                 )
             )
@@ -413,9 +422,7 @@ def generate_concept_draft(
     trend_names = tuple(dict.fromkeys(candidate.name for candidate in evidenced_trends))
     trend_summary = (
         "입력 트렌드명 "
-        + ", ".join(
-            f"'{name}'{_korean_object_particle(name)}" for name in trend_names
-        )
+        + ", ".join(f"'{name}'" for name in trend_names)
         + "을 기획 검토 방향으로 반영했습니다."
         if trend_names
         else "근거 연결 트렌드명을 사용할 수 없습니다."
@@ -479,9 +486,17 @@ def generate_concept_draft(
                 )
             ),
         ),
-        target_customer=SourcedClaim(
-            value=None,
-            kind="unknown",
+        target_customer=(
+            SourcedClaim(
+                value=context.request.target_customer,
+                kind=(
+                    "user_requested"
+                    if context.request.field_origins.get("target_customer") == "user"
+                    else "to_validate"
+                ),
+            )
+            if context.request.target_customer and _input_usable(context, "planning_request")
+            else SourcedClaim(value=None, kind="unknown")
         ),
         product_definition=_product_definition(context),
         attributes=_proposed_attributes(context),

@@ -18,7 +18,8 @@ from ..domain.context import (
 from ..domain.generator import RuleBasedConceptGenerator
 from ..settings import load_settings
 from ..workflows.image_generation import (
-    DEFAULT_IMAGE_DIR, DEFAULT_IMAGE_MODEL, OpenAIImageProvider, run_concept_to_image,
+    DEFAULT_IMAGE_DIR, DEFAULT_IMAGE_MODEL, OpenAIImageEditProvider,
+    OpenAIImageProvider, run_concept_to_image,
 )
 
 
@@ -301,11 +302,26 @@ def _build_planning_draft_response(payload: dict) -> dict:
     if not request_id or not schema:
         raise ValueError("planning_request.request_id와 schema_version이 필요합니다.")
 
+    def evidence_ids_in(value) -> list[str]:
+        found: list[str] = []
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key == "evidence_id" and isinstance(child, str) and child:
+                    found.append(child)
+                elif key in {"evidence_ids", "input_evidence_ids"}:
+                    if isinstance(child, str) and child:
+                        found.append(child)
+                    elif isinstance(child, (list, tuple)):
+                        found.extend(str(item) for item in child if item)
+                else:
+                    found.extend(evidence_ids_in(child))
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                found.extend(evidence_ids_in(child))
+        return list(dict.fromkeys(found))
+
     def envelope_evidence_ids(data: dict) -> tuple[str, ...]:
-        values = data.get("evidence_ids", ())
-        if not values:
-            values = [item.get("evidence_id") for item in data.get("evidence", ()) if isinstance(item, dict)]
-        return tuple(str(item) for item in values if item)
+        return tuple(evidence_ids_in(data))
 
     def context_value(value):
         return value.get("value") if isinstance(value, dict) else value
@@ -362,41 +378,105 @@ def _build_planning_draft_response(payload: dict) -> dict:
         market=tuple(context_value(item) for item in raw_context.get("market", request_payload.get("market", ()))),
         channel=tuple(context_value(item) for item in raw_context.get("channel", request_payload.get("channel", ()))),
         category=context_value(raw_context.get("category", request_payload.get("category"))),
-        product_role=request_payload.get("product_role"),
+        product_role=context_value(raw_context.get("product_role", request_payload.get("product_role"))),
+        target_customer=context_value(raw_context.get("target_customer", request_payload.get("target_customer"))),
         requested_attributes=attribute_signals(request_payload.get("requested_attributes", ()), requested=True),
         missing_fields=tuple(request_payload.get("missing_fields", ())),
         constraints=tuple(request_payload.get("constraints", ())),
         field_origins={
             key: context_origin(raw_context.get(key, request_payload.get(key)))
-            for key in ("season", "category")
+            for key in ("season", "category", "target_customer")
             if raw_context.get(key, request_payload.get(key)) is not None
         } | request_payload.get("field_origins", {}),
     )
+    def normalize_trend_candidates(data: dict) -> tuple[TrendCandidate, ...]:
+        candidates = data.get("trend_candidates", data.get("candidates"))
+        if candidates is not None:
+            return tuple(TrendCandidate(
+                name=item["name"], qualification=item.get("qualification", "candidate"),
+                season=item.get("season"), market=tuple(item.get("market", ())),
+                channel=tuple(item.get("channel", ())), category=item.get("category"),
+                attributes=attribute_signals(item.get("attributes", ())),
+                evidence_ids=tuple(item.get("evidence_ids", ())),
+                description=item.get("description"),
+                description_evidence_ids=tuple(item.get("description_evidence_ids", ())),
+            ) for item in candidates if isinstance(item, dict) and item.get("name"))
+
+        normalized = []
+        for trend in data.get("trends", ()):
+            if not isinstance(trend, dict):
+                continue
+            style = trend.get("style") or {}
+            if not isinstance(style, dict) or not style.get("name"):
+                continue
+            descriptions = style.get("description", ())
+            description_texts = []
+            description_evidence = []
+            for item in descriptions:
+                if isinstance(item, dict) and item.get("text"):
+                    description_texts.append(str(item["text"]))
+                    description_evidence.extend(item.get("evidence_ids", ()))
+            signals = []
+            item_evidence = []
+            for product in trend.get("items", ()):
+                if not isinstance(product, dict):
+                    continue
+                refs = tuple(str(value) for value in product.get("evidence_ids", ()) if value)
+                item_evidence.extend(refs)
+                for field_name in ("colors", "materials", "patterns"):
+                    label = {"colors": "color", "materials": "material", "patterns": "pattern"}[field_name]
+                    for value in product.get(field_name, ()) or ():
+                        signals.append(AttributeSignal(label, value, "evidence_observation" if refs else "unknown", refs))
+                for field_name in ("fit", "shape", "length"):
+                    value = product.get(field_name)
+                    if value:
+                        signals.append(AttributeSignal(field_name, value, "evidence_observation" if refs else "unknown", refs))
+                for detail in product.get("details", ()) or ():
+                    if isinstance(detail, dict):
+                        value = detail.get("name") or detail.get("raw")
+                        if value:
+                            signals.append(AttributeSignal("detail", value, "evidence_observation" if refs else "unknown", refs))
+            refs = tuple(dict.fromkeys((
+                *style.get("focus_evidence_ids", ()), *description_evidence, *item_evidence,
+            )))
+            seasons = tuple(style.get("seasons", ()) or ())
+            normalized.append(TrendCandidate(
+                name=str(style["name"]), qualification="trend_analysis_result",
+                season=seasons[0] if len(seasons) == 1 else None,
+                attributes=tuple(signals), evidence_ids=refs,
+                description="; ".join(dict.fromkeys(description_texts)) or None,
+                description_evidence_ids=tuple(dict.fromkeys(description_evidence)),
+            ))
+        return tuple(normalized)
+
     trend = TrendResult(
         result=result_meta(trend_payload, "query-trend-agent"),
-        candidates=tuple(TrendCandidate(
-            name=item["name"], qualification=item.get("qualification", "candidate"),
-            season=item.get("season"), market=tuple(item.get("market", ())),
-            channel=tuple(item.get("channel", ())), category=item.get("category"),
-            attributes=attribute_signals(item.get("attributes", ())),
-            evidence_ids=tuple(item.get("evidence_ids", ())),
-        ) for item in trend_payload.get("trend_candidates", trend_payload.get("candidates", ()))),
+        candidates=normalize_trend_candidates(trend_payload),
     )
+    def normalize_inventory_product(item: dict) -> InventoryProduct:
+        stock = item.get("inventory") or {}
+        # Accept the stock-agent response surface, while retaining the complete
+        # original object in input_evidence for fields outside the internal model.
+        allowed = {
+            "style_id": item.get("style_id", item.get("product_id")),
+            "sku_ids": tuple(item.get("sku_ids", ())),
+            "season": item.get("season"), "category": item.get("category"),
+            "market": tuple(item.get("market", ())), "channel": tuple(item.get("channel", ())),
+            "attributes": attribute_signals(item.get("attributes", ())),
+            "quantity": stock.get("quantity", item.get("quantity")),
+            "unit": stock.get("unit", item.get("unit")),
+            "as_of": stock.get("as_of", item.get("as_of")),
+            "inventory_definition": stock.get("definition", item.get("inventory_definition")),
+            "evidence_ids": tuple(item.get("evidence_ids", ())),
+            "product_role": item.get("product_role"),
+            "note": item.get("note", item.get("reason")),
+            "note_origin": "unknown",
+        }
+        return InventoryProduct(**allowed)
+
     inventory = InventoryProductResult(
         result=result_meta(inventory_payload, "own-product-inventory-agent"),
-        products=tuple(InventoryProduct(
-            **{**{key: value for key, value in item.items() if key not in {"inventory", "product_id"}},
-               "style_id": item.get("style_id", item.get("product_id")),
-               "quantity": (item.get("inventory") or {}).get("quantity", item.get("quantity")),
-               "unit": (item.get("inventory") or {}).get("unit", item.get("unit")),
-               "as_of": (item.get("inventory") or {}).get("as_of", item.get("as_of")),
-               "inventory_definition": (item.get("inventory") or {}).get("definition", item.get("inventory_definition")),
-               "sku_ids": tuple(item.get("sku_ids", ())),
-               "market": tuple(item.get("market", ())),
-               "channel": tuple(item.get("channel", ())),
-               "attributes": attribute_signals(item.get("attributes", ())),
-               "evidence_ids": tuple(item.get("evidence_ids", ())) }
-        ) for item in inventory_payload.get("products", ())),
+        products=tuple(normalize_inventory_product(item) for item in inventory_payload.get("products", ()) if isinstance(item, dict)),
     )
     sales = payload.get("sales_market_result")
     if sales is not None and not isinstance(sales, dict):
@@ -405,20 +485,188 @@ def _build_planning_draft_response(payload: dict) -> dict:
     draft, issues = RuleBasedConceptGenerator().generate(context)
     from dataclasses import asdict
 
+    input_sources = {
+        "planning_request": request_payload,
+        "trend_result": trend_payload,
+        "inventory_product_result": inventory_payload,
+        "sales_market_result": sales,
+    }
+    input_evidence = {
+        name: {
+            "status": context.input_statuses[name],
+            "evidence_ids": evidence_ids_in(source) if source is not None else [],
+            "payload": source,
+        }
+        for name, source in input_sources.items()
+    }
+
     draft_data = asdict(draft)
     draft_data["title"] = f"{draft.season or '시즌 미정'} {draft.category or '카테고리 미정'} 신제품 기획 초안"
     draft_data["review_status"] = "md_review_required"
+    image_result = None
+    planning_board_result = None
+    if payload.get("generate_image") is True:
+        image_model = str(payload.get("image_model", "gpt-image-2.5-flare"))
+        if image_model not in COMPARISON_IMAGE_MODELS:
+            raise ValueError("지원하지 않는 이미지 모델입니다.")
+        settings = load_settings()
+        workflow = run_concept_to_image(
+            context,
+            provider=(OpenAIImageProvider(
+                api_key=settings.image_generation_api_key or "",
+                model=image_model,
+            ) if settings.image_generation_api_key else None),
+            image_generation_enabled=settings.image_generation_enabled,
+            confirm_image_generation=True,
+        )
+        image_path = Path(workflow.image.image_path) if workflow.image.image_path else None
+        image_name = image_path.name if image_path else None
+        image_result = {
+            "status": workflow.image.status,
+            "model": workflow.image.model or image_model,
+            "image_url": f"/api/generated-images/{image_name}" if image_name else None,
+            "evidence_ids": list(workflow.image.request.evidence_ids),
+            "limitations": list(workflow.image.limitations),
+            "error_code": workflow.image.error_code,
+            "review_only": workflow.image.review_only,
+        }
+        if payload.get("generate_planning_board") is True:
+            board_model = str(payload.get("planning_board_model", "gpt-image-2.5-sunburst"))
+            if board_model not in COMPARISON_IMAGE_MODELS:
+                raise ValueError("지원하지 않는 기획안 보드 이미지 모델입니다.")
+            if workflow.image.status != "generated" or not image_path or not image_path.is_file():
+                planning_board_result = {
+                    "status": "blocked",
+                    "model": board_model,
+                    "image_url": None,
+                    "limitations": ("신제품 예시 이미지가 생성되지 않아 기획안 보드 생성을 건너뛰었습니다.",),
+                }
+            else:
+                try:
+                    board_prompt = _build_planning_board_prompt(context, draft, image_path)
+                    board_generated = OpenAIImageEditProvider(
+                        api_key=settings.image_generation_api_key or "",
+                        model=board_model,
+                    ).generate_from_reference(
+                        board_prompt,
+                        image_path.read_bytes(),
+                        mime_type="image/png",
+                        size="1536x1024",
+                    )
+                    board_name = f"{image_path.stem}-planning-board.png"
+                    board_path = GENERATED_IMAGE_ROOT / board_name
+                    board_path.parent.mkdir(parents=True, exist_ok=True)
+                    board_path.write_bytes(board_generated.image_bytes)
+                    planning_board_result = {
+                        "status": "generated",
+                        "model": board_generated.model,
+                        "image_url": f"/api/generated-images/{board_name}",
+                        "reference_image_url": image_result["image_url"],
+                        "evidence_ids": list(context.evidence_ids),
+                        "limitations": ["별도 이미지 모델이 만든 시각 요약 보드이며 텍스트 기획서와 MD 검토를 대체하지 않습니다."],
+                        "review_only": True,
+                    }
+                except Exception as exc:
+                    error_code = getattr(exc, "code", "PLANNING_BOARD_GENERATION_FAILED")
+                    planning_board_result = {
+                        "status": "failed",
+                        "model": board_model,
+                        "image_url": None,
+                        "error_code": error_code,
+                        "limitations": ["기획안 보드 이미지 생성에 실패했습니다. 신제품 이미지와 텍스트 초안은 유지됩니다."],
+                        "review_only": True,
+                    }
     return {
         "status": "partial" if context.limitations or context.conflicts or context.input_statuses.get("sales_market_result") != "ok" else "ok",
         "request_id": context.request_id,
         "input_statuses": dict(context.input_statuses),
         "draft": draft_data,
+        "input_evidence": input_evidence,
+        "image": image_result,
+        "planning_board": planning_board_result,
         "validation_issues": [asdict(issue) for issue in issues],
         "evidence_ids": list(context.evidence_ids),
         "limitations": list(context.limitations),
         "conflicts": [asdict(conflict) for conflict in context.conflicts],
         "questions_for_validation": list(context.questions_for_validation),
     }
+
+
+def _build_planning_board_prompt(context, draft, product_image_path: Path) -> str:
+    """Create a concise image-edit prompt for the separate one-page visual brief."""
+    trend_names = [
+        f"{candidate.name} [Evidence: {', '.join(candidate.evidence_ids) or 'Evidence 미연결'}]"
+        for candidate in context.trends.candidates if candidate.name.strip()
+    ]
+    evidenced_attributes = [
+        f"{item.name}={item.value} [Evidence: {', '.join(item.evidence_ids)}]"
+        for item in draft.attributes
+        if item.value is not None and item.evidence_ids
+    ]
+    requested_attributes = [
+        f"{item.name}={item.value}"
+        for item in context.request.requested_attributes
+        if item.value is not None
+    ]
+    inventory = [
+        f"{claim.value} [Evidence: {', '.join(claim.evidence_ids) or '없음'}]"
+        for claim in draft.relation_to_own_products
+        if claim.value and claim.kind == "evidence_observation"
+    ]
+    sales = context.sales_market_result or {}
+    market_usable = context.input_statuses.get("sales_market_result") in {"ok", "partial"}
+    findings = []
+
+    def collect_market_findings(value) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key in {"findings", "observations"} and isinstance(child, (list, tuple)):
+                    for item in child:
+                        if not isinstance(item, dict):
+                            continue
+                        statement = item.get("statement") or item.get("text") or item.get("summary")
+                        if not statement and item.get("measure") is not None:
+                            statement = f"{item.get('measure')}={item.get('value')} {item.get('unit', '')}".strip()
+                        if not statement:
+                            continue
+                        metrics = []
+                        if item.get("measure") is not None:
+                            metrics.append(str(item["measure"]))
+                        if item.get("value") is not None:
+                            metrics.append(f"value={item['value']} {item.get('unit', '')}".strip())
+                        metric_text = f"; {'; '.join(metrics)}" if metrics else ""
+                        refs = ", ".join(item.get("evidence_ids", ())) or "항목별 Evidence 미연결"
+                        findings.append(f"{statement}{metric_text} [Evidence: {refs}]")
+                else:
+                    collect_market_findings(child)
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                collect_market_findings(child)
+
+    if market_usable:
+        collect_market_findings(sales)
+    market_scope = sales.get("analysis_scope", sales.get("scope", {})) if market_usable else {}
+    market_limitations = sales.get("limitations", ())
+    return f"""Create a polished 16:10 landscape merchandising proposal board in Korean using the supplied image as the exact new-product visual. Keep the garment in the reference image recognizable and unchanged. The reference image must appear prominently in the right third of the board as the new-product example; include a smaller detail crop beside or below it. Do not invent a different garment.
+
+Visual direction based on the provided reference: premium fashion merchandising presentation, white cards on a pale gray canvas, deep forest-green header, fine separators, restrained editorial typography, compact evidence cards. Build a clear three-column grid: left column for request and trend, center column for stock/market implications and decisions, right column for the product image. Add a slim top process strip labelled ISSUE → INSIGHT → PROPOSAL. Keep labels short and legible. No brand logos or fabricated retailer logos.
+
+Use only these supplied planning facts and keep numbers exact:
+- Title: {context.request.season or '시즌 미정'} {context.request.category or '카테고리 미정'} 신상품 기획안
+- Request: {context.request.original_query or '요청 미제공'}
+- Target: {context.request.target_customer or '미정'}
+- Trend input: {', '.join(trend_names) or '없음'}
+- Evidence-backed design observations: {'; '.join(evidenced_attributes) or '미제공'}
+- User-requested attributes: {'; '.join(requested_attributes) or '미제공'}
+- Inventory relationship facts: {'; '.join(inventory) or '재고 관계 미제공'}
+- Sales/market input status: {context.input_statuses.get('sales_market_result', 'not_provided')}
+- Sales/market analysis scope: {json.dumps(market_scope, ensure_ascii=False, sort_keys=True) if market_scope else '미제공'}
+- Sales/market summary: {sales.get('summary', '미제공') if market_usable else '유효한 분석 결과 없음'}
+- Sales/market findings passed from upstream: {'; '.join(findings) or '전달 결과 없음'}
+- Sales/market limitations: {'; '.join(str(item) for item in market_limitations) or '미제공'}
+- Evidence instruction: render each Evidence ID beside only the exact observation or upstream result where it appears above. Do not imply a detached Evidence ID supports unrelated facts.
+
+Separate observations from proposals. Add a small note: MD 검토용 초안 · 자동 승인 아님. Do not convert inventory into demand, sales observations into forecasts, or test values into real business facts. Preserve all numbers exactly as provided. Avoid adding any unsupported product attributes. Use Korean labels, but if exact long text cannot fit, prioritize concise headings and Evidence IDs over decorative copy."""
 
 
 if __name__ == "__main__":

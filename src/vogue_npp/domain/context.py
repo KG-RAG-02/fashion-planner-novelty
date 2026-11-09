@@ -62,6 +62,7 @@ class PlanningRequest:
     channel: tuple[str, ...] = ()
     category: str | None = None
     product_role: str | None = None
+    target_customer: str | None = None
     requested_attributes: tuple[AttributeSignal, ...] = ()
     missing_fields: tuple[str, ...] = ()
     constraints: tuple[str, ...] = ()
@@ -78,6 +79,8 @@ class TrendCandidate:
     category: str | None = None
     attributes: tuple[AttributeSignal, ...] = ()
     evidence_ids: tuple[str, ...] = ()
+    description: str | None = None
+    description_evidence_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -275,7 +278,12 @@ def _comparable_context(
                     signal.value
                 )
     inventory_attributes: dict[str, set[object]] = {}
-    for product in products:
+    for index, product in enumerate(products):
+        if index in paired_inventory_indexes:
+            # A complementary styling item (for example denim bottoms paired
+            # with a requested top) is a separate product, so its attributes
+            # must not conflict with the requested new-product attributes.
+            continue
         for signal in product.attributes:
             if signal.value is not None:
                 inventory_attributes.setdefault(signal.name.strip().casefold(), set()).add(

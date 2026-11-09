@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import re
+import ssl
 import urllib.error
 import urllib.request
 import uuid
@@ -130,6 +131,11 @@ def build_image_generation_request(
     unverified_trends = [name for name in trend_terms if name not in verified_trends]
     if context.request.original_query:
         user_scope.insert(0, f"- 원문 요청: {context.request.original_query}")
+    if context.request.result.evidence_ids:
+        user_scope.append(
+            "- 요청 조건 출처 Evidence: " + ", ".join(context.request.result.evidence_ids)
+        )
+        used_evidence_ids.extend(context.request.result.evidence_ids)
     if context.request.season:
         origin = context.request.field_origins.get("season", "unknown")
         user_scope.append(f"- 시즌: {context.request.season} (출처: {origin})")
@@ -139,6 +145,129 @@ def build_image_generation_request(
     if verified_trends:
         evidence.append("- 근거 연결 트렌드명: " + ", ".join(dict.fromkeys(verified_trends)))
         used_evidence_ids.extend(evidence_id for candidate in usable_candidates for evidence_id in candidate.evidence_ids)
+
+    inventory_context: list[str] = []
+    inventory_result = context.inventory.result
+    if context.input_statuses.get("inventory_product_result") in {"ok", "partial"}:
+        inventory_context.append(
+            f"상품·재고 입력 상태: {inventory_result.status}; agent: {inventory_result.agent_id}"
+        )
+        for product in context.inventory.products:
+            refs = tuple(product.evidence_ids)
+            label = product.style_id or display_inventory_label(product)
+            facts = [f"상품={label}"]
+            if product.category:
+                facts.append(f"카테고리={product.category}")
+            if product.quantity is not None:
+                facts.append(f"재고={product.quantity} {product.unit or '(단위 미상)'}")
+            if product.inventory_definition:
+                facts.append(f"재고 정의={product.inventory_definition}")
+            if product.as_of:
+                facts.append(f"기준 시점={product.as_of}")
+            inventory_context.append(
+                "- 기존 상품 기록: " + "; ".join(facts)
+                + f" [Evidence: {', '.join(refs) if refs else '제품별 Evidence 미연결'}]"
+            )
+            used_evidence_ids.extend(refs)
+            for signal in product.attributes:
+                if signal.value is None:
+                    continue
+                if signal.evidence_ids:
+                    inventory_context.append(
+                        f"  - 기존 상품 관찰 속성: {signal.name}={signal.value} "
+                        f"[Evidence: {', '.join(signal.evidence_ids)}]"
+                    )
+                    used_evidence_ids.extend(signal.evidence_ids)
+                else:
+                    inventory_context.append(
+                        f"  - 기존 상품 전달 속성(필드별 Evidence 미연결): {signal.name}={signal.value}; "
+                        "신상품 디자인 근거로 사용하지 않음"
+                    )
+        if inventory_result.evidence_ids:
+            inventory_context.append(
+                "- 상품·재고 결과 수준 Evidence (개별 상품/속성 연결은 확인 필요): "
+                + ", ".join(inventory_result.evidence_ids)
+            )
+            used_evidence_ids.extend(inventory_result.evidence_ids)
+
+    market_context: list[str] = []
+    sales = context.sales_market_result
+    if sales:
+        market_status = context.input_statuses.get("sales_market_result", "unknown")
+        market_usable = market_status in {"ok", "partial"}
+        market_context.append(
+            f"판매·시장 입력 상태: {market_status}; "
+            f"agent: {sales.get('agent_id', '미제공')}"
+        )
+        if market_usable:
+            scope = sales.get("analysis_scope", sales.get("scope"))
+            if scope is not None:
+                market_context.append(
+                    "- 분석 범위: " + str(scope if isinstance(scope, str) else json.dumps(scope, ensure_ascii=False, sort_keys=True))
+                )
+            if sales.get("summary"):
+                market_context.append(f"- 상위 분석 요약: {sales['summary']}")
+
+        def add_market_findings(value, path: str = "") -> None:
+            if not market_usable:
+                return
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if key in {"findings", "observations"} and isinstance(child, (list, tuple)):
+                        for finding in child:
+                            if not isinstance(finding, dict):
+                                continue
+                            statement = finding.get("statement") or finding.get("text") or finding.get("summary")
+                            if statement is None and finding.get("measure") is not None:
+                                statement = f"{finding.get('measure')}={finding.get('value')} {finding.get('unit', '')}".strip()
+                            if not statement:
+                                continue
+                            refs = tuple(finding.get("evidence_ids", ()))
+                            metrics = []
+                            if finding.get("measure") is not None:
+                                metrics.append(str(finding["measure"]))
+                            if finding.get("value") is not None:
+                                metrics.append(f"값={finding['value']} {finding.get('unit', '')}".strip())
+                            metric_text = f"; {'; '.join(metrics)}" if metrics else ""
+                            market_context.append(
+                                f"- 상위 분석 관측 ({path or key}): {statement}{metric_text} "
+                                f"[Evidence: {', '.join(refs) if refs else '항목별 Evidence 미연결'}]"
+                            )
+                            used_evidence_ids.extend(refs)
+                    else:
+                        add_market_findings(child, f"{path}.{key}".strip("."))
+            elif isinstance(value, (list, tuple)):
+                for child in value:
+                    add_market_findings(child, path)
+
+        add_market_findings(sales)
+        if sales.get("limitations"):
+            market_context.extend(f"- 상위 분석 제한사항: {item}" for item in sales["limitations"])
+        def collect_market_ids(value) -> tuple[str, ...]:
+            found: list[str] = []
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if key == "evidence_id" and isinstance(child, str):
+                        found.append(child)
+                    elif key in {"evidence_ids", "input_evidence_ids"}:
+                        if isinstance(child, str):
+                            found.append(child)
+                        elif isinstance(child, (list, tuple)):
+                            found.extend(str(item) for item in child if item)
+                    else:
+                        found.extend(collect_market_ids(child))
+            elif isinstance(value, (list, tuple)):
+                for child in value:
+                    found.extend(collect_market_ids(child))
+            return tuple(dict.fromkeys(found))
+
+        sales_result_ids = collect_market_ids(sales) if market_usable else ()
+        if sales_result_ids:
+            market_context.append(
+                "- 판매·시장 결과 수준 Evidence (개별 finding 연결은 입력 상태에서 확인): "
+                + ", ".join(sales_result_ids)
+            )
+            used_evidence_ids.extend(sales_result_ids)
 
     styling_sections: list[str] = []
     for relation in context.styling_relationships:
@@ -183,6 +312,18 @@ def build_image_generation_request(
         limitations.append("이미지 프롬프트에 반영할 근거 연결 디자인 속성이 없음.")
     if not proposals:
         proposals.append("- 색상·소재·실루엣·패턴·디테일은 미확정이며, 이미지 모델이 선택하는 경우 모두 시각화 제안으로 취급")
+    if inventory_context:
+        prompt_sections.append(
+            "상품·재고 Evidence 컨텍스트 (기존 상품에 대한 사실이며 신상품 디자인 사양이 아님):\n"
+            + "\n".join(inventory_context)
+            + "\n재고는 조회 시점 스냅샷이며 수요·판매 추세로 해석하지 않음."
+        )
+    if market_context:
+        prompt_sections.append(
+            "판매·시장 Evidence 컨텍스트 (상위 분석 결과를 그대로 전달; 시각 디자인 속성이나 미래 수요 근거가 아님):\n"
+            + "\n".join(market_context)
+            + "\n관측을 매출 전망·고객 선호·신상품 디자인 사양으로 바꾸지 않음."
+        )
     if styling_sections:
         proposals.append("- 요청 상의와 연결된 하의 재고 맥락을 함께 보여주는 코디 구성 (재고 소진 효과는 주장하지 않음)")
 
@@ -340,8 +481,17 @@ class OpenAIImageProvider:
                 payload = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             raise ImageProviderError(f"IMAGE_API_HTTP_{exc.code}") from None
-        except (urllib.error.URLError, TimeoutError):
+        except urllib.error.URLError as exc:
+            reason = exc.reason
+            if isinstance(reason, TimeoutError):
+                raise ImageProviderError("IMAGE_API_TIMEOUT") from None
+            if isinstance(reason, OSError) and getattr(reason, "errno", None) in {-2, 8}:
+                raise ImageProviderError("IMAGE_API_DNS_FAILURE") from None
+            if isinstance(reason, ssl.SSLError):
+                raise ImageProviderError("IMAGE_API_TLS_FAILURE") from None
             raise ImageProviderError("IMAGE_API_UNAVAILABLE") from None
+        except TimeoutError:
+            raise ImageProviderError("IMAGE_API_TIMEOUT") from None
         except (UnicodeDecodeError, json.JSONDecodeError):
             raise ImageProviderError("IMAGE_API_INVALID_RESPONSE") from None
         try:
@@ -350,3 +500,67 @@ class OpenAIImageProvider:
         except (KeyError, IndexError, TypeError, ValueError):
             raise ImageProviderError("IMAGE_API_IMAGE_MISSING") from None
         return GeneratedImage(image_bytes=image_bytes, mime_type="image/png", provider=self.provider_name, model=self.model)
+
+
+@dataclass
+class OpenAIImageEditProvider:
+    """Generate a new image from a prompt and one already generated reference image."""
+
+    api_key: str = field(repr=False)
+    model: str = "gpt-image-2.5-sunburst"
+    timeout_seconds: int = 240
+    endpoint: str = "https://api.openai.com/v1/images/edits"
+    provider_name: str = "OpenAI Images Edit API"
+
+    def generate_from_reference(
+        self,
+        prompt: str,
+        reference_image: bytes,
+        *,
+        mime_type: str = "image/png",
+        size: str = "1536x1024",
+    ) -> GeneratedImage:
+        if not self.api_key.strip():
+            raise ImageProviderError("IMAGE_API_KEY_MISSING")
+        if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
+            raise ImageProviderError("IMAGE_API_REFERENCE_FORMAT_UNSUPPORTED")
+        data_url = f"data:{mime_type};base64,{base64.b64encode(reference_image).decode('ascii')}"
+        body = json.dumps({
+            "model": self.model,
+            "images": [{"image_url": data_url}],
+            "prompt": prompt,
+            "size": size,
+            "quality": "high",
+            "output_format": "png",
+            "n": 1,
+        }, ensure_ascii=False).encode("utf-8")
+        http_request = urllib.request.Request(
+            self.endpoint,
+            data=body,
+            method="POST",
+            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(http_request, timeout=self.timeout_seconds) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise ImageProviderError(f"IMAGE_API_HTTP_{exc.code}") from None
+        except urllib.error.URLError as exc:
+            reason = exc.reason
+            if isinstance(reason, TimeoutError):
+                raise ImageProviderError("IMAGE_API_TIMEOUT") from None
+            if isinstance(reason, OSError) and getattr(reason, "errno", None) in {-2, 8}:
+                raise ImageProviderError("IMAGE_API_DNS_FAILURE") from None
+            if isinstance(reason, ssl.SSLError):
+                raise ImageProviderError("IMAGE_API_TLS_FAILURE") from None
+            raise ImageProviderError("IMAGE_API_UNAVAILABLE") from None
+        except TimeoutError:
+            raise ImageProviderError("IMAGE_API_TIMEOUT") from None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ImageProviderError("IMAGE_API_INVALID_RESPONSE") from None
+        try:
+            encoded = payload["data"][0]["b64_json"]
+            image_bytes = base64.b64decode(encoded, validate=True)
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise ImageProviderError("IMAGE_API_IMAGE_MISSING") from None
+        return GeneratedImage(image_bytes, "image/png", self.provider_name, self.model)
