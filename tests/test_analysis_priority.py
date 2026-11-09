@@ -46,6 +46,17 @@ class AnalysisPriorityTests(unittest.TestCase):
                 "errors": [],
                 "follow_up_questions": [],
             },
+            "market_data": {
+                "status": "partial", "observations": [{"evidence_ids": ["market:E-1"]}],
+                "limitations": ["Market data is incomplete."],
+                "errors": ["One market endpoint failed."],
+                "missing_data": [{"field": "market_size", "reason": "source_not_configured", "message": "No market-size source."}],
+            },
+            "unit_economics": {
+                "status": "no_results", "calculations": [{"input_evidence_ids": ["cost:E-1"], "evidence_ids": ["calc:E-1"]}],
+                "limitations": ["No approved formula."], "errors": [],
+                "missing_data": [{"field": "unit_margin", "reason": "source_not_configured", "message": "Formula pending."}],
+            },
         }
         context = build_planning_context(PlanningInputs(
             request, trend, inventory=inventory, sales_market_result=payload
@@ -53,6 +64,12 @@ class AnalysisPriorityTests(unittest.TestCase):
         draft, issues = generate_concept_draft(context)
         self.assertEqual(context.input_statuses["sales_market_result"], "partial")
         self.assertIn("p07:E-1", context.evidence_ids)
+        self.assertIn("market:E-1", context.evidence_ids)
+        self.assertIn("cost:E-1", context.evidence_ids)
+        self.assertIn("calc:E-1", context.evidence_ids)
+        self.assertIn("Market data is incomplete.", draft.limitations)
+        self.assertTrue(any("No market-size source." in item for item in draft.limitations))
+        self.assertIn("No approved formula.", draft.limitations)
         self.assertIn("Channel coverage is incomplete.", draft.limitations)
         self.assertIs(draft.sales_market_result, payload)
         self.assertFalse(issues)

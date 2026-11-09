@@ -154,6 +154,51 @@ def _unique(values: Sequence[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(value for value in values if value))
 
 
+
+def _project07_evidence_ids(payload: Any) -> tuple[str, ...]:
+    """Collect evidence references recursively without interpreting results."""
+    found: list[str] = []
+
+    def visit(value: Any) -> None:
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                if key == "evidence_id" and isinstance(item, str):
+                    found.append(item)
+                elif key in {"evidence_ids", "input_evidence_ids"} and isinstance(item, Sequence) and not isinstance(item, (str, bytes)):
+                    found.extend(str(entry) for entry in item if isinstance(entry, str))
+                visit(item)
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            for item in value:
+                visit(item)
+
+    visit(payload)
+    return _unique(found)
+
+
+def _project07_limitations(payload: Any) -> tuple[str, ...]:
+    """Retain block-level limitations, errors and missing-data notes."""
+    found: list[str] = []
+
+    def visit(value: Any, parent: str = "") -> None:
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                if key in {"limitations", "errors", "missing_data", "data_limitations"} and isinstance(item, Sequence) and not isinstance(item, (str, bytes)):
+                    for entry in item:
+                        if isinstance(entry, Mapping):
+                            code = entry.get("code") or entry.get("reason")
+                            message = entry.get("message")
+                            found.append(f"Project_07 {key} ({code}): {message}" if code and message else f"Project_07 {key}: {dict(entry)}")
+                        else:
+                            found.append(f"Project_07 {key}: {entry}" if key == "errors" else str(entry))
+                visit(item, key)
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            for item in value:
+                visit(item, parent)
+
+    visit(payload)
+    return _unique(found)
+
+
 def _comparable_context(
     inputs: PlanningInputs,
     paired_inventory_indexes: frozenset[int] = frozenset(),
@@ -370,6 +415,7 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
                 if isinstance(observation, Mapping)
                 for evidence_id in observation.get("evidence_ids", ())
             ),
+            *_project07_evidence_ids(upstream_sales_market),
         ]
     )
 
@@ -381,6 +427,7 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
             *(str(item) for item in (((upstream_sales_market or {}).get("sales_data") or {}).get("limitations", ()))),
             *(f"Project_07 error {item.get('code')}: {item.get('message')}" for item in (upstream_sales_market or {}).get("errors", ()) if isinstance(item, Mapping)),
             *(str(item) for item in (((upstream_sales_market or {}).get("sales_data") or {}).get("errors", ()))),
+            *_project07_limitations(upstream_sales_market),
             *inputs.inventory.result.limitations,
             *(
                 f"Inventory note ({product.note_origin}; not independently verified): {product.note}"
