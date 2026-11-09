@@ -290,16 +290,55 @@ def main() -> None:
 
 def _build_planning_draft_response(payload: dict) -> dict:
     """Build a readable draft from the four upstream planning inputs."""
-    request_id = str(payload.get("request_id", "")).strip()[:160]
-    schema = str(payload.get("schema_version", "internal-prototype-0")).strip()[:80]
-    if not request_id or not schema:
-        raise ValueError("request_id와 schema_version을 입력해 주세요.")
-
     request_payload = payload.get("planning_request")
     trend_payload = payload.get("trend_result")
     inventory_payload = payload.get("inventory_product_result")
     if not all(isinstance(value, dict) for value in (request_payload, trend_payload, inventory_payload)):
         raise ValueError("planning_request, trend_result, inventory_product_result JSON 객체가 필요합니다.")
+
+    request_id = str(request_payload.get("request_id", payload.get("request_id", ""))).strip()[:160]
+    schema = str(request_payload.get("schema_version", payload.get("schema_version", "1.0"))).strip()[:80]
+    if not request_id or not schema:
+        raise ValueError("planning_request.request_id와 schema_version이 필요합니다.")
+
+    def envelope_evidence_ids(data: dict) -> tuple[str, ...]:
+        values = data.get("evidence_ids", ())
+        if not values:
+            values = [item.get("evidence_id") for item in data.get("evidence", ()) if isinstance(item, dict)]
+        return tuple(str(item) for item in values if item)
+
+    def context_value(value):
+        return value.get("value") if isinstance(value, dict) else value
+
+    def context_origin(value) -> str:
+        source = value.get("source") if isinstance(value, dict) else None
+        return source if source in {"user", "inferred"} else "unknown"
+
+    def attribute_signal(item: dict, *, requested: bool = False) -> AttributeSignal:
+        evidence_ids = tuple(item.get("evidence_ids", ()))
+        raw_origin = item.get("origin")
+        if requested:
+            origin = "user_requested" if item.get("source") == "user" else "unknown"
+        else:
+            origin = raw_origin if raw_origin in {"user_requested", "evidence_observation", "agent_proposal", "unknown"} else (
+                "evidence_observation" if evidence_ids else "unknown"
+            )
+        return AttributeSignal(item["name"], item.get("value"), origin, evidence_ids)
+
+    def attribute_signals(value, *, requested: bool = False) -> tuple[AttributeSignal, ...]:
+        if isinstance(value, dict):
+            return tuple(attribute_signal(
+                ({"name": name, **item} if isinstance(item, dict) else {"name": name, "value": item}),
+                requested=requested,
+            ) for name, item in value.items())
+        return tuple(attribute_signal(item, requested=requested) for item in value or () if isinstance(item, dict))
+
+    for name, data in (("trend_result", trend_payload), ("inventory_product_result", inventory_payload)):
+        if data.get("request_id") != request_id:
+            raise ValueError(f"{name}.request_id가 planning_request와 일치해야 합니다.")
+        version = data.get("schema_version", schema)
+        if version != schema:
+            raise ValueError("입력 schema_version이 서로 일치해야 합니다.")
 
     def result_meta(data: dict, default_agent: str) -> AgentResult:
         status = data.get("status", "ok")
@@ -310,22 +349,28 @@ def _build_planning_draft_response(payload: dict) -> dict:
             request_id=str(data.get("request_id", request_id)),
             schema_version=str(data.get("schema_version", schema)),
             status=status,
-            evidence_ids=tuple(str(item) for item in data.get("evidence_ids", ())),
+            evidence_ids=envelope_evidence_ids(data),
             limitations=tuple(str(item) for item in data.get("limitations", ())),
         )
 
+    raw_context = request_payload.get("context", {})
+    raw_context = raw_context if isinstance(raw_context, dict) else {}
     request = PlanningRequest(
         result=result_meta(request_payload, "user-request"),
-        original_query=request_payload.get("original_query"),
-        season=request_payload.get("season"),
-        market=tuple(request_payload.get("market", ())),
-        channel=tuple(request_payload.get("channel", ())),
-        category=request_payload.get("category"),
+        original_query=request_payload.get("query", request_payload.get("original_query")),
+        season=context_value(raw_context.get("season", request_payload.get("season"))),
+        market=tuple(context_value(item) for item in raw_context.get("market", request_payload.get("market", ()))),
+        channel=tuple(context_value(item) for item in raw_context.get("channel", request_payload.get("channel", ()))),
+        category=context_value(raw_context.get("category", request_payload.get("category"))),
         product_role=request_payload.get("product_role"),
-        requested_attributes=tuple(AttributeSignal(**item) for item in request_payload.get("requested_attributes", ())),
+        requested_attributes=attribute_signals(request_payload.get("requested_attributes", ()), requested=True),
         missing_fields=tuple(request_payload.get("missing_fields", ())),
         constraints=tuple(request_payload.get("constraints", ())),
-        field_origins=request_payload.get("field_origins", {}),
+        field_origins={
+            key: context_origin(raw_context.get(key, request_payload.get(key)))
+            for key in ("season", "category")
+            if raw_context.get(key, request_payload.get(key)) is not None
+        } | request_payload.get("field_origins", {}),
     )
     trend = TrendResult(
         result=result_meta(trend_payload, "query-trend-agent"),
@@ -333,18 +378,23 @@ def _build_planning_draft_response(payload: dict) -> dict:
             name=item["name"], qualification=item.get("qualification", "candidate"),
             season=item.get("season"), market=tuple(item.get("market", ())),
             channel=tuple(item.get("channel", ())), category=item.get("category"),
-            attributes=tuple(AttributeSignal(**signal) for signal in item.get("attributes", ())),
+            attributes=attribute_signals(item.get("attributes", ())),
             evidence_ids=tuple(item.get("evidence_ids", ())),
-        ) for item in trend_payload.get("candidates", ())),
+        ) for item in trend_payload.get("trend_candidates", trend_payload.get("candidates", ()))),
     )
     inventory = InventoryProductResult(
         result=result_meta(inventory_payload, "own-product-inventory-agent"),
         products=tuple(InventoryProduct(
-            **{**item,
+            **{**{key: value for key, value in item.items() if key not in {"inventory", "product_id"}},
+               "style_id": item.get("style_id", item.get("product_id")),
+               "quantity": (item.get("inventory") or {}).get("quantity", item.get("quantity")),
+               "unit": (item.get("inventory") or {}).get("unit", item.get("unit")),
+               "as_of": (item.get("inventory") or {}).get("as_of", item.get("as_of")),
+               "inventory_definition": (item.get("inventory") or {}).get("definition", item.get("inventory_definition")),
                "sku_ids": tuple(item.get("sku_ids", ())),
                "market": tuple(item.get("market", ())),
                "channel": tuple(item.get("channel", ())),
-               "attributes": tuple(AttributeSignal(**signal) for signal in item.get("attributes", ())),
+               "attributes": attribute_signals(item.get("attributes", ())),
                "evidence_ids": tuple(item.get("evidence_ids", ())) }
         ) for item in inventory_payload.get("products", ())),
     )
