@@ -15,7 +15,7 @@ src/vogue_npp/
 - TrendBatch, Trend × Category fit, existing/new product concepts and MD review support belong here.
 - Product and inventory data are consumed from the upstream agent; Project_06 does not connect to operational product/inventory databases.
 - Sales and market results are received as a Project_07 handoff. Sales aggregation, market research, H&M historical processing, sales fixtures and their source adapters belong to Project_07.
-- `data/` may contain user-local or source data. This code move did not change or copy it.
+- `data/` holds local planning drafts and generated review images only; sales data and source adapters remain in Project_07. Local data files are ignored and should not be committed.
 
 ## Run
 

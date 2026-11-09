@@ -164,7 +164,7 @@ PlanningRequest + TrendResult + InventoryProductResult + Project_07 Sales & Mark
 
 ## 7. 구현 진행 현황
 
-현재 `src/vogue_npp/context.py`는 이미 정규화된 내부 입력 모델 세 개를 받아 다음을 처리합니다.
+현재 `src/vogue_npp/domain/context.py`는 이미 정규화된 내부 입력 모델 세 개를 받아 다음을 처리합니다.
 
 - `request_id`와 `schema_version`의 동일성 검증
 - 각 입력의 `agent_id` 존재와 알려지지 않은 상태값 검사. 하나의 에이전트가 `PlanningRequest`와 `TrendResult`를 함께 반환할 수 있으므로 상태는 입력 종류별로 기록
@@ -172,7 +172,7 @@ PlanningRequest + TrendResult + InventoryProductResult + Project_07 Sales & Mark
 - 각 입력 슬롯(`planning_request`, `trend_result`, `inventory_product_result`)별 상태, 제한사항, 누락 필드 질문, Evidence ID를 보존한 `ProductPlanningContext` 조립. 같은 에이전트가 첫 두 입력을 생성해도 허용
 - 원문 쿼리와 입력 필드 출처, 요청 제약을 내부 모델에서 보존하고 초안 결과에 요청 제약을 전달
 
-`src/vogue_npp/analysis.py`는 요청 조건과 일치하고 Evidence가 연결된 트렌드 속성을 Evidence가 연결된 자사 상품 속성과 비교합니다. 비교값이 같거나 다르다는 사실을 기록하고 MD 확인 질문을 붙일 뿐, 이를 수요·시장 공백·차별화 성공으로 해석하지 않습니다. 카탈로그 완전성이 정해지지 않아 결과에 없는 속성을 실제 부재로 단정하지 않습니다. `src/vogue_npp/concept.py`에는 내부 검토 초안 모델 및 출처 안전 검사기가 있고, `src/vogue_npp/generator.py`의 `ConceptGenerator` 포트 뒤에 결정적 규칙 기반 구현체를 둡니다. 요청 속성은 사용자 요청으로, Evidence가 있는 트렌드 속성은 관찰로, 근거가 빠진 후보는 검증 대상으로 표시합니다. 자사 상품과 재고 관계는 참조용 관찰로만 기록하며, 명시된 실제 재고 0도 수요·판매 추세로 해석하지 않습니다. 입력별 상태, 입력 충돌, Evidence ID와 제한사항도 초안에 보존합니다. 요청 ID, 알 수 없는 Evidence ID, Evidence 없는 관찰 주장, 미확정으로 표시하면서 값을 단정하는 경우, 요청되지 않은 속성을 사용자 입력으로 표시하는 경우 등을 검사합니다. 이 검사는 입력 권한, 최신성, 의미적 근거 타당성까지 판정하지 않습니다.
+`src/vogue_npp/domain/analysis.py`는 요청 조건과 일치하고 Evidence가 연결된 트렌드 속성을 Evidence가 연결된 자사 상품 속성과 비교합니다. 비교값이 같거나 다르다는 사실을 기록하고 MD 확인 질문을 붙일 뿐, 이를 수요·시장 공백·차별화 성공으로 해석하지 않습니다. 카탈로그 완전성이 정해지지 않아 결과에 없는 속성을 실제 부재로 단정하지 않습니다. `src/vogue_npp/domain/concept.py`에는 내부 검토 초안 모델 및 출처 안전 검사기가 있고, `src/vogue_npp/domain/generator.py`의 `ConceptGenerator` 포트 뒤에 결정적 규칙 기반 구현체를 둡니다. 요청 속성은 사용자 요청으로, Evidence가 있는 트렌드 속성은 관찰로, 근거가 빠진 후보는 검증 대상으로 표시합니다. 자사 상품과 재고 관계는 참조용 관찰로만 기록하며, 명시된 실제 재고 0도 수요·판매 추세로 해석하지 않습니다. 입력별 상태, 입력 충돌, Evidence ID와 제한사항도 초안에 보존합니다. 요청 ID, 알 수 없는 Evidence ID, Evidence 없는 관찰 주장, 미확정으로 표시하면서 값을 단정하는 경우, 요청되지 않은 속성을 사용자 입력으로 표시하는 경우 등을 검사합니다. 이 검사는 입력 권한, 최신성, 의미적 근거 타당성까지 판정하지 않습니다.
 
 이 모듈은 JSON wire payload를 직접 파싱하거나 공통 계약을 직렬화하지 않습니다. 상품 수요를 예측하거나 재고를 순위화하지도 않습니다. 생성기는 다음 단계의 사람이 검토할 출발 초안이며, 제안 품질은 실제 승인된 샘플과 평가 기준을 확보한 뒤 측정해야 합니다.
 

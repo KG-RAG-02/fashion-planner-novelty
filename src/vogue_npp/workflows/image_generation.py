@@ -312,6 +312,13 @@ def build_image_generation_request(
         limitations.append("이미지 프롬프트에 반영할 근거 연결 디자인 속성이 없음.")
     if not proposals:
         proposals.append("- 색상·소재·실루엣·패턴·디테일은 미확정이며, 이미지 모델이 선택하는 경우 모두 시각화 제안으로 취급")
+    prompt_sections = [
+        "상품기획 검토용 콘셉트 이미지 1장을 생성합니다. 완성 상품, 실제 상품 사진, 승인된 디자인 또는 생산 지시가 아닙니다.",
+        "사용자가 지정한 범위 (사실로 고정):\n" + ("\n".join(user_scope) if user_scope else "- 미제공"),
+        "근거로 확인된 디자인 관찰 (표시된 Evidence 범위 안에서만 반영):\n" + ("\n".join(evidence) if evidence else "- 없음"),
+        "시각화 제안 (사실이 아닌 탐색용 가설):\n" + "\n".join(proposals),
+        "미확인·제외 조건:\n- 소재 성능, 실제 핏, 수요, 고객 선호, 생산 가능성을 주장하지 않음.\n- 근거 없는 트렌드 의미나 재고 효과를 만들지 않음.\n- 로고, 문구, 워터마크를 추가하지 않음.\n- 임의로 정한 시각 요소는 모두 검토용 제안임을 전제로 함.",
+    ]
     if inventory_context:
         prompt_sections.append(
             "상품·재고 Evidence 컨텍스트 (기존 상품에 대한 사실이며 신상품 디자인 사양이 아님):\n"
@@ -331,13 +338,6 @@ def build_image_generation_request(
         f"{conflict.field}: {conflict.message} ({dict(conflict.values)!r})"
         for conflict in context.conflicts
     )
-    prompt_sections = [
-        "상품기획 검토용 콘셉트 이미지 1장을 생성합니다. 완성 상품, 실제 상품 사진, 승인된 디자인 또는 생산 지시가 아닙니다.",
-        "사용자가 지정한 범위 (사실로 고정):\n" + ("\n".join(user_scope) if user_scope else "- 미제공"),
-        "근거로 확인된 디자인 관찰 (표시된 Evidence 범위 안에서만 반영):\n" + ("\n".join(evidence) if evidence else "- 없음"),
-        "시각화 제안 (사실이 아닌 탐색용 가설):\n" + "\n".join(proposals),
-        "미확인·제외 조건:\n- 소재 성능, 실제 핏, 수요, 고객 선호, 생산 가능성을 주장하지 않음.\n- 근거 없는 트렌드 의미나 재고 효과를 만들지 않음.\n- 로고, 문구, 워터마크를 추가하지 않음.\n- 임의로 정한 시각 요소는 모두 검토용 제안임을 전제로 함.",
-    ]
     if styling_sections:
         prompt_sections.insert(
             3,
