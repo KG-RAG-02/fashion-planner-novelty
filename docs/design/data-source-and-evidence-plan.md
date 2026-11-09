@@ -23,3 +23,5 @@ There is no operational PostgreSQL, product/inventory API, sales source, externa
 ## Project_07 transfer
 
 H&M historical processing/analysis adapters, synthetic sales and operations fixtures, and their tests/docs now live in Project_07. Project_06 data directories were left untouched. See [the responsibility and transfer record](agent-3-responsibility-map.md).
+
+For planning-only retrieval of approved design guidance, taxonomy, prior briefs, and supplied Evidence references, see the [Project_06 KG/RAG design](planning-rag-design.md). That design does not assign sales or market research retrieval to Project_06.

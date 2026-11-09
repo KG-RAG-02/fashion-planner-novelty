@@ -16,6 +16,7 @@ src/vogue_npp/
 - Product and inventory data are consumed from the upstream agent; Project_06 does not connect to operational product/inventory databases.
 - Sales and market results are received as a Project_07 handoff. Sales aggregation, market research, H&M historical processing, sales fixtures and their source adapters belong to Project_07.
 - `data/` holds local planning drafts and generated review images only; sales data and source adapters remain in Project_07. Local data files are ignored and should not be committed.
+- Planning-only retrieval scope and the Project_07 Evidence boundary are documented in [the KG/RAG design](planning-rag-design.md).
 
 ## Run
 

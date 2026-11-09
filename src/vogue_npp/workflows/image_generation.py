@@ -331,6 +331,25 @@ def build_image_generation_request(
             + "\n".join(market_context)
             + "\n관측을 매출 전망·고객 선호·신상품 디자인 사양으로 바꾸지 않음."
         )
+    planning_references: dict[str, str] = {}
+    if context.planning_knowledge is not None:
+        for result in context.planning_knowledge.by_purpose:
+            if result.purpose not in {"planning_reference", "taxonomy"}:
+                continue
+            for item in result.evidence:
+                if not item.quote:
+                    continue
+                planning_references.setdefault(
+                    item.evidence_id,
+                    f"- 기획 참고자료: {item.source_name or item.source_id}; "
+                    f"{item.quote} [Evidence: {item.evidence_id}]",
+                )
+                used_evidence_ids.append(item.evidence_id)
+    if planning_references:
+        prompt_sections.append(
+            "허가된 기획 참고자료 (검토용 기준이며 상품 사실이나 시장 성과를 단정하지 않음):\n"
+            + "\n".join(planning_references.values())
+        )
     if styling_sections:
         proposals.append("- 요청 상의와 연결된 하의 재고 맥락을 함께 보여주는 코디 구성 (재고 소진 효과는 주장하지 않음)")
 

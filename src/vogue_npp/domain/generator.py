@@ -178,6 +178,32 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
     return tuple(attributes)
 
 
+def _planning_reference_records(context: ProductPlanningContext) -> tuple[dict[str, object], ...]:
+    """Expose approved retrieval results separately from product assertions."""
+    if context.planning_knowledge is None:
+        return ()
+    records: dict[str, dict[str, object]] = {}
+    for result in context.planning_knowledge.by_purpose:
+        if result.purpose == "evidence_lookup":
+            continue
+        for item in result.evidence:
+            records.setdefault(item.evidence_id, {
+                "purpose": result.purpose,
+                "evidence_id": item.evidence_id,
+                "source_id": item.source_id,
+                "source_type": item.source_type,
+                "source_name": item.source_name,
+                "locator": item.locator,
+                "quote": item.quote,
+                "source_date": item.source_date.isoformat() if item.source_date else None,
+                "permission_status": item.permission_status,
+                "permitted_uses": item.permitted_uses,
+                "content_hash": item.content_hash,
+                "matched_by": item.matched_by,
+            })
+    return tuple(records.values())
+
+
 def _inventory_relationships(context: ProductPlanningContext) -> tuple[SourcedClaim, ...]:
     relationships: list[SourcedClaim] = []
     products = (
@@ -509,6 +535,7 @@ def generate_concept_draft(
         ),
         questions_for_validation=_validation_questions(context, analysis.questions),
         sales_market_result=context.sales_market_result,
+        planning_references=_planning_reference_records(context),
     )
     return draft, validate_concept_draft(context, draft)
 

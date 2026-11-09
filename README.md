@@ -39,9 +39,11 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 - `domain/context.py`, `domain/concept.py`, `domain/generator.py`: 입력 정합성, evidence 보존, 상품 콘셉트 초안
 - `domain/trend_batch.py`, `domain/trend_evaluator.py`: 트렌드 배치 검증과 Trend × Category 평가
 - `domain/candidates.py`, `workflows/trend_planning.py`: 상품기획 후보·기획 브리프·점수 설정·다양성 선택
-- `domain/retrieval.py`: KG/RAG retrieval 인터페이스와 빈 adapter
+- `domain/retrieval.py`, `workflows/planning_retrieval.py`: 목적·source allowlist 기반 기획 자료 검색 흐름과 Evidence 권한 필터. 실제 인덱스 연결은 미구성
 - `workflows/image_generation.py`: opt-in 시안 생성
 - `prototype/`: 네 upstream 입력을 받아 기획서 초안을 표시하고 Markdown으로 내려받는 로컬 UI. `/api/planning-draft`는 내부 입력 모델에 맞춘 로컬 adapter이며 공용 wire contract가 아닙니다.
+
+기획 RAG는 현재 허가된 내부 가이드·taxonomy·과거 기획 사례와 입력에 포함된 비판매 Evidence를 위한 검색 경계만 연결합니다. 기본 설정은 `not_configured`이며, 판매·시장 원천 검색과 분석은 Project_07 소유입니다. 상세 범위는 [기획 전용 KG/RAG 설계](docs/design/planning-rag-design.md)를 참고하세요.
 
 ## Project_07로 이동한 판매 기능
 

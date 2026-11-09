@@ -14,7 +14,7 @@ from ..domain.candidates import (
     select_top_candidates,
 )
 from ..domain.retrieval import (
-    EmptyKnowledgeRetriever, EvidenceRef, KnowledgeRetriever, RetrievalQuery,
+    EmptyKnowledgeRetriever, EvidenceRef, KGPath, KnowledgeRetriever, RetrievalQuery, RetrievalResult,
 )
 from ..domain.trend_batch import TrendBatch
 from ..domain.trend_evaluator import (
@@ -36,6 +36,7 @@ class PlanningRunRequest:
     max_per_trend: int | None = 2
     max_per_type: int | None = 3
     source_snapshot_ids: tuple[str, ...] = ()
+    allowed_knowledge_source_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,7 @@ def _run_id(request: PlanningRunRequest, taxonomy_version: str,
         "trend_fit_weight_values": ([trend_fit_weights.attribute_relevance, trend_fit_weights.evidence_verification] if trend_fit_weights else None),
         "opportunity_weight_values": ([weights.trend_fit, weights.product_fit, weights.inventory_signal, weights.evidence_confidence] if weights else None),
         "source_snapshot_ids": request.source_snapshot_ids,
+        "allowed_knowledge_source_ids": request.allowed_knowledge_source_ids,
         "existing_products": [
             {key: value for key, value in item.items() if key in {"product_id", "category_id", "name", "attributes", "attribute_evidence"}}
             for item in request.existing_products
@@ -112,6 +114,44 @@ def _brief(candidate: Candidate, score: CandidateScore) -> CandidateBrief:
         candidate.category_id, candidate.target_season, tuple(claims), candidate.evidence_refs,
         score, candidate.assumptions, candidate.unknowns, candidate.risks,
         candidate.validation_questions)
+
+
+def _authorized_retrieval(result: RetrievalResult, allowed_sources: tuple[str, ...]) -> RetrievalResult:
+    """Discard failed, unverified, unpermitted, or out-of-scope retrieval content."""
+    statuses = {"not_configured", "ok", "partial", "no_results", "error"}
+    if not isinstance(result, RetrievalResult) or not isinstance(result.status, str) or result.status not in statuses:
+        return RetrievalResult("error", limitations=("Knowledge retrieval returned an invalid response; no results were used.",))
+    if result.status in {"not_configured", "no_results", "error"}:
+        return RetrievalResult(result.status, limitations=result.limitations)
+    source_ids = set(allowed_sources)
+    raw_evidence = result.evidence if isinstance(result.evidence, (tuple, list)) else ()
+    raw_paths = result.kg_paths if isinstance(result.kg_paths, (tuple, list)) else ()
+    evidence = tuple(
+        item for item in raw_evidence
+        if isinstance(item, EvidenceRef)
+        and item.source_id in source_ids
+        and item.verified
+        and item.permission_status == "authorized"
+        and "product_planning" in (item.permitted_uses or ())
+    )
+    allowed_ids = {item.evidence_id for item in evidence}
+    paths = tuple(
+        path for path in raw_paths
+        if isinstance(path, KGPath) and path.evidence_ids and set(path.evidence_ids) <= allowed_ids
+    )
+    rejected = len(raw_evidence) - len(evidence)
+    limitations = [value for value in result.limitations if isinstance(value, str)] if isinstance(result.limitations, (tuple, list)) else []
+    status = result.status
+    if rejected or len(paths) < len(raw_paths):
+        limitations.append("검색 결과 중 권한 또는 source allowlist를 확인하지 못한 항목은 제외했습니다.")
+        if status == "ok":
+            status = "partial"
+    if status == "ok" and not evidence and not paths:
+        status = "no_results"
+    return RetrievalResult(
+        status, evidence, paths, tuple(dict.fromkeys(limitations)),
+        result.index_version, result.retrieval_run_id,
+    )
 
 
 def run_trend_planning(
@@ -150,10 +190,24 @@ def run_trend_planning(
                 continue
             category_products = tuple(product for product in products
                                       if str(product.get("category_id", "")) == evaluation.category_id)
-            retrieval = knowledge.retrieve(RetrievalQuery(
-                (trend.trend_id,) if trend.trend_id else (), (evaluation.category_id,),
-                tuple(item.value for item in trend.attributes if item.status == "evidence_observation"),
-                limit=50))
+            if request.allowed_knowledge_source_ids:
+                try:
+                    raw_retrieval = knowledge.retrieve(RetrievalQuery(
+                        (trend.trend_id,) if trend.trend_id else (), (evaluation.category_id,),
+                        tuple(item.value for item in trend.attributes if item.status == "evidence_observation"),
+                        allowed_source_ids=request.allowed_knowledge_source_ids,
+                        limit=50,
+                    ))
+                    retrieval = _authorized_retrieval(raw_retrieval, request.allowed_knowledge_source_ids)
+                except Exception:
+                    retrieval = RetrievalResult(
+                        "error", limitations=("Knowledge retrieval failed; planning continued without retrieved references.",),
+                    )
+            else:
+                retrieval = RetrievalResult(
+                    "not_configured",
+                    limitations=("No approved knowledge source allowlist is configured; retrieval was not performed.",),
+                )
             limitations.extend(retrieval.limitations)
             if category_products:
                 existing = generate_existing_candidates(trend, evaluation.category_id,

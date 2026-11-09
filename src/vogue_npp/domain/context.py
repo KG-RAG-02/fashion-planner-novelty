@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Mapping, Sequence
 
 if TYPE_CHECKING:
+    from .retrieval import PlanningKnowledgeContext
     from .styling import StylingRelationship
 
 
@@ -151,6 +152,7 @@ class ProductPlanningContext:
     limitations: tuple[str, ...] = ()
     questions_for_validation: tuple[str, ...] = ()
     sales_market_result: Mapping[str, Any] | None = None
+    planning_knowledge: PlanningKnowledgeContext | None = None
 
 
 def _unique(values: Sequence[str]) -> tuple[str, ...]:

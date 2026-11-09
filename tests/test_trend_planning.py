@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from vogue_npp.domain.candidates import Candidate, CandidateAttribute, ScoreWeights
-from vogue_npp.domain.retrieval import EvidenceRef
+from vogue_npp.domain.retrieval import EvidenceRef, RetrievalResult
 from vogue_npp.domain.trend_batch import TrendBatch
 from vogue_npp.domain.trend_evaluator import Category, EvidenceAssessment, InMemoryCategoryTaxonomy, TrendFitWeights
 from vogue_npp.workflows.trend_planning import (
@@ -37,7 +37,28 @@ class VerifiedResolver:
         return EvidenceAssessment(document.document_id, "verified", True, date(2026, 9, 1), independence_group=document.document_id)
 
 
+class StaticRetriever:
+    def __init__(self, result=None, *, fail=False):
+        self.result = result or RetrievalResult("no_results")
+        self.fail = fail
+        self.queries = []
+
+    def retrieve(self, query):
+        self.queries.append(query)
+        if self.fail:
+            raise RuntimeError("synthetic retrieval failure")
+        return self.result
+
+
 class TrendPlanningVisualTests(unittest.TestCase):
+    def _planning_fixture(self):
+        batch = TrendBatch.from_mapping({"schema_version":"1.0", "batch_id":"B-RAG", "target_season":"2027FW", "trends":[{
+            "trend_id":"T-RAG", "name":"Utility", "description":"Utility design",
+            "evidence":[{"document_id":"D-RAG", "title":"Source", "excerpt":"Utility design", "published_at":"2026-09-01"}]}]})
+        taxonomy = InMemoryCategoryTaxonomy((Category("outer", "Outerwear", relevant_attribute_types=("color",)),), "tax1")
+        request = PlanningRunRequest(batch, allowed_knowledge_source_ids=("APPROVED-GUIDE",))
+        return request, taxonomy
+
     def test_use_case_is_repeatable_and_requires_configured_scoring(self):
         batch = TrendBatch.from_mapping({"schema_version":"1.0", "batch_id":"B1", "target_season":"2027FW", "trends":[{
             "trend_id":"T1", "name":"Burgundy", "description":"Burgundy color fashion trend",
@@ -76,6 +97,35 @@ class TrendPlanningVisualTests(unittest.TestCase):
         result = generate_candidate_visual(item, provider=provider, enabled=False, confirmed=False)
         self.assertEqual(result.status, "not_requested")
         self.assertEqual(provider.calls, 0)
+
+    def test_retrieval_failure_does_not_abort_candidate_planning(self):
+        request, taxonomy = self._planning_fixture()
+        result = run_trend_planning(
+            request,
+            taxonomy=taxonomy,
+            evidence_resolver=VerifiedResolver(),
+            trend_fit_weights=TrendFitWeights(.7, .3, "test-fit-v1"),
+            knowledge=StaticRetriever(fail=True),
+        )
+        self.assertTrue(result.candidates)
+        self.assertTrue(any("retrieval failed" in value for value in result.limitations))
+
+    def test_unpermitted_retrieval_reference_is_not_used_for_candidates(self):
+        request, taxonomy = self._planning_fixture()
+        private_ref = EvidenceRef(
+            "PRIVATE-E1", "APPROVED-GUIDE", "guide#1", "Private", date(2026, 9, 1), "verified", True,
+            source_type="guide", permission_status="unknown", permitted_uses=(),
+        )
+        result = run_trend_planning(
+            request,
+            taxonomy=taxonomy,
+            evidence_resolver=VerifiedResolver(),
+            trend_fit_weights=TrendFitWeights(.7, .3, "test-fit-v1"),
+            knowledge=StaticRetriever(RetrievalResult("ok", evidence=(private_ref,))),
+        )
+        self.assertTrue(result.candidates)
+        self.assertTrue(all("PRIVATE-E1" not in {ref.evidence_id for ref in candidate.evidence_refs}
+                            for candidate in result.candidates))
 
     def test_image_provider_requires_both_enablement_and_confirmation(self):
         item = candidate()

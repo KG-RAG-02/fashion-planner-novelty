@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -16,11 +17,13 @@ from ..domain.context import (
     build_planning_context,
 )
 from ..domain.generator import RuleBasedConceptGenerator
+from ..domain.retrieval import KnowledgeRetriever, RetrievalSourcePolicy
 from ..settings import load_settings
 from ..workflows.image_generation import (
     DEFAULT_IMAGE_DIR, DEFAULT_IMAGE_MODEL, OpenAIImageEditProvider,
     OpenAIImageProvider, run_concept_to_image,
 )
+from ..workflows.planning_retrieval import retrieve_planning_knowledge
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
@@ -289,7 +292,12 @@ def main() -> None:
         server.server_close()
 
 
-def _build_planning_draft_response(payload: dict) -> dict:
+def _build_planning_draft_response(
+    payload: dict,
+    *,
+    knowledge_retriever: KnowledgeRetriever | None = None,
+    retrieval_policy: RetrievalSourcePolicy | None = None,
+) -> dict:
     """Build a readable draft from the four upstream planning inputs."""
     request_payload = payload.get("planning_request")
     trend_payload = payload.get("trend_result")
@@ -482,6 +490,14 @@ def _build_planning_draft_response(payload: dict) -> dict:
     if sales is not None and not isinstance(sales, dict):
         raise ValueError("sales_market_result는 JSON 객체여야 합니다.")
     context = build_planning_context(PlanningInputs(request, trend, inventory, sales))
+    planning_knowledge = retrieve_planning_knowledge(
+        context, retriever=knowledge_retriever, policy=retrieval_policy,
+    )
+    context = replace(
+        context,
+        planning_knowledge=planning_knowledge,
+        limitations=tuple(dict.fromkeys((*context.limitations, *planning_knowledge.limitations))),
+    )
     draft, issues = RuleBasedConceptGenerator().generate(context)
     from dataclasses import asdict
 
@@ -501,6 +517,9 @@ def _build_planning_draft_response(payload: dict) -> dict:
     }
 
     draft_data = asdict(draft)
+    draft_data["limitations"] = list(dict.fromkeys((
+        *draft_data.get("limitations", ()), *planning_knowledge.limitations,
+    )))
     draft_data["title"] = f"{draft.season or '시즌 미정'} {draft.category or '카테고리 미정'} 신제품 기획 초안"
     draft_data["review_status"] = "md_review_required"
     image_result = None
@@ -562,7 +581,10 @@ def _build_planning_draft_response(payload: dict) -> dict:
                         "model": board_generated.model,
                         "image_url": f"/api/generated-images/{board_name}",
                         "reference_image_url": image_result["image_url"],
-                        "evidence_ids": list(context.evidence_ids),
+                        "evidence_ids": list(dict.fromkeys((
+                            *context.evidence_ids,
+                            *(item.evidence_id for item in planning_knowledge.evidence),
+                        ))),
                         "limitations": ["별도 이미지 모델이 만든 시각 요약 보드이며 텍스트 기획서와 MD 검토를 대체하지 않습니다."],
                         "review_only": True,
                     }
@@ -581,6 +603,7 @@ def _build_planning_draft_response(payload: dict) -> dict:
         "request_id": context.request_id,
         "input_statuses": dict(context.input_statuses),
         "draft": draft_data,
+        "planning_knowledge": _planning_knowledge_payload(planning_knowledge),
         "input_evidence": input_evidence,
         "image": image_result,
         "planning_board": planning_board_result,
@@ -589,6 +612,50 @@ def _build_planning_draft_response(payload: dict) -> dict:
         "limitations": list(context.limitations),
         "conflicts": [asdict(conflict) for conflict in context.conflicts],
         "questions_for_validation": list(context.questions_for_validation),
+    }
+
+
+def _planning_knowledge_payload(knowledge) -> dict:
+    """Serialize permitted retrieval references without leaking date objects."""
+    return {
+        "by_purpose": [
+            {
+                "purpose": result.purpose,
+                "status": result.status,
+                "limitations": list(result.limitations),
+                "index_version": result.index_version,
+                "retrieval_run_id": result.retrieval_run_id,
+                "evidence": [
+                    {
+                        "evidence_id": item.evidence_id,
+                        "source_id": item.source_id,
+                        "source_type": item.source_type,
+                        "source_name": item.source_name,
+                        "locator": item.locator,
+                        "quote": item.quote,
+                        "source_date": item.source_date.isoformat() if item.source_date else None,
+                        "permission_status": item.permission_status,
+                        "permitted_uses": list(item.permitted_uses),
+                        "content_hash": item.content_hash,
+                        "matched_by": item.matched_by,
+                        "verified": item.verified,
+                    }
+                    for item in result.evidence
+                ],
+                "kg_paths": [
+                    {
+                        "nodes": list(path.nodes),
+                        "relationships": list(path.relationships),
+                        "taxonomy_version": path.taxonomy_version,
+                        "evidence_ids": list(path.evidence_ids),
+                    }
+                    for path in result.kg_paths
+                ],
+            }
+            for result in knowledge.by_purpose
+        ],
+        "evidence_ids": [item.evidence_id for item in knowledge.evidence],
+        "limitations": list(knowledge.limitations),
     }
 
 
@@ -645,6 +712,18 @@ def _build_planning_board_prompt(context, draft, product_image_path: Path) -> st
 
     if market_usable:
         collect_market_findings(sales)
+    planning_reference_lines = {}
+    if context.planning_knowledge is not None:
+        for result in context.planning_knowledge.by_purpose:
+            if result.purpose not in {"planning_reference", "precedent", "taxonomy"}:
+                continue
+            for reference in result.evidence:
+                if reference.quote:
+                    planning_reference_lines.setdefault(
+                        reference.evidence_id,
+                        f"{reference.source_name or reference.source_id}: {reference.quote} "
+                        f"[Evidence: {reference.evidence_id}]",
+                    )
     market_scope = sales.get("analysis_scope", sales.get("scope", {})) if market_usable else {}
     market_limitations = sales.get("limitations", ())
     return f"""Create a polished 16:10 landscape merchandising proposal board in Korean using the supplied image as the exact new-product visual. Keep the garment in the reference image recognizable and unchanged. The reference image must appear prominently in the right third of the board as the new-product example; include a smaller detail crop beside or below it. Do not invent a different garment.
@@ -664,6 +743,7 @@ Use only these supplied planning facts and keep numbers exact:
 - Sales/market summary: {sales.get('summary', '미제공') if market_usable else '유효한 분석 결과 없음'}
 - Sales/market findings passed from upstream: {'; '.join(findings) or '전달 결과 없음'}
 - Sales/market limitations: {'; '.join(str(item) for item in market_limitations) or '미제공'}
+- Approved planning references: {'; '.join(planning_reference_lines.values()) or '검색 결과 없음'}
 - Evidence instruction: render each Evidence ID beside only the exact observation or upstream result where it appears above. Do not imply a detached Evidence ID supports unrelated facts.
 
 Separate observations from proposals. Add a small note: MD 검토용 초안 · 자동 승인 아님. Do not convert inventory into demand, sales observations into forecasts, or test values into real business facts. Preserve all numbers exactly as provided. Avoid adding any unsupported product attributes. Use Korean labels, but if exact long text cannot fit, prioritize concise headings and Evidence IDs over decorative copy."""
