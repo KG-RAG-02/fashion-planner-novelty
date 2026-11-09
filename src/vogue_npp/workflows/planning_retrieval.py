@@ -20,10 +20,15 @@ from ..domain.retrieval import (
 
 
 PURPOSES = ("evidence_lookup", "planning_reference", "precedent", "taxonomy")
+QUERY_PLAN_VERSION = "planning-query-plan-v1"
 
 
 def _unique(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(value.strip() for value in values if isinstance(value, str) and value.strip()))
+
+
+def _normalized_terms(values: Iterable[str]) -> tuple[str, ...]:
+    return _unique(" ".join(value.casefold().split()) for value in values)
 
 
 def _input_evidence_ids(context: ProductPlanningContext) -> tuple[str, ...]:
@@ -66,9 +71,10 @@ def _queries(
         *(item.category or "" for item in compatible_trends),
     ))
     trend_ids = _unique(item.name for item in compatible_trends)
-    terms = _unique((
+    terms = _normalized_terms((
         *(str(item.value) for item in request.requested_attributes
           if request_usable and item.value is not None),
+        *(item.name for item in request.requested_attributes if request_usable),
         *(str(attribute.value) for candidate in compatible_trends for attribute in candidate.attributes
           if attribute.value is not None and attribute.evidence_ids),
         *(attribute.name for candidate in compatible_trends for attribute in candidate.attributes
@@ -102,6 +108,9 @@ def _queries(
             market=request.market if request_usable else (),
             channel=request.channel if request_usable else (),
             allowed_source_types=tuple(source_types),
+            query_plan_version=QUERY_PLAN_VERSION,
+            exact_terms=_normalized_terms((*categories, *trend_ids, *terms)),
+            candidate_limit=policy.candidate_limit_per_purpose,
         )))
     return tuple(queries)
 
@@ -138,23 +147,29 @@ def retrieve_planning_knowledge(
             note = "검색 자료원 또는 허용 목록이 설정되지 않았습니다."
             if purpose == "evidence_lookup" and sales_evidence_present:
                 note += " Project_07 Evidence resolver는 공유 계약·권한 합의 전이라 조회하지 않았습니다."
-            results.append(PurposeRetrieval(purpose, "not_configured", limitations=(note,)))
+            results.append(PurposeRetrieval(
+                purpose, "not_configured", limitations=(note,),
+                query_plan_version=QUERY_PLAN_VERSION,
+            ))
             continue
         try:
             raw = retriever.retrieve(query)
         except Exception:
             results.append(PurposeRetrieval(
                 purpose, "error", limitations=(f"{purpose} 검색에 실패했습니다. 검색 결과는 사용하지 않았습니다.",),
+                query_plan_version=QUERY_PLAN_VERSION,
             ))
             continue
         if not isinstance(raw, RetrievalResult):
             results.append(PurposeRetrieval(
                 purpose, "error", limitations=(f"{purpose} 검색 응답 형식이 올바르지 않아 결과를 사용하지 않았습니다.",),
+                query_plan_version=QUERY_PLAN_VERSION,
             ))
             continue
         if not isinstance(raw.status, str) or raw.status not in {"not_configured", "ok", "partial", "no_results", "error"}:
             results.append(PurposeRetrieval(
                 purpose, "error", limitations=(f"{purpose} 검색 상태를 인식할 수 없습니다.",),
+                query_plan_version=QUERY_PLAN_VERSION,
             ))
             continue
 
@@ -166,6 +181,7 @@ def retrieve_planning_knowledge(
                 limitations=limitations,
                 index_version=raw.index_version,
                 retrieval_run_id=raw.retrieval_run_id,
+                query_plan_version=query.query_plan_version,
             ))
             continue
 
@@ -197,6 +213,7 @@ def retrieve_planning_knowledge(
             limitations=tuple(dict.fromkeys(limitations)),
             index_version=raw.index_version,
             retrieval_run_id=raw.retrieval_run_id,
+            query_plan_version=query.query_plan_version,
         ))
 
     return PlanningKnowledgeContext(tuple(results))

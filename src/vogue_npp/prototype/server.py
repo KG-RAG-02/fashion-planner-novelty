@@ -622,6 +622,7 @@ def _planning_knowledge_payload(knowledge) -> dict:
             {
                 "purpose": result.purpose,
                 "status": result.status,
+                "query_plan_version": result.query_plan_version,
                 "limitations": list(result.limitations),
                 "index_version": result.index_version,
                 "retrieval_run_id": result.retrieval_run_id,

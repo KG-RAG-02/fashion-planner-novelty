@@ -19,9 +19,9 @@ RAG는 판매 원장, 경쟁사 매출, 시장 규모, 가격·원가, 수요 �
 
 ## 2. 현재 구현과 설계 차이
 
-`src/vogue_npp/domain/retrieval.py`에는 기술 중립 `KnowledgeRetriever` 포트, `RetrievalQuery`, `EvidenceRef`, `KGPath`, 그리고 검색이 수행되지 않았음을 명시하는 `EmptyKnowledgeRetriever`가 있다. 현재 질의는 `trend_ids`, `category_ids`, `attribute_terms`, `allowed_source_ids`, `limit`를 받으며, TrendBatch 기획 흐름에서 선택적으로 호출한다.
+`src/vogue_npp/domain/retrieval.py`에는 기술 중립 `KnowledgeRetriever` 포트, `RetrievalQuery`, `EvidenceRef`, `KGPath`, 그리고 검색이 수행되지 않았음을 명시하는 `EmptyKnowledgeRetriever`가 있다. 현재 질의는 검색 목적·scope·allowlist·query plan 버전·exact terms·후보/최종 한도를 추적하며, TrendBatch 기획 흐름에서 선택적으로 호출한다. `sources/hybrid_retriever.py`에는 lexical/dense adapter 결과를 RRF로 병합하는 backend-neutral orchestrator가 있지만 실제 BM25/vector 인덱스 adapter는 없다. `sources/synthetic_corpus_retriever.py`는 명시 호출형 합성 데이터 테스트/demo에만 사용한다.
 
-기획 초안 API는 retrieval workflow를 호출해 경로별 상태와 허가된 참고 자료를 응답에 보존한다. `RuleBasedConceptGenerator`는 검색 결과를 새로운 상품 사실로 만들지 않는다. 허가된 인용문은 MD 검토 섹션과 선택 이미지 프롬프트의 참고 자료로 전달한다. 기본 `RetrievalSourcePolicy`는 비어 있어 모든 경로가 `not_configured`이며, 실제 문서 저장소·벡터 인덱스·그래프 저장소·권한 확인 adapter는 연결되어 있지 않다. 테스트는 fake retriever 주입만 사용한다.
+기획 초안 API는 retrieval workflow를 호출해 경로별 상태와 허가된 참고 자료를 응답에 보존한다. `RuleBasedConceptGenerator`는 검색 결과를 새로운 상품 사실로 만들지 않는다. 허가된 인용문은 MD 검토 섹션과 선택 이미지 프롬프트의 참고 자료로 전달한다. 기본 `RetrievalSourcePolicy`는 비어 있어 모든 경로가 `not_configured`이며, 실제 문서 저장소·BM25/vector 인덱스·그래프 저장소·권한 확인 adapter는 연결되어 있지 않다. 테스트는 합성 fixture 및 fake lexical/dense adapter만 사용한다.
 
 ## 3. 책임 경계와 데이터 흐름
 
@@ -137,10 +137,12 @@ RetrievalResult
 
 ## 9. 평가와 출시 단계
 
-1. **계약·fixture:** 허가된 synthetic 문서만으로 검색 결과와 Evidence 연결을 검증한다.
+1. **계약·fixture:** `data/fixtures/planning_rag/synthetic_corpus.json`의 합성 문서로 검색 결과와 Evidence 연결을 검증한다. 명시적으로 호출하는 `SyntheticCorpusRetriever`는 정확 Evidence ID 조회, 목적별 타입 제한, source·시즌·카테고리·시장·채널 필터, 합성 문서 내 결정적 키워드 정렬을 제공한다. 기본 초안 경로에는 연결하지 않으며 이 자료는 실제 회사 문서, 승인된 정책 또는 시장 사실이 아니다.
 2. **내부 가이드 adapter:** 브랜드 가이드·taxonomy의 소유자와 허용 범위가 정해진 뒤 읽기 전용 검색을 연결한다.
 3. **기획 사례 adapter:** 재사용 가능한 과거 기획 문서와 승인 상태, 민감도, 보존 기간을 합의한 뒤 연결한다.
 4. **선택 Evidence resolver:** Trend/Stock/Project_07 각 소유자가 안정된 Evidence lookup을 제공할 때만 연결한다. Project_07 경로는 별도 계약 승인 전 비활성 상태로 둔다.
+
+합성 corpus는 과거 기획 예시, 디자인 가이드, taxonomy, 상위 입력 Evidence 스냅샷과 scope가 다른 문서, 권한이 `unknown`·`denied`인 문서를 포함한다. 로컬 synthetic adapter는 외부 자료원에 접근하지 않고 모든 문서의 합성 표시와 Evidence ID 중복 여부를 검사한다. 운영 corpus로 대체하기 전 자료 소유자 승인, 사용 목적, 보존·삭제, 접근 감사, 인덱스 갱신·버전 관리 및 cross-project 계약을 합의해야 한다.
 
 평가 지표는 근거 ID 회수율, 인용 정확도, claim-to-evidence 정밀도, scope 필터 준수율, 미허가 문서 차단율, 검색 실패 시 안전한 abstention 비율, 생성 초안에서의 근거 없는 사실 주장 비율로 둔다. top-k relevance 점수만으로 제품 제안 품질을 평가하지 않는다. 승인된 대표 질의와 사람이 확인한 Evidence 정답 집합 없이 운영 인덱스를 활성화하지 않는다.
 

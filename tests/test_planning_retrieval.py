@@ -87,6 +87,9 @@ class PlanningRetrievalTests(unittest.TestCase):
         lookup = next(item for item in retriever.queries if item.purpose == "evidence_lookup")
         self.assertEqual(lookup.request_id, REQUEST_ID)
         self.assertEqual(set(lookup.evidence_ids), {"request-E1", "trend-E1", "stock-E1"})
+        self.assertEqual(lookup.query_plan_version, "planning-query-plan-v1")
+        self.assertEqual(lookup.candidate_limit, 30)
+        self.assertIn("outerwear", lookup.exact_terms)
         self.assertNotIn("market-E1", lookup.evidence_ids)
         semantic = next(item for item in retriever.queries if item.purpose == "planning_reference")
         self.assertEqual(semantic.allowed_source_ids, ("SRC-shared",))
@@ -170,6 +173,10 @@ class PlanningRetrievalTests(unittest.TestCase):
         self.assertIn("2026-01-01", encoded)
         self.assertIn("trend-E1", response["planning_knowledge"]["evidence_ids"])
         self.assertEqual(response["draft"]["planning_references"][0]["permission_status"], "authorized")
+        self.assertEqual(
+            response["planning_knowledge"]["by_purpose"][0]["query_plan_version"],
+            "planning-query-plan-v1",
+        )
 
 
 if __name__ == "__main__":

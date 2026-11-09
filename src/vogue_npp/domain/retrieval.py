@@ -65,10 +65,17 @@ class RetrievalQuery:
     market: tuple[str, ...] = ()
     channel: tuple[str, ...] = ()
     allowed_source_types: tuple[str, ...] = ()
+    query_plan_version: str = "planning-query-plan-v1"
+    exact_terms: tuple[str, ...] = ()
+    candidate_limit: int | None = None
 
     def __post_init__(self) -> None:
         if self.limit < 1 or self.limit > 500:
             raise ValueError("retrieval limit must be between 1 and 500")
+        if self.candidate_limit is not None and not self.limit <= self.candidate_limit <= 500:
+            raise ValueError("candidate_limit must be between final limit and 500")
+        if not self.query_plan_version.strip():
+            raise ValueError("query_plan_version must not be empty")
         if self.purpose == "evidence_lookup" and not self.evidence_ids:
             raise ValueError("evidence_lookup requires explicit evidence_ids")
         if not (self.allowed_source_ids or self.allowed_source_types):
@@ -96,10 +103,13 @@ class RetrievalSourcePolicy:
     source_ids_by_purpose: Mapping[RetrievalPurpose, tuple[str, ...]] = field(default_factory=dict)
     source_types_by_purpose: Mapping[RetrievalPurpose, tuple[str, ...]] = field(default_factory=dict)
     limit_per_purpose: int = 10
+    candidate_limit_per_purpose: int = 30
 
     def __post_init__(self) -> None:
         if not 1 <= self.limit_per_purpose <= 100:
             raise ValueError("planning retrieval limit must be between 1 and 100")
+        if not self.limit_per_purpose <= self.candidate_limit_per_purpose <= 500:
+            raise ValueError("candidate retrieval limit must be between final limit and 500")
 
 
 @dataclass(frozen=True)
@@ -111,6 +121,7 @@ class PurposeRetrieval:
     limitations: tuple[str, ...] = ()
     index_version: str | None = None
     retrieval_run_id: str | None = None
+    query_plan_version: str = "planning-query-plan-v1"
 
 
 @dataclass(frozen=True)
