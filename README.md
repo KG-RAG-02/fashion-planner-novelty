@@ -41,7 +41,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 - `domain/candidates.py`, `workflows/trend_planning.py`: 상품기획 후보·기획 브리프·점수 설정·다양성 선택
 - `domain/retrieval.py`: KG/RAG retrieval 인터페이스와 빈 adapter
 - `workflows/image_generation.py`: opt-in 시안 생성
-- `prototype/`: 새상품 기획 브리프와 시안 검토용 로컬 UI
+- `prototype/`: 네 upstream 입력을 받아 기획서 초안을 표시하고 Markdown으로 내려받는 로컬 UI. `/api/planning-draft`는 내부 입력 모델에 맞춘 로컬 adapter이며 공용 wire contract가 아닙니다.
 
 ## Project_07로 이동한 판매 기능
 

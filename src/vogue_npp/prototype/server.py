@@ -15,6 +15,7 @@ from ..domain.context import (
     PlanningInputs, PlanningRequest, TrendCandidate, TrendResult,
     build_planning_context,
 )
+from ..domain.generator import RuleBasedConceptGenerator
 from ..settings import load_settings
 from ..workflows.image_generation import (
     DEFAULT_IMAGE_DIR, DEFAULT_IMAGE_MODEL, OpenAIImageProvider, run_concept_to_image,
@@ -133,7 +134,9 @@ class PrototypeHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             payload = self._body()
-            if path == "/api/concept-image":
+            if path == "/api/planning-draft":
+                self._json(200, _build_planning_draft_response(payload))
+            elif path == "/api/concept-image":
                 if payload.get("confirm_image_generation") is not True:
                     raise ValueError("실제 OpenAI 이미지 생성을 확인하려면 확인란을 체크해 주세요.")
                 models = payload.get("models")
@@ -283,6 +286,89 @@ def main() -> None:
         print("\nStopping local prototype.")
     finally:
         server.server_close()
+
+
+def _build_planning_draft_response(payload: dict) -> dict:
+    """Build a readable draft from the four upstream planning inputs."""
+    request_id = str(payload.get("request_id", "")).strip()[:160]
+    schema = str(payload.get("schema_version", "internal-prototype-0")).strip()[:80]
+    if not request_id or not schema:
+        raise ValueError("request_id와 schema_version을 입력해 주세요.")
+
+    request_payload = payload.get("planning_request")
+    trend_payload = payload.get("trend_result")
+    inventory_payload = payload.get("inventory_product_result")
+    if not all(isinstance(value, dict) for value in (request_payload, trend_payload, inventory_payload)):
+        raise ValueError("planning_request, trend_result, inventory_product_result JSON 객체가 필요합니다.")
+
+    def result_meta(data: dict, default_agent: str) -> AgentResult:
+        status = data.get("status", "ok")
+        if status not in {"ok", "partial", "no_results", "error"}:
+            raise ValueError(f"지원하지 않는 입력 상태: {status}")
+        return AgentResult(
+            agent_id=str(data.get("agent_id", default_agent)),
+            request_id=str(data.get("request_id", request_id)),
+            schema_version=str(data.get("schema_version", schema)),
+            status=status,
+            evidence_ids=tuple(str(item) for item in data.get("evidence_ids", ())),
+            limitations=tuple(str(item) for item in data.get("limitations", ())),
+        )
+
+    request = PlanningRequest(
+        result=result_meta(request_payload, "user-request"),
+        original_query=request_payload.get("original_query"),
+        season=request_payload.get("season"),
+        market=tuple(request_payload.get("market", ())),
+        channel=tuple(request_payload.get("channel", ())),
+        category=request_payload.get("category"),
+        product_role=request_payload.get("product_role"),
+        requested_attributes=tuple(AttributeSignal(**item) for item in request_payload.get("requested_attributes", ())),
+        missing_fields=tuple(request_payload.get("missing_fields", ())),
+        constraints=tuple(request_payload.get("constraints", ())),
+        field_origins=request_payload.get("field_origins", {}),
+    )
+    trend = TrendResult(
+        result=result_meta(trend_payload, "query-trend-agent"),
+        candidates=tuple(TrendCandidate(
+            name=item["name"], qualification=item.get("qualification", "candidate"),
+            season=item.get("season"), market=tuple(item.get("market", ())),
+            channel=tuple(item.get("channel", ())), category=item.get("category"),
+            attributes=tuple(AttributeSignal(**signal) for signal in item.get("attributes", ())),
+            evidence_ids=tuple(item.get("evidence_ids", ())),
+        ) for item in trend_payload.get("candidates", ())),
+    )
+    inventory = InventoryProductResult(
+        result=result_meta(inventory_payload, "own-product-inventory-agent"),
+        products=tuple(InventoryProduct(
+            **{**item,
+               "sku_ids": tuple(item.get("sku_ids", ())),
+               "market": tuple(item.get("market", ())),
+               "channel": tuple(item.get("channel", ())),
+               "attributes": tuple(AttributeSignal(**signal) for signal in item.get("attributes", ())),
+               "evidence_ids": tuple(item.get("evidence_ids", ())) }
+        ) for item in inventory_payload.get("products", ())),
+    )
+    sales = payload.get("sales_market_result")
+    if sales is not None and not isinstance(sales, dict):
+        raise ValueError("sales_market_result는 JSON 객체여야 합니다.")
+    context = build_planning_context(PlanningInputs(request, trend, inventory, sales))
+    draft, issues = RuleBasedConceptGenerator().generate(context)
+    from dataclasses import asdict
+
+    draft_data = asdict(draft)
+    draft_data["title"] = f"{draft.season or '시즌 미정'} {draft.category or '카테고리 미정'} 신제품 기획 초안"
+    draft_data["review_status"] = "md_review_required"
+    return {
+        "status": "partial" if context.limitations or context.conflicts or context.input_statuses.get("sales_market_result") != "ok" else "ok",
+        "request_id": context.request_id,
+        "input_statuses": dict(context.input_statuses),
+        "draft": draft_data,
+        "validation_issues": [asdict(issue) for issue in issues],
+        "evidence_ids": list(context.evidence_ids),
+        "limitations": list(context.limitations),
+        "conflicts": [asdict(conflict) for conflict in context.conflicts],
+        "questions_for_validation": list(context.questions_for_validation),
+    }
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@
 - Project_07 저장소명은 `market-research-agent`로 확인됨. 판매 결과의 공통 wire 계약과 운영 자료원은 여전히 미확정입니다.
 - 현재 책임 기준: Project_06은 새상품 기획만 담당합니다. 과거 H&M/synthetic 판매 분석 코드는 Project_07에 이관되었고, 본 문서 내 과거 판매 처리 설명은 현행 책임이 아닙니다. 자세한 현재 상태는 [책임 경계 기록](agent-3-responsibility-map.md)을 기준으로 합니다.
 
+> **읽기 주의:** 본 문서에는 이전 설계안의 일부 표와 설명이 이력 보존을 위해 남아 있습니다. 특히 Project_06이 H&M/Kaggle 판매 pipeline을 소유한다는 제안은 폐기되었습니다. 현행 코드의 근거로는 사용하지 말고 위 책임 경계 기록과 README를 따르세요.
+
 ## 1. 확정 요구사항
 
 이 에이전트는 VOGUE 5단계 흐름 중 3단계입니다. 입력으로 앞 단계 결과를 받아 새 상품 콘셉트를 제안하고, 다음 단계가 검토할 수 있도록 근거와 불확실성을 보존합니다.
@@ -62,7 +64,7 @@ PlanningRequest + TrendResult + InventoryProductResult + Project_07 Sales & Mark
 | 계약 검증 | 버전, 공통 envelope, 필수 구조, enum 값 검증 | 없음 |
 | 정합성 검사 | 세 핵심 입력의 요청·분류 기준 비교. 선택 판매 확장이 있으면 기간·상품 식별·분류도 확인 | 없음 |
 | 기회 분석 | 트렌드 Evidence로 방향을 검토하고 요청 범위를 확인한 뒤 자사 상품/재고 관계를 비교. 선택 판매 관찰은 추가 맥락 | 없음 |
-| Kaggle 데이터 pipeline | H&M competition 원본 수집, 정제, 품질 요약, 기간·article·channel 집계 및 Evidence manifest | 파일 다운로드/로컬 처리. raw data는 Git/외부 전송 금지 |
+| Kaggle 데이터 pipeline (폐기된 과거 제안) | 과거 초안에서 Project_06에 배정했으나 현재 Project_07 책임으로 이관됨 | 현행 Project_06 구현 범위가 아님 |
 | 콘셉트 제안기 | 규칙 기반 기준선과 Evidence-grounded LLM 생성기를 같은 포트 뒤에서 실행 | 복수 엔진 비교는 허용 모델·자료 전송 범위 합의 후 실행 |
 | 실험 실행기 | 고정된 입력/Evidence를 각 생성 엔진에 재생하고 설정·출력을 기록 | API 키·민감 원문을 기록하지 않음 |
 | Evidence 연결기 | 출력의 각 주장·속성에 입력 Evidence ID 연결 | 없음 |

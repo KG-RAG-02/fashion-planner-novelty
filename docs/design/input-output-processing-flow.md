@@ -32,3 +32,7 @@ user query → trend agent → product/inventory agent → Project_07 sales/mark
 ## Implementation boundary
 
 The current handoff model is internal and not an agreed cross-project wire schema. There is no operational API or DB connector. The older H&M sales adapter and sales-analysis UI were transferred to Project_07; see [the current responsibility record](agent-3-responsibility-map.md).
+
+## Local review prototype
+
+The local prototype accepts normalized JSON payloads for the planning request, trend result, product/inventory result, and optional Project_07 result at `POST /api/planning-draft`. It returns the internal `ProductConceptDraft`, per-input statuses, evidence IDs, limitations, conflicts, questions, and validation issues. The browser renders a review document and can download it as Markdown. The request/trend/inventory payloads are mapped to current internal dataclasses; this endpoint is a prototype adapter and does not establish a shared wire contract. Missing Project_07 input remains `not_provided`.

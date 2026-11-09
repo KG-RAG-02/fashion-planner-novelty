@@ -22,26 +22,18 @@
     </section>
     <section class="panel">
       <div class="panel-head"><div><p class="eyebrow">OPTIONAL IMAGE GENERATION</p><h2>기획 시안 생성</h2></div><span id="image-status">확인 중</span></div>
-      <p class="note">실제 이미지 생성은 서버 설정과 이 양식의 명시적 확인이 모두 있어야 실행됩니다. 트렌드 설명은 확인된 근거로, 재고 메모는 사용자 제공 맥락으로 표시합니다.</p>
+      <p class="note">각 단계의 결과를 JSON으로 전달해 검토용 기획서 초안을 만듭니다. 입력 상태와 근거를 보존하며, 초안은 자동 승인되지 않습니다.</p>
       <form id="concept-form" class="form-grid">
-        <label class="wide">사용자 요청<textarea name="original_query" required maxlength="500">27SS 남성용 반바지 기획</textarea></label>
-        <label>시즌<input name="season" value="27SS" required maxlength="40"></label>
-        <label>카테고리<input name="category" value="남성용 반바지" required maxlength="80"></label>
-        <label>트렌드 이름<input name="trend_name" value="고프코어" required maxlength="160"></label>
-        <label>색상 속성<input name="trend_color" value="미정" required maxlength="100"></label>
-        <label>패턴·디테일 속성<input name="trend_pattern" value="기능성 디테일 검토" required maxlength="120"></label>
-        <label>색상 Evidence ID<input name="color_evidence_id" value="TREND-EVIDENCE-1" required maxlength="160"></label>
-        <label>디테일 Evidence ID<input name="pattern_evidence_id" value="TREND-EVIDENCE-2" required maxlength="160"></label>
-        <label class="wide">재고 에이전트 메모<input name="inventory_note" value="화이트 티셔츠 재고가 많이 남음" required maxlength="300"></label>
-        <label>재고 Evidence ID<input name="inventory_evidence_id" value="INVENTORY-EVIDENCE-1" required maxlength="160"></label>
-        <label>재고 수량<input name="inventory_quantity" type="number" value="0" min="0" required></label>
-        <label>재고 기준일<input name="inventory_as_of" type="date" value="2026-11-06" required></label>
-        <label class="wide check"><input name="confirm_image_generation" type="checkbox" value="true"> 실제 이미지 생성 요청을 확인했습니다.</label>
-        <button class="primary-button" type="submit">검토용 시안 생성</button>
+        <label class="wide">요청 ID<input name="request_id" value="demo-request-001" required></label>
+        <label class="wide">사용자 쿼리 · 기획 조건 JSON<textarea name="planning_request" required spellcheck="false">{"original_query":"27SS 남성용 경량 아노락 기획","season":"27SS","category":"남성 아우터","market":["KR"],"channel":["online"],"constraints":["기존 재고와 코디 검토"],"missing_fields":["target_customer","target_price_range"],"field_origins":{"season":"user","category":"user"}}</textarea></label>
+        <label class="wide">트렌드 분석 결과 JSON<textarea name="trend_result" required spellcheck="false">{"status":"ok","candidates":[{"name":"고프코어","qualification":"candidate","season":"27SS","category":"남성 아우터","attributes":[{"name":"silhouette","value":"relaxed","origin":"evidence_observation","evidence_ids":["TREND-EVIDENCE-1"]},{"name":"color","value":"sage green","origin":"evidence_observation","evidence_ids":["TREND-EVIDENCE-2"]}],"evidence_ids":["TREND-EVIDENCE-1","TREND-EVIDENCE-2"]}]}</textarea></label>
+        <label class="wide">상품·재고 결과 JSON<textarea name="inventory_product_result" required spellcheck="false">{"status":"partial","limitations":["데모 입력: 재고 스냅샷 예시"],"products":[{"style_id":"STYLE-ANORAK-001","sku_ids":["SKU-ANORAK-001"],"season":"27SS","category":"남성 아우터","quantity":2480,"unit":"pieces","inventory_definition":"available_to_sell","as_of":"2026-11-06","attributes":[{"name":"color","value":"olive","origin":"evidence_observation","evidence_ids":["INV-EVIDENCE-1"]}],"evidence_ids":["INV-EVIDENCE-1"]}]}</textarea></label>
+        <label class="wide">판매·시장성 분석 결과 JSON <span class="optional">선택 · 미제공은 비워 두세요</span><textarea name="sales_market_result" spellcheck="false" placeholder='{"request_id":"demo-request-001","agent_id":"market-research-agent","status":"partial","summary":"상위 에이전트 분석 요약","findings":[],"limitations":[],"evidence":[]}'></textarea></label>
+        <button class="primary-button" type="submit">기획서 초안 만들기</button>
       </form>
-      <div id="image-results" aria-live="polite"></div>
+      <div id="draft-results" aria-live="polite"></div>
     </section>
   </main>
-  <footer>Project_06은 새상품 기획안을 작성합니다. 판매·시장 분석 및 데이터 소유권은 Project_07에 있습니다.</footer>
+  <footer>Project_06은 전달된 요청·트렌드·상품/재고·판매/시장 입력을 바탕으로 새상품 기획 초안을 작성합니다. 판매·시장 분석 자체는 Project_07이 담당합니다.</footer>
 </body>
 </html>
