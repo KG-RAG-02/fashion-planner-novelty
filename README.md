@@ -42,7 +42,11 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 - `domain/retrieval.py`, `workflows/planning_retrieval.py`: 목적·source allowlist 기반 기획 검색, Query Plan 추적, Evidence 권한 필터
 - `sources/synthetic_corpus_retriever.py`, `sources/hybrid_retriever.py`: 명시 호출형 합성 corpus 검색 및 backend-neutral RRF 병합기. 실제 BM25/vector 인덱스 adapter는 미구성
 - `workflows/image_generation.py`: opt-in 시안 생성
-- `prototype/`: 네 upstream 입력을 받아 기획서 초안을 표시하고 Markdown으로 내려받는 로컬 UI. `/api/planning-draft`는 내부 입력 모델에 맞춘 로컬 adapter이며 공용 wire contract가 아닙니다.
+- `prototype/`: 네 upstream 입력 JSON을 수동으로 받아 기획서 초안을 표시하고 Markdown으로 내려받는 로컬 UI. 상위 에이전트 자동 실행이나 서비스 간 transport는 연결되어 있지 않습니다. `/api/planning-draft`는 내부 입력 모델에 맞춘 로컬 adapter이며 공용 wire contract가 아닙니다.
+
+Trend/stock 호환 adapter는 원본 JSON 전체를 응답의 `input_evidence.*.payload`에 그대로 보존합니다. trend-analysis-agent 출력에 없는 producer ID/schema version은 adapter 추정·fallback으로 표시하고, 실제 입력에 있는 메타데이터와 혼동하지 않습니다. stock-agent의 `trend_results[].product_index`는 원래 `products[]` 인덱스 공간에서 해석하며 null 슬롯도 유지합니다. Per-trend Evidence, 제한사항, 오류, 누락 데이터와 매핑 상태를 응답 및 UI에 표시합니다. 재현 가능한 다중 트렌드 합성 계약 fixture와 검증은 `tests/fixtures/upstream/stock-agent-multi-result.synthetic.json` 및 `tests/test_planning_draft_api.py`에 있습니다. 합성 데이터이며 운영 사실이 아닙니다.
+
+Project_07 판매·시장 결과는 전체 payload를 불투명 handoff로 보존합니다. 판매·시장 지표를 재집계하거나 상세 schema를 임의로 확정하지 않습니다. 프로젝트 간 상세 계약, orchestrator 및 transport 연결은 별도 팀 합의가 필요합니다.
 
 기획 RAG는 현재 허가된 내부 가이드·taxonomy·과거 기획 사례와 입력에 포함된 비판매 Evidence를 위한 검색 경계만 연결합니다. 기본 설정은 `not_configured`이며, 판매·시장 원천 검색과 분석은 Project_07 소유입니다. 상세 범위는 [기획 전용 KG/RAG 설계](docs/design/planning-rag-design.md)를 참고하세요.
 

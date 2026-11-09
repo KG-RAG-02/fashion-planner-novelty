@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "request_id": "stock-multi-synthetic-1",
+  "agent_id": "stock-agent",
+  "status": "partial",
+  "summary": "합성 multi-trend contract fixture; 운영 데이터가 아님",
+  "products": [
+    {
+      "style_id": "SYN-PRODUCT-A",
+      "sku_ids": ["SYN-SKU-A"],
+      "season": "27SS",
+      "category": "남성 쇼츠",
+      "attributes": {"material": ["면", "재생 나일론"], "color": "올리브"},
+      "inventory": {"quantity": 0, "unit": "pieces", "as_of": "2026-11-08", "definition": "synthetic available stock"},
+      "evidence_ids": ["SYN-STOCK-A-PRODUCT-E1"]
+    },
+    null,
+    {
+      "style_id": "SYN-PRODUCT-C",
+      "sku_ids": ["SYN-SKU-C"],
+      "season": "27SS",
+      "category": "남성 쇼츠",
+      "attributes": {"length": "mid-thigh"},
+      "inventory": {"quantity": 12, "unit": "pieces", "as_of": "2026-11-08", "definition": "synthetic available stock"}
+    }
+  ],
+  "trend_results": [
+    {
+      "style": {"id": "SYN-TREND-A", "name": "Synthetic utility"},
+      "status": "ok", "product_index": 0, "rank": 1,
+      "summary": "합성 결과 A",
+      "evidence_ids": ["SYN-STOCK-A-TREND-E1"],
+      "limitations": [], "errors": [], "missing_data": []
+    },
+    {
+      "style": {"id": "SYN-TREND-B", "name": "Synthetic no-result"},
+      "status": "no_results", "product_index": 1, "rank": null,
+      "summary": null, "evidence_ids": [],
+      "limitations": ["합성 자료 없음"], "errors": [], "missing_data": ["matched_product"]
+    },
+    {
+      "style": {"id": "SYN-TREND-C", "name": "Synthetic error"},
+      "status": "error", "product_index": 2, "rank": null,
+      "summary": null, "evidence_ids": ["SYN-STOCK-C-TREND-E1"],
+      "limitations": [], "errors": [{"code": "SYNTHETIC_SOURCE_ERROR", "message": "합성 오류 예시"}], "missing_data": []
+    }
+  ],
+  "evidence": [
+    {"evidence_id": "SYN-STOCK-A-ROOT-E1", "style_id": "SYN-TREND-A", "source_id": "synthetic-stock-fixture"},
+    {"evidence_id": "SYN-STOCK-C-ROOT-E1", "style_id": "SYN-TREND-C", "source_id": "synthetic-stock-fixture"}
+  ],
+  "errors": [],
+  "limitations": ["합성 fixture이며 운영 근거가 아님"]
+}

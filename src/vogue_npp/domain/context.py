@@ -42,6 +42,12 @@ class AgentResult:
     status: InputStatus
     evidence_ids: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
+    producer_id_origin: Literal["payload", "adapter_assumption"] = "payload"
+    source_schema_version: str | None = None
+    schema_version_origin: Literal["payload", "planning_request_fallback"] = "payload"
+    status_origin: Literal["payload", "adapter_default"] = "payload"
+    errors: tuple[Any, ...] = ()
+    missing_data: tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -82,6 +88,7 @@ class TrendCandidate:
     evidence_ids: tuple[str, ...] = ()
     description: str | None = None
     description_evidence_ids: tuple[str, ...] = ()
+    source_style_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -107,12 +114,36 @@ class InventoryProduct:
     product_role: str | None = None
     note: str | None = None
     note_origin: ContextOrigin = "unknown"
+    source_product_index: int | None = None
+
+
+@dataclass(frozen=True)
+class InventoryTrendResult:
+    """Stock-agent per-trend output with its explicit product_index relation."""
+
+    trend_result_index: int
+    style_id: str | None
+    style_name: str | None
+    status: str | None
+    product_index: int | None
+    mapping_status: Literal["linked", "no_product", "invalid_index", "out_of_range"]
+    trend_input_match: Literal["matched", "style_id_missing", "no_matching_trend", "trend_input_empty"] = "style_id_missing"
+    product_style_id: str | None = None
+    rank: int | None = None
+    summary: str | None = None
+    evidence_ids: tuple[str, ...] = ()
+    evidence_reference_source: Literal["trend_result", "root_evidence_by_style", "none"] = "none"
+    limitations: tuple[str, ...] = ()
+    errors: tuple[Any, ...] = ()
+    missing_data: tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True)
 class InventoryProductResult:
     result: AgentResult
     products: tuple[InventoryProduct, ...] = ()
+    trend_results: tuple[InventoryTrendResult, ...] = ()
+    mapping_issues: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -403,6 +434,7 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
             *inputs.request.result.evidence_ids,
             *inputs.trend.result.evidence_ids,
             *inputs.inventory.result.evidence_ids,
+            *(evidence_id for item in inputs.inventory.trend_results for evidence_id in item.evidence_ids),
             *(evidence_id for candidate in inputs.trend.candidates for evidence_id in candidate.evidence_ids),
             *(evidence_id for product in inputs.inventory.products for evidence_id in product.evidence_ids),
             *(evidence_id for attr in inputs.request.requested_attributes for evidence_id in attr.evidence_ids),
@@ -439,6 +471,25 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
             *(str(item) for item in (((upstream_sales_market or {}).get("sales_data") or {}).get("errors", ()))),
             *_project07_limitations(upstream_sales_market),
             *inputs.inventory.result.limitations,
+            *inputs.inventory.mapping_issues,
+            *(
+                f"Stock trend mapping: {issue}"
+                for issue in inputs.inventory.mapping_issues
+            ),
+            *(str(item) for item in inputs.request.result.errors),
+            *(str(item) for item in inputs.request.result.missing_data),
+            *(str(item) for item in inputs.trend.result.errors),
+            *(str(item) for item in inputs.trend.result.missing_data),
+            *(str(item) for item in inputs.inventory.result.errors),
+            *(str(item) for item in inputs.inventory.result.missing_data),
+            *(
+                f"Stock trend result {item.trend_result_index} has status '{item.status}'."
+                for item in inputs.inventory.trend_results
+                if item.status not in (None, "ok")
+            ),
+            *(str(value) for item in inputs.inventory.trend_results for value in item.limitations),
+            *(str(value) for item in inputs.inventory.trend_results for value in item.errors),
+            *(str(value) for item in inputs.inventory.trend_results for value in item.missing_data),
             *(
                 f"Inventory note ({product.note_origin}; not independently verified): {product.note}"
                 for product in inputs.inventory.products

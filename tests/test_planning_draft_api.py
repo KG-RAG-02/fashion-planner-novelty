@@ -1,6 +1,8 @@
+import json
 import unittest
+from pathlib import Path
 
-from vogue_npp.prototype.server import _build_planning_draft_response
+from vogue_npp.prototype.server import _build_planning_board_prompt, _build_planning_draft_response
 
 
 class PlanningDraftApiTests(unittest.TestCase):
@@ -171,6 +173,94 @@ class PlanningDraftApiTests(unittest.TestCase):
         self.assertTrue({"trend-E1", "trend-E2", "stock-E1", "stock-E2"}.issubset(response["evidence_ids"]))
         self.assertEqual(response["input_evidence"]["trend_result"]["payload"], trend_output)
         self.assertEqual(response["input_evidence"]["inventory_product_result"]["payload"], stock_output)
+
+    def test_maps_stock_multi_trend_results_without_losing_source_indexes(self):
+        fixture_path = Path(__file__).parent / "fixtures/upstream/stock-agent-multi-result.synthetic.json"
+        stock_output = json.loads(fixture_path.read_text())
+        trend_output = {
+            "request_id": stock_output["request_id"], "status": "partial",
+            "trends": [
+                {"style": {"id": "SYN-TREND-A", "name": "Synthetic utility"}, "items": []},
+                {"style": {"id": "SYN-TREND-B", "name": "Synthetic no-result"}, "items": []},
+                {"style": {"id": "SYN-TREND-C", "name": "Synthetic error"}, "items": []},
+            ],
+            "evidence": [], "limitations": ["합성 trend 제한"]
+        }
+        request = {"request_id": stock_output["request_id"], "season": "27SS", "category": "남성 쇼츠"}
+        response = _build_planning_draft_response({
+            "planning_request": request, "trend_result": trend_output,
+            "inventory_product_result": stock_output,
+        })
+
+        rows = response["stock_trend_results"]
+        self.assertEqual([row["product_index"] for row in rows], [0, 1, 2])
+        self.assertEqual([row["mapping_status"] for row in rows], ["linked", "no_product", "linked"])
+        normalized = response["input_evidence"]["inventory_product_result"]["payload"]
+        self.assertEqual(normalized, stock_output)
+        self.assertEqual(response["input_evidence"]["inventory_product_result"]["producer_id"], "stock-agent")
+        self.assertEqual(response["input_evidence"]["inventory_product_result"]["source_schema_version"], "1.0")
+        self.assertIsNone(response["input_evidence"]["trend_result"]["source_schema_version"])
+        self.assertEqual(response["input_evidence"]["trend_result"]["producer_id_origin"], "adapter_assumption")
+        self.assertEqual(rows[0]["product_style_id"], "SYN-PRODUCT-A")
+        self.assertEqual(rows[2]["product_style_id"], "SYN-PRODUCT-C")
+        self.assertEqual(rows[0]["trend_input_match"], "matched")
+        self.assertEqual(tuple(rows[2]["evidence_ids"]), ("SYN-STOCK-C-TREND-E1",))
+        self.assertEqual(rows[2]["errors"][0]["code"], "SYNTHETIC_SOURCE_ERROR")
+        self.assertIn("SYN-STOCK-A-TREND-E1", response["evidence_ids"])
+        self.assertIn("SYN-STOCK-C-TREND-E1", response["evidence_ids"])
+        self.assertIn("합성 자료 없음", response["limitations"])
+        self.assertIn("SYNTHETIC_SOURCE_ERROR", str(response["limitations"]))
+        self.assertEqual(response["input_evidence"]["trend_result"]["status"], "partial")
+
+    def test_marks_unmatched_trend_and_missing_evidence_as_review_items(self):
+        response = _build_planning_draft_response({
+            "planning_request": {"request_id": "mapping-1"},
+            "trend_result": {"request_id": "mapping-1", "status": "no_results", "trends": []},
+            "inventory_product_result": {
+                "request_id": "mapping-1", "status": "partial", "schema_version": "1.0",
+                "products": [{"style_id": "SYN-ONLY", "sku_ids": []}],
+                "trend_results": [{"style": {"id": "OTHER"}, "status": "ok", "product_index": 0, "evidence_ids": []}],
+                "evidence": [], "errors": [],
+            },
+        })
+        self.assertEqual(response["stock_trend_results"][0]["trend_input_match"], "trend_input_empty")
+        self.assertEqual(response["stock_trend_results"][0]["evidence_reference_source"], "none")
+        self.assertTrue(any("Evidence가 없습니다" in item for item in response["limitations"]))
+        self.assertFalse(any("일치하지 않습니다" in item for item in response["limitations"]))
+
+    def test_project07_payload_is_not_parsed_into_planning_board_prompt(self):
+        payload = {
+            "planning_request": {"request_id": "opaque-1", "season": "27SS", "category": "쇼츠"},
+            "trend_result": {"request_id": "opaque-1", "status": "no_results", "trends": []},
+            "inventory_product_result": {"request_id": "opaque-1", "status": "no_results", "products": []},
+            "sales_market_result": {
+                "request_id": "opaque-1", "agent_id": "market-research-agent", "status": "partial",
+                "findings": [{"text": "OPAQUE_PRIVATE_FINDING", "evidence_ids": ["MARKET-PRIVATE-E1"]}],
+                "summary": "OPAQUE_PRIVATE_SUMMARY", "limitations": ["OPAQUE_PRIVATE_LIMITATION"],
+            },
+        }
+        response = _build_planning_draft_response(payload)
+        self.assertEqual(response["draft"]["sales_market_result"], payload["sales_market_result"])
+        self.assertEqual(response["input_evidence"]["sales_market_result"]["payload"], payload["sales_market_result"])
+        from vogue_npp.domain.context import (
+            AgentResult, InventoryProductResult, PlanningInputs, PlanningRequest, TrendResult,
+            build_planning_context,
+        )
+        # The visual prompt receives context from the input boundary. Project_07's
+        # detailed values must not be extracted into image-generation instructions.
+        context = build_planning_context(PlanningInputs(
+            request=PlanningRequest(AgentResult("user-request", "opaque-1", "1.0", "ok"), season="27SS", category="쇼츠"),
+            trend=TrendResult(AgentResult("trend-analysis-agent", "opaque-1", "1.0", "no_results")),
+            inventory=InventoryProductResult(AgentResult("stock-agent", "opaque-1", "1.0", "no_results")),
+            sales_market_result=payload["sales_market_result"],
+        ))
+        prompt = _build_planning_board_prompt(context, type("Draft", (), {
+            "attributes": (), "relation_to_own_products": (),
+        })(), Path("synthetic-product-image.png"))
+        self.assertIn("Sales/market input status: partial", prompt)
+        self.assertNotIn("OPAQUE_PRIVATE_FINDING", prompt)
+        self.assertNotIn("OPAQUE_PRIVATE_SUMMARY", prompt)
+        self.assertNotIn("OPAQUE_PRIVATE_LIMITATION", prompt)
 
 
 if __name__ == "__main__":

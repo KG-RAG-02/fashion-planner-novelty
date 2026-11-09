@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from . import repository
 from ..domain.context import (
-    AgentResult, AttributeSignal, InventoryProduct, InventoryProductResult,
+    AgentResult, AttributeSignal, InventoryProduct, InventoryProductResult, InventoryTrendResult,
     PlanningInputs, PlanningRequest, TrendCandidate, TrendResult,
     build_planning_context,
 )
@@ -331,6 +331,29 @@ def _build_planning_draft_response(
     def envelope_evidence_ids(data: dict) -> tuple[str, ...]:
         return tuple(evidence_ids_in(data))
 
+    def collect_list_values(data, keys: set[str]) -> tuple:
+        found = []
+
+        def visit(value):
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if key in keys and isinstance(child, (list, tuple)):
+                        found.extend(child)
+                    elif key in keys and child is not None:
+                        found.append(child)
+                    visit(child)
+            elif isinstance(value, (list, tuple)):
+                for child in value:
+                    visit(child)
+
+        visit(data)
+        return tuple(found)
+
+    def collect_limitations(data) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(
+            str(item) for item in collect_list_values(data, {"limitations", "data_limitations"})
+        ))
+
     def context_value(value):
         return value.get("value") if isinstance(value, dict) else value
 
@@ -351,10 +374,18 @@ def _build_planning_draft_response(
 
     def attribute_signals(value, *, requested: bool = False) -> tuple[AttributeSignal, ...]:
         if isinstance(value, dict):
-            return tuple(attribute_signal(
-                ({"name": name, **item} if isinstance(item, dict) else {"name": name, "value": item}),
-                requested=requested,
-            ) for name, item in value.items())
+            normalized = []
+            for name, item in value.items():
+                if isinstance(item, dict):
+                    normalized.append(attribute_signal({"name": name, **item}, requested=requested))
+                elif isinstance(item, (list, tuple)):
+                    normalized.extend(
+                        attribute_signal({"name": name, "value": child}, requested=requested)
+                        for child in item if child is not None
+                    )
+                else:
+                    normalized.append(attribute_signal({"name": name, "value": item}, requested=requested))
+            return tuple(normalized)
         return tuple(attribute_signal(item, requested=requested) for item in value or () if isinstance(item, dict))
 
     for name, data in (("trend_result", trend_payload), ("inventory_product_result", inventory_payload)):
@@ -366,15 +397,24 @@ def _build_planning_draft_response(
 
     def result_meta(data: dict, default_agent: str) -> AgentResult:
         status = data.get("status", "ok")
-        if status not in {"ok", "partial", "no_results", "error"}:
+        if not isinstance(status, str) or status not in {"ok", "partial", "no_results", "error"}:
             raise ValueError(f"지원하지 않는 입력 상태: {status}")
+        agent_id = data.get("agent_id", default_agent)
+        if not isinstance(agent_id, str) or not agent_id.strip():
+            raise ValueError("입력 producer agent_id가 비어 있거나 문자열이 아닙니다.")
         return AgentResult(
-            agent_id=str(data.get("agent_id", default_agent)),
+            agent_id=agent_id,
             request_id=str(data.get("request_id", request_id)),
             schema_version=str(data.get("schema_version", schema)),
             status=status,
             evidence_ids=envelope_evidence_ids(data),
-            limitations=tuple(str(item) for item in data.get("limitations", ())),
+            limitations=collect_limitations(data),
+            producer_id_origin="payload" if "agent_id" in data else "adapter_assumption",
+            source_schema_version=data.get("schema_version"),
+            schema_version_origin="payload" if "schema_version" in data else "planning_request_fallback",
+            status_origin="payload" if "status" in data else "adapter_default",
+            errors=collect_list_values(data, {"errors"}),
+            missing_data=collect_list_values(data, {"missing_data", "missing_fields", "missing_attributes"}),
         )
 
     raw_context = request_payload.get("context", {})
@@ -408,6 +448,7 @@ def _build_planning_draft_response(
                 evidence_ids=tuple(item.get("evidence_ids", ())),
                 description=item.get("description"),
                 description_evidence_ids=tuple(item.get("description_evidence_ids", ())),
+                source_style_id=item.get("id", item.get("style_id")),
             ) for item in candidates if isinstance(item, dict) and item.get("name"))
 
         normalized = []
@@ -454,14 +495,15 @@ def _build_planning_draft_response(
                 attributes=tuple(signals), evidence_ids=refs,
                 description="; ".join(dict.fromkeys(description_texts)) or None,
                 description_evidence_ids=tuple(dict.fromkeys(description_evidence)),
+                source_style_id=str(style["id"]) if style.get("id") is not None else None,
             ))
         return tuple(normalized)
 
     trend = TrendResult(
-        result=result_meta(trend_payload, "query-trend-agent"),
+        result=result_meta(trend_payload, "trend-analysis-agent"),
         candidates=normalize_trend_candidates(trend_payload),
     )
-    def normalize_inventory_product(item: dict) -> InventoryProduct:
+    def normalize_inventory_product(item: dict, source_index: int, evidence_ids: tuple[str, ...]) -> InventoryProduct:
         stock = item.get("inventory") or {}
         # Accept the stock-agent response surface, while retaining the complete
         # original object in input_evidence for fields outside the internal model.
@@ -475,16 +517,107 @@ def _build_planning_draft_response(
             "unit": stock.get("unit", item.get("unit")),
             "as_of": stock.get("as_of", item.get("as_of")),
             "inventory_definition": stock.get("definition", item.get("inventory_definition")),
-            "evidence_ids": tuple(item.get("evidence_ids", ())),
+            "evidence_ids": tuple(dict.fromkeys((*item.get("evidence_ids", ()), *evidence_ids))),
             "product_role": item.get("product_role"),
             "note": item.get("note", item.get("reason")),
             "note_origin": "unknown",
+            "source_product_index": source_index,
         }
         return InventoryProduct(**allowed)
 
+    def normalize_inventory_trend_results(data: dict, product_values: list) -> tuple[tuple[InventoryTrendResult, ...], tuple[str, ...]]:
+        raw_results = data.get("trend_results", ())
+        if not isinstance(raw_results, (list, tuple)):
+            return (), ("stock-agent trend_results가 배열이 아니어서 per-trend 연결을 해석하지 않았습니다.",)
+        root_evidence = data.get("evidence", ())
+        root_evidence = root_evidence if isinstance(root_evidence, (list, tuple)) else ()
+        upstream_style_ids = {item.source_style_id for item in trend.candidates if item.source_style_id}
+        links: list[InventoryTrendResult] = []
+        issues: list[str] = []
+        for trend_index, item in enumerate(raw_results):
+            if not isinstance(item, dict):
+                issues.append(f"stock-agent trend_results[{trend_index}]가 객체가 아니어서 매핑하지 않았습니다.")
+                continue
+            style = item.get("style") if isinstance(item.get("style"), dict) else {}
+            style_id = str(style["id"]) if style.get("id") is not None else None
+            style_name = str(style["name"]) if style.get("name") is not None else None
+            raw_index = item.get("product_index")
+            product_index = raw_index if isinstance(raw_index, int) and not isinstance(raw_index, bool) else None
+            matched_product = None
+            if product_index is None:
+                mapping_status = "invalid_index"
+                issues.append(f"stock-agent trend_results[{trend_index}]에 유효한 product_index가 없어 상품 연결을 확인할 수 없습니다.")
+            elif product_index < 0 or product_index >= len(product_values):
+                mapping_status = "out_of_range"
+                issues.append(f"stock-agent trend_results[{trend_index}].product_index={product_index}가 products 범위를 벗어납니다.")
+            elif not isinstance(product_values[product_index], dict):
+                mapping_status = "no_product"
+            else:
+                mapping_status = "linked"
+                matched_product = product_values[product_index]
+
+            raw_declared_ids = item.get("evidence_ids", ())
+            declared_ids = tuple(str(value) for value in raw_declared_ids if value) if isinstance(raw_declared_ids, (list, tuple)) else ()
+            root_ids = tuple(dict.fromkeys(
+                str(ref["evidence_id"])
+                for ref in root_evidence
+                if isinstance(ref, dict) and ref.get("evidence_id")
+                and style_id and ref.get("style_id") == style_id
+            ))
+            evidence_ids = declared_ids or root_ids
+            evidence_source = "trend_result" if declared_ids else "root_evidence_by_style" if root_ids else "none"
+            trend_input_match = (
+                "style_id_missing" if not style_id else
+                "trend_input_empty" if not upstream_style_ids else
+                "matched" if style_id in upstream_style_ids else "no_matching_trend"
+            )
+            if style_id and upstream_style_ids and trend_input_match == "no_matching_trend":
+                issues.append(f"stock-agent style_id '{style_id}'가 전달된 trend_result의 style ID와 일치하지 않습니다. 기존 mapping key는 다를 수 있으므로 확인이 필요합니다.")
+            if matched_product is None and evidence_ids:
+                issues.append(f"stock-agent trend_results[{trend_index}] Evidence는 보존했지만 product_index의 상품은 연결되지 않았습니다.")
+            if matched_product is not None and not evidence_ids:
+                issues.append(f"stock-agent trend_results[{trend_index}] 상품 연결은 확인했지만 연결된 Evidence가 없습니다.")
+            links.append(InventoryTrendResult(
+                trend_result_index=trend_index,
+                style_id=style_id,
+                style_name=style_name,
+                status=item.get("status") if isinstance(item.get("status"), str) else None,
+                product_index=product_index,
+                mapping_status=mapping_status,
+                trend_input_match=trend_input_match,
+                product_style_id=matched_product.get("style_id") if matched_product else None,
+                rank=item.get("rank") if isinstance(item.get("rank"), int) and not isinstance(item.get("rank"), bool) else None,
+                summary=item.get("summary") if isinstance(item.get("summary"), str) else None,
+                evidence_ids=evidence_ids,
+                evidence_reference_source=evidence_source,
+                limitations=collect_limitations(item),
+                errors=collect_list_values(item, {"errors"}),
+                missing_data=collect_list_values(item, {"missing_data", "missing_fields", "missing_attributes"}),
+            ))
+        return tuple(links), tuple(dict.fromkeys(issues))
+
+    raw_products = inventory_payload.get("products", ())
+    if not isinstance(raw_products, (list, tuple)):
+        raw_products = ()
+        mapping_issues = ("stock-agent products가 배열이 아니어서 상품을 정규화하지 않았습니다. 원본 payload는 보존했습니다.",)
+    else:
+        mapping_issues = ()
+    inventory_trend_results, link_issues = normalize_inventory_trend_results(inventory_payload, list(raw_products))
+    mapping_issues = tuple(dict.fromkeys((*mapping_issues, *link_issues)))
+    evidence_by_product: dict[int, list[str]] = {}
+    for link in inventory_trend_results:
+        if link.mapping_status == "linked" and link.product_index is not None:
+            evidence_by_product.setdefault(link.product_index, []).extend(link.evidence_ids)
+    normalized_products = tuple(
+        normalize_inventory_product(item, index, tuple(dict.fromkeys(evidence_by_product.get(index, ()))))
+        for index, item in enumerate(raw_products) if isinstance(item, dict)
+    )
+
     inventory = InventoryProductResult(
-        result=result_meta(inventory_payload, "own-product-inventory-agent"),
-        products=tuple(normalize_inventory_product(item) for item in inventory_payload.get("products", ()) if isinstance(item, dict)),
+        result=result_meta(inventory_payload, "stock-agent"),
+        products=normalized_products,
+        trend_results=inventory_trend_results,
+        mapping_issues=mapping_issues,
     )
     sales = payload.get("sales_market_result")
     if sales is not None and not isinstance(sales, dict):
@@ -507,14 +640,42 @@ def _build_planning_draft_response(
         "inventory_product_result": inventory_payload,
         "sales_market_result": sales,
     }
-    input_evidence = {
-        name: {
+    normalized_results = {
+        "planning_request": request.result,
+        "trend_result": trend.result,
+        "inventory_product_result": inventory.result,
+    }
+    input_evidence = {}
+    for name, source in input_sources.items():
+        if name in normalized_results:
+            result_meta = normalized_results[name]
+            metadata = {
+                "producer_id": result_meta.agent_id,
+                "producer_id_origin": result_meta.producer_id_origin,
+                "source_schema_version": result_meta.source_schema_version,
+                "schema_version_origin": result_meta.schema_version_origin,
+                "internal_schema_version": result_meta.schema_version,
+                "status_origin": result_meta.status_origin,
+                "errors": list(result_meta.errors),
+                "missing_data": list(result_meta.missing_data),
+                "limitations": list(result_meta.limitations),
+            }
+        else:
+            # Project_07 is an opaque handoff: expose only its agreed envelope
+            # metadata and keep its full body byte-for-byte equivalent as JSON.
+            metadata = {
+                "producer_id": source.get("agent_id") if isinstance(source, dict) else None,
+                "producer_id_origin": "payload" if isinstance(source, dict) and "agent_id" in source else "absent",
+                "source_schema_version": source.get("schema_version") if isinstance(source, dict) else None,
+                "schema_version_origin": "payload" if isinstance(source, dict) and "schema_version" in source else "absent",
+                "status_origin": "payload" if isinstance(source, dict) and "status" in source else "absent",
+            }
+        input_evidence[name] = {
             "status": context.input_statuses[name],
+            **metadata,
             "evidence_ids": evidence_ids_in(source) if source is not None else [],
             "payload": source,
         }
-        for name, source in input_sources.items()
-    }
 
     draft_data = asdict(draft)
     draft_data["limitations"] = list(dict.fromkeys((
@@ -605,6 +766,7 @@ def _build_planning_draft_response(
         "draft": draft_data,
         "planning_knowledge": _planning_knowledge_payload(planning_knowledge),
         "input_evidence": input_evidence,
+        "stock_trend_results": [asdict(item) for item in inventory.trend_results],
         "image": image_result,
         "planning_board": planning_board_result,
         "validation_issues": [asdict(issue) for issue in issues],
@@ -681,38 +843,8 @@ def _build_planning_board_prompt(context, draft, product_image_path: Path) -> st
         for claim in draft.relation_to_own_products
         if claim.value and claim.kind == "evidence_observation"
     ]
-    sales = context.sales_market_result or {}
     market_usable = context.input_statuses.get("sales_market_result") in {"ok", "partial"}
-    findings = []
-
-    def collect_market_findings(value) -> None:
-        if isinstance(value, dict):
-            for key, child in value.items():
-                if key in {"findings", "observations"} and isinstance(child, (list, tuple)):
-                    for item in child:
-                        if not isinstance(item, dict):
-                            continue
-                        statement = item.get("statement") or item.get("text") or item.get("summary")
-                        if not statement and item.get("measure") is not None:
-                            statement = f"{item.get('measure')}={item.get('value')} {item.get('unit', '')}".strip()
-                        if not statement:
-                            continue
-                        metrics = []
-                        if item.get("measure") is not None:
-                            metrics.append(str(item["measure"]))
-                        if item.get("value") is not None:
-                            metrics.append(f"value={item['value']} {item.get('unit', '')}".strip())
-                        metric_text = f"; {'; '.join(metrics)}" if metrics else ""
-                        refs = ", ".join(item.get("evidence_ids", ())) or "항목별 Evidence 미연결"
-                        findings.append(f"{statement}{metric_text} [Evidence: {refs}]")
-                else:
-                    collect_market_findings(child)
-        elif isinstance(value, (list, tuple)):
-            for child in value:
-                collect_market_findings(child)
-
-    if market_usable:
-        collect_market_findings(sales)
+    sales_status = context.input_statuses.get("sales_market_result", "not_provided")
     planning_reference_lines = {}
     if context.planning_knowledge is not None:
         for result in context.planning_knowledge.by_purpose:
@@ -725,8 +857,6 @@ def _build_planning_board_prompt(context, draft, product_image_path: Path) -> st
                         f"{reference.source_name or reference.source_id}: {reference.quote} "
                         f"[Evidence: {reference.evidence_id}]",
                     )
-    market_scope = sales.get("analysis_scope", sales.get("scope", {})) if market_usable else {}
-    market_limitations = sales.get("limitations", ())
     return f"""Create a polished 16:10 landscape merchandising proposal board in Korean using the supplied image as the exact new-product visual. Keep the garment in the reference image recognizable and unchanged. The reference image must appear prominently in the right third of the board as the new-product example; include a smaller detail crop beside or below it. Do not invent a different garment.
 
 Visual direction based on the provided reference: premium fashion merchandising presentation, white cards on a pale gray canvas, deep forest-green header, fine separators, restrained editorial typography, compact evidence cards. Build a clear three-column grid: left column for request and trend, center column for stock/market implications and decisions, right column for the product image. Add a slim top process strip labelled ISSUE → INSIGHT → PROPOSAL. Keep labels short and legible. No brand logos or fabricated retailer logos.
@@ -739,11 +869,8 @@ Use only these supplied planning facts and keep numbers exact:
 - Evidence-backed design observations: {'; '.join(evidenced_attributes) or '미제공'}
 - User-requested attributes: {'; '.join(requested_attributes) or '미제공'}
 - Inventory relationship facts: {'; '.join(inventory) or '재고 관계 미제공'}
-- Sales/market input status: {context.input_statuses.get('sales_market_result', 'not_provided')}
-- Sales/market analysis scope: {json.dumps(market_scope, ensure_ascii=False, sort_keys=True) if market_scope else '미제공'}
-- Sales/market summary: {sales.get('summary', '미제공') if market_usable else '유효한 분석 결과 없음'}
-- Sales/market findings passed from upstream: {'; '.join(findings) or '전달 결과 없음'}
-- Sales/market limitations: {'; '.join(str(item) for item in market_limitations) or '미제공'}
+- Sales/market input status: {sales_status}
+- Sales/market interpretation: 상세 필드는 이 이미지 프롬프트에서 해석하지 않음. 전체 전달값과 Evidence는 원문 payload에서 확인.
 - Approved planning references: {'; '.join(planning_reference_lines.values()) or '검색 결과 없음'}
 - Evidence instruction: render each Evidence ID beside only the exact observation or upstream result where it appears above. Do not imply a detached Evidence ID supports unrelated facts.
 
