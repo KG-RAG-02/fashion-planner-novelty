@@ -35,7 +35,7 @@ Project_06에서는 판매 관련 source, 분석, sales query/repository port, �
 
 ## 데이터·운영 연결 제한
 
-- 원본 및 처리 데이터 디렉터리는 이동하지 않았습니다. Project_07에서 Kaggle 자료를 쓰려면 Project_07 아래에 별도로 준비하거나 명시적 경로를 지정해야 합니다.
+- 2026-11-09 이 작업공간의 H&M Kaggle 원본 ZIP과 처리 데이터 디렉터리를 Project_07의 `data/raw/` 및 `data/processed/`로 이동했습니다. 파일은 Git 비추적 상태이며 이동 자체는 이용 권한을 승인하지 않습니다.
 - Project_07의 H&M adapter는 historical public data용 실험 adapter입니다. 사내 판매 원장이나 시장 사실의 대체물이 아닙니다.
 - synthetic records는 Project_07의 테스트·설명용이며 운영 결과에 섞지 않습니다.
 - 사내 PostgreSQL, KG/vector DB, 외부 시장자료, 인증 API 및 Project_06/07 간 운영 API는 연결되지 않았습니다.
