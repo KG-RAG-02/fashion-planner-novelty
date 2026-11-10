@@ -1,0 +1,71 @@
+{
+  "fixture_set": "project06-md-planning-fit-synthetic-proposal-v1",
+  "status": "proposal_only_not_an_approved_contract_or_business_rubric",
+  "data_nature": "synthetic_only",
+  "source_case": "cross-agent-demo-27ss-001",
+  "cases": [
+    {
+      "case_id": "sufficient_synthetic_evidence",
+      "input_profile": {"planning_request": "ok", "trend_result": "ok", "inventory_product_result": "ok", "sales_market_result": "partial", "evidence": "registered_synthetic_ids"},
+      "md_review_questions": ["Can the reviewer distinguish observations from proposals?", "Are multiple concept directions useful for this request?"],
+      "expected_safety": ["Keep all claims tied to supplied evidence or label them as proposals/hypotheses.", "Do not infer demand, preference, price, or feasibility."],
+      "expected_workflow_signal": "No concept count or ranking is assumed before MD agreement."
+    },
+    {
+      "case_id": "partial_upstream_input",
+      "input_profile": {"planning_request": "ok", "trend_result": "partial", "inventory_product_result": "ok", "sales_market_result": "not_provided"},
+      "md_review_questions": ["Does the limitation appear next to affected claims?", "Can the reviewer tell what additional input would unblock comparison?"],
+      "expected_safety": ["Preserve partial status and limitations.", "Do not present the input as complete."],
+      "expected_workflow_signal": "Ask for missing coverage only where it affects a planning decision."
+    },
+    {
+      "case_id": "no_results_vs_observed_zero",
+      "input_profile": {"stock_no_results": {"status": "no_results", "products": []}, "stock_observed_zero": {"status": "ok", "quantity": 0, "unit": "synthetic_units", "as_of": "2026-01-01T00:00:00Z", "evidence_id": "SYN-STOCK-ZERO-1"}},
+      "md_review_questions": ["Are unavailable results distinct from a verified zero snapshot?"],
+      "expected_safety": ["Do not convert no_results to quantity zero.", "Treat explicit zero only as a dated inventory observation, not demand or sales."],
+      "expected_workflow_signal": "Show provenance and time scope for any quantity."
+    },
+    {
+      "case_id": "project07_error_other_inputs_valid",
+      "input_profile": {"planning_request": "ok", "trend_result": "ok", "inventory_product_result": "ok", "sales_market_result": "error"},
+      "md_review_questions": ["Can MD identify that market context failed and what remains usable?"],
+      "expected_safety": ["Preserve upstream error separately from Project_06 execution status.", "Do not use failed result content as evidence."],
+      "expected_workflow_signal": "Allow review of remaining valid inputs while clearly marking missing Project_07 contribution."
+    },
+    {
+      "case_id": "request_trend_conflict",
+      "input_profile": {"request_attribute": {"name": "color", "value": "synthetic_user_value"}, "trend_attribute": {"name": "color", "value": "synthetic_trend_value", "evidence_id": "SYN-TREND-COLOR-1"}},
+      "md_review_questions": ["Is the conflict visible and does the question ask for an actionable choice?"],
+      "expected_safety": ["Do not silently overwrite either value.", "Label trend value as evidence observation and resolution as MD decision."],
+      "expected_workflow_signal": "State which product direction depends on the decision, if known from inputs."
+    },
+    {
+      "case_id": "customer_price_feasibility_missing",
+      "input_profile": {"target_customer": "unknown", "target_price_range": "missing", "production_feasibility": "missing"},
+      "md_review_questions": ["Are missing business inputs assigned to a confirmed owner or left TBD?"],
+      "expected_safety": ["Do not invent customer needs, price, cost, margin, feasibility, or order quantity."],
+      "expected_workflow_signal": "Questions request the missing decision input; ownership remains TBD until agreed."
+    },
+    {
+      "case_id": "attribute_without_evidence",
+      "input_profile": {"attribute": {"name": "material", "value": "synthetic_claim_without_source", "evidence_ids": []}},
+      "md_review_questions": ["Does the output label this as a hypothesis or validation item instead of an observed fact?"],
+      "expected_safety": ["No evidence_observation claim without a registered Evidence ID."],
+      "expected_workflow_signal": "Keep or discard the candidate attribute according to agreed MD workflow; do not fabricate provenance."
+    },
+    {
+      "case_id": "unknown_evidence_reference",
+      "input_profile": {"claim_evidence_id": "SYN-UNREGISTERED-1", "registered_evidence_ids": ["SYN-TREND-1"]},
+      "md_review_questions": ["Does validation prevent an unregistered citation from being presented as support?"],
+      "expected_safety": ["Reject or flag unknown Evidence ID.", "Do not turn model-provided citation text into proof."],
+      "expected_workflow_signal": "Use the existing validation/error handling; exact review status is implementation-specific."
+    },
+    {
+      "case_id": "compare_concept_directions",
+      "input_profile": {"request": "same synthetic request", "direction_a": {"attributes": ["SYN-ATTR-A"], "evidence_id": "SYN-EVIDENCE-A"}, "direction_b": {"attributes": ["SYN-ATTR-B"], "evidence_id": "SYN-EVIDENCE-B"}},
+      "md_review_questions": ["Are the differences meaningful for the category and review stage?", "Would MD prefer alternatives, one recommendation, or a question-first draft?"],
+      "expected_safety": ["Do not rank or score alternatives without approved criteria.", "Distinguish evidence-backed differences from design proposals."],
+      "expected_workflow_signal": "Need for alternatives and count remain TBD pending MD input."
+    }
+  ]
+}

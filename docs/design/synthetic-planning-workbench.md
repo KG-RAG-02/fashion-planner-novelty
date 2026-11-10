@@ -1,0 +1,72 @@
+# 합성 상품기획 데이터와 로컬 workbench
+
+- 상태: 로컬 개발·검증 도구 · 실제 자료 연결 없음
+- 데이터셋: `SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110`
+- Snapshot date: `2026-11-10`
+
+## 목적과 경계
+
+이 fixture와 CLI는 카탈로그, 명세서, 브리프, 가이드 문서, Evidence 관계 및 입력 상태를 개발·테스트하기 위한 가상 예시입니다. 가상 브랜드·상품·SKU·날짜·수치·문장은 실제 회사·정책·고객·시장·사업 결과를 나타내지 않습니다. 문서의 `approved_example`은 **합성 데이터셋 안에서 검색 규칙을 시험하기 위한 상태 이름**일 뿐 회사 승인 상태가 아닙니다.
+
+Project_06 초안 생성에는 현재 기존 내부 `/api/planning-draft` 변환 경로와 규칙 기반 생성기를 사용합니다. 기본 RAG는 `not_configured`여서 합성 문서가 생성기 근거로 자동 유입되지 않습니다. CLI는 해당 요청에 맞는 문서 후보를 따로 나열하며 “적용 완료”로 표시하지 않습니다. 판매·시장 handoff 예시는 별도 fixture로 살펴볼 수 있지만 Project_06 draft 입력에는 연결되어 있지 않습니다. 따라서 Project_06은 이 자료에서 판매 지표를 계산하거나 재집계하지 않습니다.
+
+실제 자료 connector, 외부 서비스, 공개 API 계약 변경, 운영 DB/인덱스 연결은 구현하지 않았습니다. 이 데이터셋을 일반 RAG index에 복사하지 마세요. 현재 RAG allowlist는 `permission_status=authorized`를 요구하고 이 fixture는 `synthetic_only`를 사용하므로 기본 검색 경로에서 제외됩니다.
+
+## 데이터 구성
+
+재생성 결과에는 가상 브랜드/라인 taxonomy, 카탈로그 style과 SKU, 상품 명세서, 시즌 브리프, taxonomy와 가이드 문서, Evidence/source locator, inventory 스냅샷, Project_06 draft 입력, Project_07 소유의 standalone handoff fixture가 포함됩니다. 기본 데이터에는 12 styles, 33 documents, 34 Evidence records, 13 inventory records, 3 standalone Project_07 handoffs가 있습니다.
+
+의도적 품질 사례에는 중복 SKU, 속성 누락, 끊긴 Evidence 참조, 초안 prompt injection 문구, 만료 가이드, 충돌 draft 명세, 단위·기준일 누락, `no_results`, 실제 0 수량이 포함됩니다. 품질 진단은 이를 탐지하고 보고할 뿐 데이터를 자동 수정하지 않습니다.
+
+문서 기본 검색은 다음을 모두 확인합니다.
+
+- `lifecycle_status=approved_example`
+- 데이터셋 기준일에 문서 effective window가 유효
+- 참조 Evidence가 모두 존재하고 `verified=true`
+- Evidence의 `permitted_uses`에 `product_planning` 포함
+
+초안·만료·기타 비활성 문서는 기본 검색에서 제외됩니다. `--include-inactive`는 점검을 위해 이를 노출하지만 결과에 eligibility와 제외 이유를 표시합니다. 검색 필터의 시즌/카테고리/채널 `all_synthetic`은 합성 데이터셋의 넓은 범위 예시입니다.
+
+## 생성 재현
+
+프로젝트 루트에서 실행합니다.
+
+```bash
+python3 tools/generate_synthetic_planning_workbench.py --seed 20261110
+```
+
+같은 generator version과 seed는 같은 JSON을 만듭니다. `--output`으로 별도 경로를 지정할 수 있습니다. 생성기 버전, seed, snapshot date, dataset ID와 데이터 성격은 JSON metadata에 저장합니다.
+
+## 로컬 CLI
+
+```bash
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench list
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench schema
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench search sage --season 27SS --category outerwear
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench search 합성 --document-type guideline --include-inactive
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench compare SYN-STYLE-OUT-001 SYN-STYLE-OUT-003
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench show style SYN-STYLE-OUT-001
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench show document SYN-DOC-GUIDE-002
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench show evidence SYN-EV-GUIDE-001
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench handoffs
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench handoffs --status error
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench quality
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench draft SYN-REQ-PLANNING-001 --output /tmp/synthetic-planning-draft.md
+```
+
+`--json`은 machine-readable 결과를 출력합니다. 모든 CLI 실행은 snapshot SHA-256, 실행 명령·필터, 입력 snapshot을 기준으로 결정되는 `run_id`를 함께 제공합니다. `--dataset`은 subcommand보다 앞에 둡니다.
+
+`search`는 활성 합성 문서 및 상품 필드를 조회하고, `compare`는 입력된 상품 속성의 일치·차이·누락만 보여줍니다. 점수·수요 추정·후보 우선순위를 산출하지 않습니다. `handoffs`는 Project_07 책임을 표시한 standalone 합성 `partial`, `no_results`, `error` 예시를 확인합니다. `draft`는 합성 planning request를 기존 내부 draft 경로에 넣고 Evidence와 source locator를 포함한 Markdown 검토 초안을 만듭니다. 이 경로는 실제 운영 생성기가 합성 데이터를 기본으로 사용한다는 뜻이 아닙니다.
+
+## 검증
+
+```bash
+PYTHONPATH=src python3 -m unittest tests.test_synthetic_planning_workbench -v
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+```
+
+테스트는 seed 재현, non-synthetic 데이터 거부, 기본 검색의 draft/expired 제외, 품질 오류 탐지, `no_results`와 quantity 0 구분, Evidence 추적, Project_07 handoff 상태 보존, draft의 synthetic 고지 및 prompt injection 문서 격리를 확인합니다. 이는 합성 파이프라인 동작만 검증하며, MD 효용·시장성·실제 회사 정책에 대한 검증이 아닙니다.
+
+## 실제 자료 전환 시 필요한 승인
+
+실제 자료를 연결하기 전에 각 자료 소유자와 승인된 용도, 접근 권한, 개인정보/비밀정보 포함 여부, 저장·보존·삭제 기간, 갱신·버전 규칙, 문서 상태와 만료 방식, 품질 책임자, 로그/감사 정책, 검색·모델 전송 허용 여부를 합의해야 합니다. 승인 후에도 실제 자료는 합성 fixture와 다른 환경·source allowlist·index version으로 분리합니다. 판매·시장 지표는 Project_07 책임과 계약을 유지합니다.

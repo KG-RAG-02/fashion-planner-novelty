@@ -36,6 +36,19 @@ Project_06은 planning draft API만 제공합니다. UI는 Project_08 소유이�
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
+## 합성 상품기획 workbench
+
+사내 카탈로그·기획 문서가 확보되기 전 개발·검증에 사용할 완전 합성 데이터와 로컬 탐색 CLI를 제공합니다. 이는 실제 회사 자료나 시장 사실이 아니며 기본 API/RAG에 자동 연결되지 않습니다.
+
+```bash
+python3 tools/generate_synthetic_planning_workbench.py --seed 20261110
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench list
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench quality
+PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench draft SYN-REQ-PLANNING-001
+```
+
+검색·비교·Evidence 추적·기획 초안 생성·데이터 품질 진단 명령과 실제 자료 전환 제한은 [합성 상품기획 workbench 안내](docs/design/synthetic-planning-workbench.md)를 참고하세요.
+
 ## 코드 구조
 
 - `domain/context.py`, `domain/concept.py`, `domain/generator.py`: 입력 정합성, evidence 보존, 상품 콘셉트 초안
