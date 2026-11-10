@@ -32,3 +32,5 @@ The handoff transport is undecided as a team decision. The current design baseli
 | 서비스 주소·자격 증명·배포 | 미정 | 별도 승인 전 구현 확정 사항 아님 |
 
 위 timeout·재시도·idempotency 값은 [API Design](https://app.notion.com/p/40d3269b1acd818bb6eaecb6d1db5f8b)의 제안값을 옮긴 것이며, 운영 설정 승인을 뜻하지 않습니다. 동기/비동기 운영, base URL, 실패 시 계속/중단/재개, 전체 orchestration deadline, 오류 상세 schema 및 계약 배포 절차도 미합의입니다.
+
+Project_06의 현재 `/api/planning-draft` 동작, 공통 envelope 후보 비교, producer별 버전 호환 제안과 합성 검증 사례는 [HTTP 연동 계약 제안](http-integration-contract-proposal.md)에 별도로 정리했습니다. 해당 문서와 fixture도 담당자 합의 전 제안입니다.

@@ -170,6 +170,8 @@ API Design의 제안값은 연결 timeout 3초, agent 호출 전체 timeout 60�
 
 ## 7. 구현 진행 현황
 
+프롬프트 인젝션과 모델 경계 현황은 [기획안 생성 프롬프트 인젝션 경계](prompt-injection-boundary.md)에 기록합니다. 운영 API는 기본적으로 결정적 규칙 기반을 사용합니다. `VOGUE_TEXT_GENERATION_ENABLED`와 주입형 provider 경계를 둔 버전 관리 구조화 텍스트 프롬프트를 추가했지만, 제공자·모델·자료 전송이 승인되지 않아 실제 텍스트 LLM은 연결되지 않았습니다. 플래그만 켜면 규칙 기반 초안과 비가용 상태를 반환합니다. 실제 외부 모델 경로는 명시적으로 활성화·요청한 이미지 생성입니다.
+
 현재 `src/vogue_npp/domain/context.py`는 이미 정규화된 내부 입력 모델 세 개를 받아 다음을 처리합니다.
 
 - `request_id`와 `schema_version`의 동일성 검증

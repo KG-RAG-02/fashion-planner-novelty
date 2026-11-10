@@ -16,7 +16,7 @@
 - 기획 후보 점수는 검토 기준이 설정된 경우에만 계산합니다. 미승인 기준으로 후보를 사실상 우선순위화하지 않습니다.
 - 이미지는 명시적으로 요청하고 서버 설정이 활성화된 경우에만 생성합니다.
 
-실제 구현과 프로젝트 간 이관 범위는 [책임 경계·이관 기록](docs/design/agent-3-responsibility-map.md)에 정리했습니다. 상세 구현 제안은 [TrendBatch 기반 상품기획 설계](docs/design/trend-batch-kg-rag-product-planning.md)를 참고하세요.
+실제 구현과 프로젝트 간 이관 범위는 [책임 경계·이관 기록](docs/design/agent-3-responsibility-map.md)에 정리했습니다. 상세 구현 제안은 [TrendBatch 기반 상품기획 설계](docs/design/trend-batch-kg-rag-product-planning.md)를, 모델 입력의 현재 프롬프트 인젝션 경계와 한계는 [프롬프트 인젝션 경계 문서](docs/design/prompt-injection-boundary.md)를 참고하세요.
 
 ## 실행
 
@@ -27,6 +27,8 @@ PYTHONPATH=src python3 -m vogue_npp.prototype.server
 Project_06은 planning draft API만 제공합니다. UI는 Project_08 소유이며, 이 저장소에서는 브라우저 화면을 제공하지 않습니다. 기본 API 주소는 `http://127.0.0.1:8765`입니다.
 
 선택형 이미지 생성을 API 요청에 포함하려면 `.env` 또는 실행 환경에 `VOGUE_IMAGE_GENERATION_ENABLED=true`와 `OPENAI_API_KEY`를 설정합니다. 요청에 `generate_image: true`를 명시해야 외부 이미지 요청이 발생합니다. 비밀값이 들어 있는 `.env`는 커밋하지 마세요.
+
+구조화 텍스트 기획 프롬프트는 `VOGUE_TEXT_GENERATION_ENABLED`로 요청할 수 있지만 현재 승인된 텍스트 모델 제공자가 연결되지 않았습니다. 이 설정만 켜면 외부 호출 없이 규칙 기반 초안과 `TEXT_GENERATION_UNAVAILABLE` 상태를 반환합니다.
 
 ## 테스트
 
