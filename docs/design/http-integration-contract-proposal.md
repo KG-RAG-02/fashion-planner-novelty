@@ -1,6 +1,6 @@
 # Project_06 HTTP integration contract proposal
 
-**Status: proposal for cross-owner review; not approved and not enforced.** This document records current Project_06 adapter behavior and a candidate contract for discussion. It does not authorize an endpoint, wire schema, service address, credential, deployment, timeout, or retry policy.
+**Status: historical proposal superseded for the Project_06 handoff boundary.** The agreed v0.1 endpoint and input adapter are implemented in [`http-handoff-v0.1.md`](http-handoff-v0.1.md). Production addresses, credentials, deployment, and caller-side timeout configuration remain environment-specific and are not committed.
 
 ## Current Project_06 behavior (observed locally)
 

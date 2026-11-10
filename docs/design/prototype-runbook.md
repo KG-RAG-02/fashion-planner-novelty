@@ -5,14 +5,16 @@
 From the repository root:
 
 ```bash
-PYTHONPATH=src python3 -m vogue_npp.prototype.server
+VOGUE_HTTP_MODE=local PYTHONPATH=src python3 -m vogue_npp.prototype.server
 ```
 
-The service binds to `127.0.0.1:8765` by default. It does not serve a browser UI; Project_08 owns the local interface. Stop the service with `Ctrl+C`.
+The service binds to `127.0.0.1:8765` by default. `VOGUE_HTTP_MODE=local` is required and permits only loopback. It does not serve a browser UI; Project_08 owns the local interface. Stop the service with `Ctrl+C`.
 
 ## API boundary
 
 `POST /api/planning-draft` accepts planning request, trend, inventory, and optional Project_07 payloads. It does not query upstream source systems. Project_07 sales/market input is passed through as an opaque handoff.
+
+The agreed common handoff is implemented at `POST /v1/agents/new-product-agent/runs`; see [HTTP handoff v0.1](http-handoff-v0.1.md) for request/response fields, supported versions, service mode and errors. The legacy route remains available.
 
 The API also supports existing planning brief and image variant operations. SQLite state and generated image files are local runtime artifacts; this service does not serve the browser UI.
 

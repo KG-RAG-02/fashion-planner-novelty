@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import json
+import hmac
 import mimetypes
 import os
+import ssl
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from threading import BoundedSemaphore
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -31,11 +35,84 @@ from ..workflows.text_concept_generation import PromptedConceptGenerator
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 GENERATED_IMAGE_ROOT = REPOSITORY_ROOT / DEFAULT_IMAGE_DIR
 MAX_BODY_BYTES = 1_000_000
+HANDOFF_CONTRACT_VERSION = "vogue-handoff/0.1"
+HANDOFF_RESULT_SCHEMA_VERSION = "1.0"
+HANDOFF_ADAPTER_VERSION = "project06-input-normalizer/1.0"
+HANDOFF_REQUEST_TIMEOUT_SECONDS = 60
+HANDOFF_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="project06-handoff")
+HANDOFF_SLOTS = BoundedSemaphore(4)
+HANDOFF_INPUT_KEYS = {
+    "planning_request", "trend_result", "inventory_product_result", "sales_market_result",
+}
+SUPPORTED_INPUT_VERSIONS = {
+    "planning_request": {"1.0"},
+    "trend_result": {"1.1"},
+    "inventory_product_result": {"1.0"},
+    "sales_market_result": {"1.0"},
+}
 COMPARISON_IMAGE_MODELS = (
     "gpt-image-2.5-sunburst",
     "gpt-image-2.5-flare",
     "gpt-image-2",
 )
+
+
+class HandoffCompatibilityError(ValueError):
+    def __init__(self, code: str, safe_message: str):
+        super().__init__(safe_message)
+        self.code = code
+        self.safe_message = safe_message
+
+
+def _build_handoff_result(request_id: str, inputs: dict) -> dict:
+    """Validate the agreed producer matrix and normalize without mutating source payloads."""
+    raw_inputs = json.loads(json.dumps(inputs))
+    expected_producers = {
+        "trend_result": {"trend-analysis-agent", None},
+        "inventory_product_result": {"stock-agent"},
+        "sales_market_result": {"market-research-agent"},
+    }
+    for name, value in raw_inputs.items():
+        if name == "sales_market_result" and value is None:
+            continue
+        if not isinstance(value, dict):
+            raise HandoffCompatibilityError("INVALID_PRODUCER_PAYLOAD", "입력 producer payload는 JSON 객체여야 합니다.")
+        if value.get("request_id") != request_id:
+            raise HandoffCompatibilityError("REQUEST_ID_MISMATCH", "모든 입력 request_id는 envelope request_id와 일치해야 합니다.")
+        version = value.get("schema_version")
+        if version not in SUPPORTED_INPUT_VERSIONS[name]:
+            raise HandoffCompatibilityError("UNSUPPORTED_PRODUCER_SCHEMA", f"지원하지 않는 {name} schema_version입니다.")
+        if name in expected_producers and value.get("agent_id") not in expected_producers[name]:
+            raise HandoffCompatibilityError("PRODUCER_MISMATCH", f"{name} producer ID가 계약과 일치하지 않습니다.")
+        if name != "planning_request" and value.get("status") not in {"ok", "partial", "no_results", "error"}:
+            raise HandoffCompatibilityError("INVALID_DOMAIN_STATUS", f"{name} status가 지원되지 않습니다.")
+    planning = raw_inputs["planning_request"]
+    if planning.get("request_id") != request_id:
+        raise HandoffCompatibilityError("REQUEST_ID_MISMATCH", "PlanningRequest request_id가 envelope와 일치해야 합니다.")
+
+    normalized = json.loads(json.dumps(raw_inputs))
+    # The domain context currently has one internal version slot. This explicit
+    # adapter mapping changes only the internal copy; the source remains 1.1.
+    normalized["trend_result"]["schema_version"] = "1.0"
+    draft = _build_planning_draft_response({"request_id": request_id, **normalized})
+    trend_evidence = draft["input_evidence"]["trend_result"]
+    trend_evidence["payload"] = raw_inputs["trend_result"]
+    trend_evidence["internal_schema_version"] = "1.0"
+    trend_evidence["source_schema_version"] = "1.1"
+    draft["compatibility"] = {
+        "adapter_version": HANDOFF_ADAPTER_VERSION,
+        "input_schemas": {
+            name: {
+                "source_schema_version": value.get("schema_version") if isinstance(value, dict) else None,
+                "internal_schema_version": "1.0" if name == "trend_result" else value.get("schema_version") if isinstance(value, dict) else None,
+                "transformed": name == "trend_result",
+            }
+            for name, value in raw_inputs.items()
+        },
+        "source_payloads_preserved": True,
+    }
+    draft["request_id"] = request_id
+    return draft
 
 
 class PrototypeHandler(BaseHTTPRequestHandler):
@@ -70,7 +147,26 @@ class PrototypeHandler(BaseHTTPRequestHandler):
             raise ValueError("JSON 객체 형태의 요청이 필요합니다.")
         return payload
 
+    def _handoff_error(self, status: int, code: str, message: str) -> None:
+        self._json(status, {"error": {"code": code, "message": message}})
+
+    def _authorized_handoff(self) -> bool:
+        mode = os.getenv("VOGUE_HTTP_MODE", "")
+        if mode == "local":
+            try:
+                return self.client_address[0] in {"127.0.0.1", "::1"}
+            except (AttributeError, IndexError):
+                return False
+        if mode != "service":
+            return False
+        expected = os.getenv("VOGUE_SERVICE_BEARER_TOKEN", "")
+        supplied = self.headers.get("Authorization", "")
+        return bool(expected) and hmac.compare_digest(supplied, f"Bearer {expected}")
+
     def do_GET(self) -> None:
+        if os.getenv("VOGUE_HTTP_MODE") == "service" and not self._authorized_handoff():
+            self._handoff_error(401, "UNAUTHORIZED", "인증이 필요합니다.")
+            return
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
         try:
@@ -116,6 +212,15 @@ class PrototypeHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if path == "/v1/agents/new-product-agent/runs":
+            self._handle_handoff()
+            return
+        if os.getenv("VOGUE_HTTP_MODE") == "service" and not self._authorized_handoff():
+            self._handoff_error(401, "UNAUTHORIZED", "인증이 필요합니다.")
+            return
+        if path not in {"/api/planning-draft", "/api/brief", "/api/variants", "/api/evaluations"}:
+            self._json(404, {"error": "Not found"})
+            return
         try:
             payload = self._body()
             if path == "/api/planning-draft":
@@ -130,21 +235,96 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                 self._json(201, {"variants": repository.generate_variant(payload, str(payload.get("image_type", "product")), int(payload.get("count", 3)))})
             elif path == "/api/evaluations":
                 self._json(201, repository.save_evaluation(payload))
-            else:
-                self._json(404, {"error": "Not found"})
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             self._json(400, {"error": str(exc)})
         except OSError:
             self._json(500, {"error": "요청을 처리하지 못했습니다.", "code": "INTERNAL_ERROR"})
+
+    def _handle_handoff(self) -> None:
+        if not self._authorized_handoff():
+            self._handoff_error(401, "UNAUTHORIZED", "인증이 필요합니다.")
+            return
+        if self.headers.get_content_type() != "application/json":
+            self._handoff_error(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type application/json이 필요합니다.")
+            return
+        try:
+            raw_length = self.headers.get("Content-Length")
+            if raw_length is None or not raw_length.isdigit():
+                self._handoff_error(400, "INVALID_CONTENT_LENGTH", "Content-Length가 필요합니다.")
+                return
+            length = int(raw_length)
+            if length > MAX_BODY_BYTES:
+                self._handoff_error(413, "PAYLOAD_TOO_LARGE", "요청 본문 크기 제한을 초과했습니다.")
+                return
+            self.connection.settimeout(60)
+            raw = self.rfile.read(length)
+            try:
+                payload = json.loads(raw)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                self._handoff_error(400, "INVALID_JSON", "JSON 요청 본문을 읽을 수 없습니다.")
+                return
+            if not isinstance(payload, dict):
+                self._handoff_error(400, "INVALID_JSON", "JSON 객체 형태의 요청이 필요합니다.")
+            elif set(payload) != {"contract_version", "request_id", "input"}:
+                self._handoff_error(422, "INVALID_ENVELOPE", "필수 envelope 필드 또는 지원되지 않는 최상위 필드입니다.")
+            elif payload.get("contract_version") != HANDOFF_CONTRACT_VERSION:
+                self._handoff_error(422, "UNSUPPORTED_CONTRACT_VERSION", "지원하지 않는 contract_version입니다.")
+            elif not isinstance(payload.get("request_id"), str) or not payload["request_id"].strip():
+                self._handoff_error(422, "INVALID_REQUEST_ID", "request_id는 비어 있지 않은 문자열이어야 합니다.")
+            elif not isinstance(payload.get("input"), dict) or set(payload["input"]) != HANDOFF_INPUT_KEYS:
+                self._handoff_error(422, "INVALID_INPUT", "input에는 합의된 네 producer 입력 필드가 모두 필요합니다.")
+            elif not HANDOFF_SLOTS.acquire(blocking=False):
+                self._handoff_error(500, "SERVICE_BUSY", "현재 요청을 처리할 수 없습니다.")
+            else:
+                future = HANDOFF_EXECUTOR.submit(_build_handoff_result, payload["request_id"], payload["input"])
+                future.add_done_callback(lambda _: HANDOFF_SLOTS.release())
+                try:
+                    result = future.result(timeout=HANDOFF_REQUEST_TIMEOUT_SECONDS)
+                except FutureTimeoutError:
+                    self._handoff_error(500, "REQUEST_TIMEOUT", "요청 처리 시간 제한을 초과했습니다.")
+                    return
+                self._json(200, {
+                    "contract_version": HANDOFF_CONTRACT_VERSION,
+                    "request_id": payload["request_id"],
+                    "producer": {"agent_id": "new-product-agent", "schema_version": HANDOFF_RESULT_SCHEMA_VERSION},
+                    "status": result["status"],
+                    "result": result,
+                })
+        except HandoffCompatibilityError as exc:
+            self._handoff_error(422, exc.code, exc.safe_message)
+        except (ValueError, TypeError, KeyError, IndexError):
+            self._handoff_error(422, "INVALID_PRODUCER_PAYLOAD", "지원된 입력 schema 구조를 처리할 수 없습니다.")
+        except (TimeoutError, OSError):
+            self._handoff_error(500, "INTERNAL_ERROR", "요청을 처리하지 못했습니다.")
+        except Exception:
+            self._handoff_error(500, "INTERNAL_ERROR", "요청을 처리하지 못했습니다.")
 
 
 def main() -> None:
     repository.initialize()
     host = os.getenv("VOGUE_HOST", "127.0.0.1")
     port = int(os.getenv("VOGUE_PORT", "8765"))
+    mode = os.getenv("VOGUE_HTTP_MODE", "")
+    if mode == "local":
+        if host not in {"127.0.0.1", "localhost", "::1"}:
+            raise RuntimeError("VOGUE_HTTP_MODE=local은 loopback host만 허용합니다.")
+    elif mode == "service":
+        if not os.getenv("VOGUE_SERVICE_BEARER_TOKEN"):
+            raise RuntimeError("service mode requires VOGUE_SERVICE_BEARER_TOKEN.")
+        cert_file = os.getenv("VOGUE_TLS_CERT_FILE")
+        key_file = os.getenv("VOGUE_TLS_KEY_FILE")
+        if not cert_file or not key_file:
+            raise RuntimeError("service mode requires TLS certificate and key files.")
+    else:
+        raise RuntimeError("Set VOGUE_HTTP_MODE=local for loopback development or service for HTTPS service mode.")
     server = ThreadingHTTPServer((host, port), PrototypeHandler)
+    if mode == "service":
+        tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        tls.load_cert_chain(os.environ["VOGUE_TLS_CERT_FILE"], os.environ["VOGUE_TLS_KEY_FILE"])
+        server.socket = tls.wrap_socket(server.socket, server_side=True)
     display_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
-    print(f"VOGUE planning API running at http://{display_host}:{port}")
+    scheme = "https" if mode == "service" else "http"
+    print(f"VOGUE planning API running at {scheme}://{display_host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

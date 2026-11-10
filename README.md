@@ -21,10 +21,10 @@
 ## 실행
 
 ```bash
-PYTHONPATH=src python3 -m vogue_npp.prototype.server
+VOGUE_HTTP_MODE=local PYTHONPATH=src python3 -m vogue_npp.prototype.server
 ```
 
-Project_06은 planning draft API만 제공합니다. UI는 Project_08 소유이며, 이 저장소에서는 브라우저 화면을 제공하지 않습니다. 기본 API 주소는 `http://127.0.0.1:8765`입니다.
+Project_06은 planning draft API를 제공합니다. UI는 Project_08 소유이며, 이 저장소에서는 브라우저 화면을 제공하지 않습니다. 로컬 실행은 명시적으로 `VOGUE_HTTP_MODE=local`을 지정하고 기본 주소 `http://127.0.0.1:8765`를 사용합니다. 공통 handoff 경로는 [`docs/design/http-handoff-v0.1.md`](docs/design/http-handoff-v0.1.md)에 설명되어 있습니다.
 
 선택형 이미지 생성을 API 요청에 포함하려면 `.env` 또는 실행 환경에 `VOGUE_IMAGE_GENERATION_ENABLED=true`와 `OPENAI_API_KEY`를 설정합니다. 요청에 `generate_image: true`를 명시해야 외부 이미지 요청이 발생합니다. 비밀값이 들어 있는 `.env`는 커밋하지 마세요.
 
