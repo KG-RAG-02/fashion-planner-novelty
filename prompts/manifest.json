@@ -1,0 +1,12 @@
+{
+  "text_planning": {
+    "version": "v1",
+    "version_id": "new-product-planner-v1",
+    "directory": "text_planning/v1"
+  },
+  "concept_image": {
+    "version": "v2",
+    "version_id": "product-concept-image-prompt-v2-designer",
+    "directory": "concept_image/v2"
+  }
+}
