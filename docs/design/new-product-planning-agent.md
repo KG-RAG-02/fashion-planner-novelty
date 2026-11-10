@@ -3,7 +3,7 @@
 - 상태: 경계 설계 제안 · 실제 코드 소유권은 2026-11-06 책임 경계 기록에 따라 판매 분석을 Project_07로 이전
 - 작성 목적: Project_06 Planning Agent 경계와 Project_07 handoff 후보를 명확히 합니다.
 - 적용 범위: `KG-RAG-02/new-product-planning-agent` 저장소 (현재 연결 remote)
-- Project_07 저장소명은 `market-research-agent`로 확인됨. 판매 결과의 공통 wire 계약과 운영 자료원은 여전히 미확정입니다.
+- Project_07 저장소명은 `market-research-agent`로 확인됨. 판매 결과의 공통 wire 계약과 운영 자료원은 여전히 미확정입니다. transport는 HTTP/JSON을 설계 기준안으로 제안하지만 팀 확정 결정은 아닙니다.
 - 현재 책임 기준: Project_06은 새상품 기획만 담당합니다. 과거 H&M/synthetic 판매 분석 코드는 Project_07에 이관되었고, 본 문서 내 과거 판매 처리 설명은 현행 책임이 아닙니다. 자세한 현재 상태는 [책임 경계 기록](agent-3-responsibility-map.md)을 기준으로 합니다.
 
 > **읽기 주의:** 본 문서에는 이전 설계안의 일부 표와 설명이 이력 보존을 위해 남아 있습니다. 특히 Project_06이 H&M/Kaggle 판매 pipeline을 소유한다는 제안은 폐기되었습니다. 현행 코드의 근거로는 사용하지 말고 위 책임 경계 기록과 README를 따르세요.
@@ -156,11 +156,17 @@ PlanningRequest + TrendResult + InventoryProductResult + Project_07 Sales & Mark
 | 언어·런타임 | 임시 기본값: Python 표준 라이브러리 기반 도메인 코어 | 팀 표준과 다르면 도메인 계층을 이전하거나 어댑터를 재작성 |
 | 계약 검증 | 임시 기본값: 내부 dataclass 검증. 공통 JSON Schema/wire validator는 미작성 | 필드·envelope 합의 후 저장소별 동일 계약 파일과 어댑터 추가 |
 | 생성 방식 | 현재 기준선: 투명한 결정적 규칙. 목표: 근거 기반 LLM 생성 및 복수 엔진 비교 | 허용 엔진·자료 전송·평가 기준을 정한 뒤 같은 generator 포트에 어댑터 연결 |
-| API 전송 | 임시 기본값: 순수 함수 경계, 네트워크 호출 없음 | HTTP/gRPC/메시지 큐 결정 후 얇은 transport adapter 추가 |
+| API 전송 | 구현 기본값: 순수 함수 경계, 네트워크 호출 없음. 설계 제안 기준안은 HTTP/JSON이며 팀 미합의 | 승인된 공통 계약과 transport 결정 후 얇은 adapter 추가; 제안은 [HTTP/API 연동 부록](project-07-handoff-proposal.md#httpapi-연동-부록-제안-미합의) 참조 |
 | 모델/외부 API | 현재 기본값: 호출하지 않음. 엔진/제공자 미선정 | 평가 대상 엔진, 권한·자료 처리·자격 증명 관리 합의 후 adapter로 연결 |
 | 상태 저장 | 임시 기본값: 무상태 처리, 원천/결과 저장 없음 | 재현·이력 요구와 보존/삭제/접근 통제가 합의되면 별도 저장 어댑터 추가 |
 
 이 임시 구현은 팀 통합 시 `internal models → agreed ProductConcept schema` 변환 경계에서 계약 차이를 흡수하도록 둡니다. 통합 시 내부 모델 자체를 공통 wire schema라고 간주하지 않습니다. 다섯 저장소에 공통 계약 파일을 반영하기로 한 Notion 결정을 따르며, 이 저장소 단독으로 `contracts/` 기준본을 만들지 않습니다.
+
+### HTTP/API 연동 부록 (제안, 미합의)
+
+현재 설계 기준안은 API Design 페이지의 제안에 따라 HTTP/JSON입니다. 이는 팀의 transport 확정이나 승인된 wire/운영 계약을 의미하지 않습니다. 공통 envelope는 `POST /v1/agents/{agent_id}/runs` 요청/응답 JSON body에 담는 안이며, producer의 원본 결과는 응답 `result` 아래 보존합니다. `contract_version`은 envelope 계약 버전, 각 producer의 `schema_version`은 해당 agent가 소유하는 payload 버전입니다. agent는 자체 schema와 로컬 payload를 유지하고, orchestrator는 순서·호출·호환성 검증 및 원본 결과 보존을 담당하는 안입니다.
+
+API Design의 제안값은 연결 timeout 3초, agent 호출 전체 timeout 60초, 연결 실패 및 HTTP 429/502/503/504에 최대 1회 추가 시도(429는 `Retry-After` 존중), `Idempotency-Key: {request_id}:{agent_id}`입니다. 이 값들은 검토 시작점이며 승인 전까지 모두 TBD입니다. 자동 재시도는 idempotency 동작 합의가 전제이고, 해당 합의 전에는 비활성화가 안전 기본값이라는 제안입니다. 인증은 서비스 간 TLS와 Bearer token(OAuth 2.0 client credentials) 후보입니다. 토큰 발급자·audience/scope·키 회전, 실제 서비스 주소, 운영 재시도, 배포 토폴로지 및 동기/비동기 운영은 TBD이며 별도 승인 전 구현 확정 사항으로 다루지 않습니다. 상세 항목은 [Project_07 handoff 부록](project-07-handoff-proposal.md#httpapi-연동-부록-제안-미합의) 및 [API Design](https://app.notion.com/p/40d3269b1acd818bb6eaecb6d1db5f8b)을 참조합니다.
 
 ## 7. 구현 진행 현황
 
