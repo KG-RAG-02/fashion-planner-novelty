@@ -421,8 +421,8 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
             raise InputConsistencyError("Project_07 result must be a mapping payload.")
         if upstream_sales_market.get("request_id") != next(iter(request_ids)):
             raise InputConsistencyError("Project_07 result must match the planning request_id.")
-        if upstream_sales_market.get("agent_id") != "market-research-agent":
-            raise InputConsistencyError("Project_07 handoff must identify market-research-agent.")
+        if upstream_sales_market.get("agent_id") != "sales-market-agent":
+            raise InputConsistencyError("Project_07 handoff must identify sales-market-agent.")
         upstream_status = upstream_sales_market.get("status")
         if upstream_status not in {"ok", "partial", "no_results", "error"}:
             raise InputConsistencyError("Project_07 result has an unsupported status.")

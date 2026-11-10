@@ -26,7 +26,7 @@ class AnalysisPriorityTests(unittest.TestCase):
         payload = {
             "schema_version": "1.1-proposal",
             "request_id": request_id,
-            "agent_id": "market-research-agent",
+            "agent_id": "sales-market-agent",
             "status": "partial",
             "summary": "Sales observations with explicit limits.",
             "findings": [],

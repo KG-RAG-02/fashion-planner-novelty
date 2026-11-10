@@ -81,7 +81,7 @@ class FakeStructuredProvider:
 
 class TextConceptGenerationTests(unittest.TestCase):
     def test_prompt_defines_planner_role_and_scopes_market_handoff(self):
-        private_sales = {"request_id": "text-plan-1", "agent_id": "market-research-agent",
+        private_sales = {"request_id": "text-plan-1", "agent_id": "sales-market-agent",
                          "status": "partial", "summary": "OPAQUE SALES TEXT"}
         context = make_context(sales=private_sales)
         prompt = build_planning_prompt(context)
@@ -105,7 +105,7 @@ class TextConceptGenerationTests(unittest.TestCase):
     def test_mock_structured_output_maps_to_internal_draft(self):
         provider = FakeStructuredProvider(valid_output())
         generator = PromptedConceptGenerator(provider=provider, enabled=True)
-        opaque_sales = {"request_id": "text-plan-1", "agent_id": "market-research-agent",
+        opaque_sales = {"request_id": "text-plan-1", "agent_id": "sales-market-agent",
                         "status": "partial", "summary": "DO NOT INTERPRET"}
         draft, issues = generator.generate(make_context(sales=opaque_sales))
         self.assertEqual(provider.calls, 1)

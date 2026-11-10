@@ -14,7 +14,7 @@ Request top-level fields are exactly `contract_version`, `request_id`, and `inpu
     "planning_request": {"schema_version": "1.0", "request_id": "synthetic-handoff-001", "query": "합성 27SS 아우터 기획"},
     "trend_result": {"schema_version": "1.1", "request_id": "synthetic-handoff-001", "status": "partial", "trends": [], "evidence": [], "limitations": ["합성 자료"]},
     "inventory_product_result": {"schema_version": "1.0", "request_id": "synthetic-handoff-001", "agent_id": "stock-agent", "status": "no_results", "products": [], "evidence": [], "errors": []},
-    "sales_market_result": {"schema_version": "1.0", "request_id": "synthetic-handoff-001", "agent_id": "market-research-agent", "status": "no_results", "evidence": [], "limitations": [], "errors": []}
+    "sales_market_result": {"schema_version": "1.0", "request_id": "synthetic-handoff-001", "agent_id": "sales-market-agent", "status": "no_results", "evidence": [], "limitations": [], "errors": []}
   }
 }
 ```
@@ -28,7 +28,7 @@ Successful domain responses use HTTP 200, including `partial`, `no_results`, and
 | PlanningRequest | 1.0 | Kept as supplied |
 | Trend | 1.1 | A copied internal normalization view uses 1.0 for the existing domain context; source payload and source version 1.1 remain in `input_evidence.trend_result.payload` and compatibility trace |
 | Stock | 1.0 | Kept as supplied |
-| Project_07 | 1.0 | Opaque payload kept as supplied; producer ID must be `market-research-agent` |
+| Project_07 | 1.0 | Opaque payload kept as supplied; producer ID must be `sales-market-agent` |
 
 The normalizer is `project06-input-normalizer/1.0`. It does not rewrite the source Trend payload or its `schema_version`. Unsupported versions, missing producer metadata, request ID mismatches, unknown top-level envelope/input fields, or unsupported statuses return a compatibility/validation error. Producer-owned nested payloads are retained verbatim as JSON and are not projected into a new wire schema.
 

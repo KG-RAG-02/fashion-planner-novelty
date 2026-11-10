@@ -38,7 +38,7 @@ def make_context():
         AgentResult("stock-agent", REQUEST_ID, "internal-0", "ok", ("stock-E1",)),
         (InventoryProduct("ST-1", (), category="outerwear", evidence_ids=("stock-E1",)),),
     )
-    sales = {"request_id": REQUEST_ID, "agent_id": "market-research-agent", "status": "ok",
+    sales = {"request_id": REQUEST_ID, "agent_id": "sales-market-agent", "status": "ok",
              "evidence": [{"evidence_id": "market-E1"}], "findings": []}
     return build_planning_context(PlanningInputs(request, trend, inventory, sales))
 

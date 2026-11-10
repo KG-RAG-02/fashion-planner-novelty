@@ -28,7 +28,7 @@
     "sales_market_result": {
       "schema_version": "1.0",
       "request_id": "synthetic-handoff-001",
-      "agent_id": "market-research-agent",
+      "agent_id": "sales-market-agent",
       "status": "no_results",
       "evidence": [],
       "limitations": ["합성 Project_07 자료 없음"],

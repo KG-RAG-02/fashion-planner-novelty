@@ -15,6 +15,12 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import repository
+from ..adapters.handoff import (
+    CONTRACT_VERSION as HANDOFF_CONTRACT_VERSION,
+    INPUT_KEYS as HANDOFF_INPUT_KEYS,
+    AdapterCompatibilityError as HandoffCompatibilityError,
+    normalize_handoff_inputs,
+)
 from ..domain.context import (
     AgentResult, AttributeSignal, InventoryProduct, InventoryProductResult, InventoryTrendResult,
     PlanningInputs, PlanningRequest, TrendCandidate, TrendResult,
@@ -35,21 +41,10 @@ from ..workflows.text_concept_generation import PromptedConceptGenerator
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 GENERATED_IMAGE_ROOT = REPOSITORY_ROOT / DEFAULT_IMAGE_DIR
 MAX_BODY_BYTES = 1_000_000
-HANDOFF_CONTRACT_VERSION = "vogue-handoff/0.1"
 HANDOFF_RESULT_SCHEMA_VERSION = "1.0"
-HANDOFF_ADAPTER_VERSION = "project06-input-normalizer/1.0"
 HANDOFF_REQUEST_TIMEOUT_SECONDS = 60
 HANDOFF_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="project06-handoff")
 HANDOFF_SLOTS = BoundedSemaphore(4)
-HANDOFF_INPUT_KEYS = {
-    "planning_request", "trend_result", "inventory_product_result", "sales_market_result",
-}
-SUPPORTED_INPUT_VERSIONS = {
-    "planning_request": {"1.0"},
-    "trend_result": {"1.1"},
-    "inventory_product_result": {"1.0"},
-    "sales_market_result": {"1.0"},
-}
 COMPARISON_IMAGE_MODELS = (
     "gpt-image-2.5-sunburst",
     "gpt-image-2.5-flare",
@@ -57,60 +52,17 @@ COMPARISON_IMAGE_MODELS = (
 )
 
 
-class HandoffCompatibilityError(ValueError):
-    def __init__(self, code: str, safe_message: str):
-        super().__init__(safe_message)
-        self.code = code
-        self.safe_message = safe_message
-
-
 def _build_handoff_result(request_id: str, inputs: dict) -> dict:
     """Validate the agreed producer matrix and normalize without mutating source payloads."""
-    raw_inputs = json.loads(json.dumps(inputs))
-    expected_producers = {
-        "trend_result": {"trend-analysis-agent", None},
-        "inventory_product_result": {"stock-agent"},
-        "sales_market_result": {"market-research-agent"},
-    }
-    for name, value in raw_inputs.items():
-        if name == "sales_market_result" and value is None:
-            continue
-        if not isinstance(value, dict):
-            raise HandoffCompatibilityError("INVALID_PRODUCER_PAYLOAD", "입력 producer payload는 JSON 객체여야 합니다.")
-        if value.get("request_id") != request_id:
-            raise HandoffCompatibilityError("REQUEST_ID_MISMATCH", "모든 입력 request_id는 envelope request_id와 일치해야 합니다.")
-        version = value.get("schema_version")
-        if version not in SUPPORTED_INPUT_VERSIONS[name]:
-            raise HandoffCompatibilityError("UNSUPPORTED_PRODUCER_SCHEMA", f"지원하지 않는 {name} schema_version입니다.")
-        if name in expected_producers and value.get("agent_id") not in expected_producers[name]:
-            raise HandoffCompatibilityError("PRODUCER_MISMATCH", f"{name} producer ID가 계약과 일치하지 않습니다.")
-        if name != "planning_request" and value.get("status") not in {"ok", "partial", "no_results", "error"}:
-            raise HandoffCompatibilityError("INVALID_DOMAIN_STATUS", f"{name} status가 지원되지 않습니다.")
-    planning = raw_inputs["planning_request"]
-    if planning.get("request_id") != request_id:
-        raise HandoffCompatibilityError("REQUEST_ID_MISMATCH", "PlanningRequest request_id가 envelope와 일치해야 합니다.")
-
-    normalized = json.loads(json.dumps(raw_inputs))
-    # The domain context currently has one internal version slot. This explicit
-    # adapter mapping changes only the internal copy; the source remains 1.1.
-    normalized["trend_result"]["schema_version"] = "1.0"
+    adapted = normalize_handoff_inputs(request_id, inputs)
+    raw_inputs = adapted.source_inputs
+    normalized = adapted.normalized_inputs
     draft = _build_planning_draft_response({"request_id": request_id, **normalized})
     trend_evidence = draft["input_evidence"]["trend_result"]
     trend_evidence["payload"] = raw_inputs["trend_result"]
     trend_evidence["internal_schema_version"] = "1.0"
     trend_evidence["source_schema_version"] = "1.1"
-    draft["compatibility"] = {
-        "adapter_version": HANDOFF_ADAPTER_VERSION,
-        "input_schemas": {
-            name: {
-                "source_schema_version": value.get("schema_version") if isinstance(value, dict) else None,
-                "internal_schema_version": "1.0" if name == "trend_result" else value.get("schema_version") if isinstance(value, dict) else None,
-                "transformed": name == "trend_result",
-            }
-            for name, value in raw_inputs.items()
-        },
-        "source_payloads_preserved": True,
-    }
+    draft["compatibility"] = adapted.provenance
     draft["request_id"] = request_id
     return draft
 

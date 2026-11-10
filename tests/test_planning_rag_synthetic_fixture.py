@@ -86,7 +86,7 @@ class SyntheticPlanningRagFixtureTests(unittest.TestCase):
         data, policy = fixture_and_policy()
         retriever = SyntheticCorpusRetriever(FIXTURE_PATH)
         sales_payload = {
-            "request_id": "synthetic-rag-1", "agent_id": "market-research-agent",
+            "request_id": "synthetic-rag-1", "agent_id": "sales-market-agent",
             "status": "partial", "findings": [{"evidence_ids": ["MARKET-SYN-1"]}],
             "limitations": ["synthetic handoff only"],
         }

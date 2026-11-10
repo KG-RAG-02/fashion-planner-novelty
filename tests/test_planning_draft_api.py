@@ -41,7 +41,7 @@ class PlanningDraftApiTests(unittest.TestCase):
                 }],
             },
             "sales_market_result": {
-                "request_id": "draft-1", "agent_id": "market-research-agent",
+                "request_id": "draft-1", "agent_id": "sales-market-agent",
                 "status": "partial", "findings": [{"evidence_ids": ["market-1"]}],
                 "limitations": ["limited coverage"],
             },
@@ -101,7 +101,7 @@ class PlanningDraftApiTests(unittest.TestCase):
                     "evidence_ids": ["stock-E1"]}],
             },
             "sales_market_result": {"schema_version": "1.1-proposal", "request_id": "notion-1",
-                "agent_id": "market-research-agent", "status": "no_results", "summary": "none",
+                "agent_id": "sales-market-agent", "status": "no_results", "summary": "none",
                 "findings": [], "evidence": [], "limitations": ["no approved source"], "errors": [],
                 "sales_data": {"status": "no_results", "observations": [], "limitations": [], "errors": []}},
         }
@@ -245,7 +245,7 @@ class PlanningDraftApiTests(unittest.TestCase):
             "trend_result": {"request_id": "opaque-1", "status": "no_results", "trends": []},
             "inventory_product_result": {"request_id": "opaque-1", "status": "no_results", "products": []},
             "sales_market_result": {
-                "request_id": "opaque-1", "agent_id": "market-research-agent", "status": "partial",
+                "request_id": "opaque-1", "agent_id": "sales-market-agent", "status": "partial",
                 "findings": [{"text": "OPAQUE_PRIVATE_FINDING", "evidence_ids": ["MARKET-PRIVATE-E1"]}],
                 "summary": "OPAQUE_PRIVATE_SUMMARY", "limitations": ["OPAQUE_PRIVATE_LIMITATION"],
             },
