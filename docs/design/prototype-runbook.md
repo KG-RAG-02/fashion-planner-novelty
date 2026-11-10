@@ -8,7 +8,7 @@ From the repository root:
 VOGUE_HTTP_MODE=local PYTHONPATH=src python3 -m vogue_npp.prototype.server
 ```
 
-The service binds to `127.0.0.1:8767` by default. `VOGUE_HTTP_MODE=local` is required and permits only loopback. The default port is distinct from Project_08's UI (8765) and Project_07's local HTTP adapter (8766). It does not serve a browser UI; Project_08 owns the local interface. Stop the service with `Ctrl+C`.
+The service binds to `127.0.0.1:8767` by default. The canonical `/runs` route also requires `Authorization: Bearer` matching `VOGUE_AGENT_SERVICE_BEARER_TOKEN` in local mode. `VOGUE_HTTP_MODE=local` is required and permits only loopback. The default port is distinct from Project_08's UI (8765) and Project_07's local HTTP adapter (8766). It does not serve a browser UI; Project_08 owns the local interface. Stop the service with `Ctrl+C`.
 
 ## API boundary
 
@@ -20,7 +20,7 @@ The API also supports existing planning brief and image variant operations. SQLi
 
 ## Image generation
 
-Set `VOGUE_IMAGE_GENERATION_ENABLED=true` and `OPENAI_API_KEY` in the runtime environment. Image generation is opt-in per API request. Generated images are exploratory design material and do not validate fit, materials, demand or production feasibility.
+Set `VOGUE_IMAGE_GENERATION_ENABLED=true` and `LLM_API_KEY` in the runtime environment. Image generation is opt-in per API request. Generated images are exploratory design material and do not validate fit, materials, demand or production feasibility.
 
 ## Project_07 data products
 

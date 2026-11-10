@@ -51,13 +51,13 @@ Unknown paths return 404. HTTP/domain errors use a small JSON object `{ "error":
 
 The server must be started with an explicit `VOGUE_HTTP_MODE`:
 
-- `local`: development mode; the process may bind only to `127.0.0.1`, `localhost`, or `::1`; the handoff accepts loopback callers without a token.
-- `service`: TLS is enabled with `VOGUE_TLS_CERT_FILE` and `VOGUE_TLS_KEY_FILE`; `VOGUE_SERVICE_BEARER_TOKEN` is required for all HTTP API routes.
+- `local`: development mode; the process may bind only to `127.0.0.1`, `localhost`, or `::1`; the handoff requires the shared `VOGUE_AGENT_SERVICE_BEARER_TOKEN` even for loopback callers.
+- `service`: TLS is enabled with `VOGUE_TLS_CERT_FILE` and `VOGUE_TLS_KEY_FILE`; `VOGUE_AGENT_SERVICE_BEARER_TOKEN` is required for all HTTP API routes.
 
 Example local run:
 
 ```bash
-VOGUE_HTTP_MODE=local VOGUE_HOST=127.0.0.1 python -m vogue_npp.prototype.server
+VOGUE_HTTP_MODE=local VOGUE_HOST=127.0.0.1 VOGUE_AGENT_SERVICE_BEARER_TOKEN=<secret> python -m vogue_npp.prototype.server
 ```
 
 Service mode requires deployment-managed certificate and secret files. No credentials or service addresses are committed. v0.1 does not retry requests. The server enforces a 60-second worker deadline with at most four in-flight executions and returns HTTP 500 `REQUEST_TIMEOUT` if exceeded. Python cannot cancel an already running thread; timed-out work may finish in the background, so production needs process-level cancellation/isolation and load limits. A 3-second connection timeout is a caller-side connection setting and must be configured by Project_08/other clients. Project_06 performs no outbound HTTP call in this adapter. No automatic retry is made.

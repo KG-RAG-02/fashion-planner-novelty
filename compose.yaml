@@ -12,7 +12,7 @@ services:
       VOGUE_DB_PATH: /app/data/local/prototype.sqlite3
       VOGUE_TLS_CERT_FILE: /run/secrets/server_cert
       VOGUE_TLS_KEY_FILE: /run/secrets/server_key
-      VOGUE_SERVICE_BEARER_TOKEN: ${VOGUE_SERVICE_BEARER_TOKEN:?Set a local service bearer token}
+      VOGUE_AGENT_SERVICE_BEARER_TOKEN: ${VOGUE_AGENT_SERVICE_BEARER_TOKEN:?Set the shared agent bearer token}
     volumes:
       - vogue-local-data:/app/data/local
     secrets:
@@ -24,7 +24,7 @@ services:
         - CMD
         - python3
         - -c
-        - "import os,ssl; from urllib.request import Request,urlopen; r=Request('https://127.0.0.1:8767/api/health',headers={'Authorization':'Bearer '+os.environ['VOGUE_SERVICE_BEARER_TOKEN']}); urlopen(r,timeout=3,context=ssl.create_default_context(cafile='/run/secrets/server_ca'))"
+        - "import os,ssl; from urllib.request import Request,urlopen; r=Request('https://127.0.0.1:8767/api/health',headers={'Authorization':'Bearer '+os.environ['VOGUE_AGENT_SERVICE_BEARER_TOKEN']}); urlopen(r,timeout=3,context=ssl.create_default_context(cafile='/run/secrets/server_ca'))"
       interval: 30s
       timeout: 5s
       retries: 3

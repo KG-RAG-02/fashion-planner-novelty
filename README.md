@@ -28,9 +28,9 @@ VOGUE_HTTP_MODE=local PYTHONPATH=src python3 -m vogue_npp.prototype.server
 
 Project_06은 planning draft API를 제공합니다. UI는 Project_08 소유이며, 이 저장소에서는 브라우저 화면을 제공하지 않습니다. 로컬 실행은 명시적으로 `VOGUE_HTTP_MODE=local`을 지정하고 기본 주소 `http://127.0.0.1:8767`을 사용합니다. 기본 포트는 Project_08 UI(8765), Project_07 HTTP(8766)와 겹치지 않습니다. 공통 handoff 경로는 [`contracts/http-handoff-v0.1.md`](contracts/http-handoff-v0.1.md)에 설명되어 있습니다.
 
-Docker Compose는 `service` 모드로 TLS와 Bearer 인증을 사용합니다. 실행 전에 `VOGUE_TLS_CERT_HOST_PATH`, `VOGUE_TLS_KEY_HOST_PATH`, `VOGUE_TLS_CA_HOST_PATH`, `VOGUE_SERVICE_BEARER_TOKEN`을 shell 환경에 설정한 뒤 `docker compose up --build`를 실행하세요. 인증서·키·token은 저장소에 넣지 않습니다. Compose 포트는 host loopback의 `127.0.0.1:8767`에만 공개됩니다.
+Docker Compose는 `service` 모드로 TLS와 Bearer 인증을 사용합니다. 실행 전에 `VOGUE_TLS_CERT_HOST_PATH`, `VOGUE_TLS_KEY_HOST_PATH`, `VOGUE_TLS_CA_HOST_PATH`, `VOGUE_AGENT_SERVICE_BEARER_TOKEN`을 shell 환경에 설정한 뒤 `docker compose up --build`를 실행하세요. 인증서·키·token은 저장소에 넣지 않습니다. Compose 포트는 host loopback의 `127.0.0.1:8767`에만 공개됩니다.
 
-선택형 이미지 생성을 API 요청에 포함하려면 `.env` 또는 실행 환경에 `VOGUE_IMAGE_GENERATION_ENABLED=true`와 `OPENAI_API_KEY`를 설정합니다. 요청에 `generate_image: true`를 명시해야 외부 이미지 요청이 발생합니다. 비밀값이 들어 있는 `.env`는 커밋하지 마세요.
+선택형 이미지 생성을 API 요청에 포함하려면 `.env` 또는 실행 환경에 `VOGUE_IMAGE_GENERATION_ENABLED=true`와 `LLM_API_KEY`를 설정합니다. 요청에 `generate_image: true`를 명시해야 외부 이미지 요청이 발생합니다. 비밀값이 들어 있는 `.env`는 커밋하지 마세요.
 
 구조화 텍스트 기획 프롬프트는 `VOGUE_TEXT_GENERATION_ENABLED`로 요청할 수 있지만 현재 승인된 텍스트 모델 제공자가 연결되지 않았습니다. 이 설정만 켜면 외부 호출 없이 규칙 기반 초안과 `TEXT_GENERATION_UNAVAILABLE` 상태를 반환합니다.
 

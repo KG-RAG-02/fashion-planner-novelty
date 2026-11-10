@@ -104,14 +104,16 @@ class PrototypeHandler(BaseHTTPRequestHandler):
 
     def _authorized_handoff(self) -> bool:
         mode = os.getenv("VOGUE_HTTP_MODE", "")
+        if mode not in {"local", "service"}:
+            return False
         if mode == "local":
             try:
-                return self.client_address[0] in {"127.0.0.1", "::1"}
+                if self.client_address[0] not in {"127.0.0.1", "::1"}:
+                    return False
             except (AttributeError, IndexError):
                 return False
-        if mode != "service":
-            return False
-        expected = os.getenv("VOGUE_SERVICE_BEARER_TOKEN", "")
+        expected = (os.getenv("VOGUE_AGENT_SERVICE_BEARER_TOKEN", "")
+                    or os.getenv("VOGUE_SERVICE_BEARER_TOKEN", ""))
         supplied = self.headers.get("Authorization", "")
         return bool(expected) and hmac.compare_digest(supplied, f"Bearer {expected}")
 
@@ -261,8 +263,8 @@ def main() -> None:
         if host not in {"127.0.0.1", "localhost", "::1"}:
             raise RuntimeError("VOGUE_HTTP_MODE=local은 loopback host만 허용합니다.")
     elif mode == "service":
-        if not os.getenv("VOGUE_SERVICE_BEARER_TOKEN"):
-            raise RuntimeError("service mode requires VOGUE_SERVICE_BEARER_TOKEN.")
+        if not (os.getenv("VOGUE_AGENT_SERVICE_BEARER_TOKEN") or os.getenv("VOGUE_SERVICE_BEARER_TOKEN")):
+            raise RuntimeError("service mode requires VOGUE_AGENT_SERVICE_BEARER_TOKEN.")
         cert_file = os.getenv("VOGUE_TLS_CERT_FILE")
         key_file = os.getenv("VOGUE_TLS_KEY_FILE")
         if not cert_file or not key_file:

@@ -44,7 +44,9 @@ def load_settings() -> Settings:
 
     load_dotenv()
     api_key = os.getenv("LLM_API_KEY", "").strip()
-    image_api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    # Use the shared credential name for OpenAI text/image features. Keep the old
+    # name as a local compatibility fallback for existing installations.
+    image_api_key = os.getenv("LLM_API_KEY", "").strip() or os.getenv("OPENAI_API_KEY", "").strip()
     text_enabled = os.getenv("VOGUE_TEXT_GENERATION_ENABLED", "").strip().casefold() == "true"
     image_enabled = os.getenv("VOGUE_IMAGE_GENERATION_ENABLED", "").strip().casefold() == "true"
     return Settings(

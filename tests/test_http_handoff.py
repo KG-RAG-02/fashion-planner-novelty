@@ -35,14 +35,14 @@ class FakeWriter:
 
 class HandoffHTTPTests(unittest.TestCase):
     def invoke(self, value=None, *, raw=None, content_type="application/json", path="/v1/agents/new-product-agent/runs",
-               mode="local", token=None, content_length=None):
+               mode="local", token="synthetic-agent-token", content_length=None):
         handler = object.__new__(PrototypeHandler)
         handler.path = path
         body = raw if raw is not None else json.dumps(value).encode()
         handler.headers = Message()
         handler.headers["Content-Type"] = content_type
         handler.headers["Content-Length"] = str(len(body) if content_length is None else content_length)
-        if token:
+        if token is not None:
             handler.headers["Authorization"] = f"Bearer {token}"
         handler.rfile = io.BytesIO(body)
         handler.wfile = FakeWriter()
@@ -51,9 +51,7 @@ class HandoffHTTPTests(unittest.TestCase):
         handler.send_response = lambda status: setattr(handler.wfile, "status", status)
         handler.send_header = lambda *_: None
         handler.end_headers = lambda: None
-        env = {"VOGUE_HTTP_MODE": mode}
-        if mode == "service":
-            env["VOGUE_SERVICE_BEARER_TOKEN"] = "synthetic-service-token"
+        env = {"VOGUE_HTTP_MODE": mode, "VOGUE_AGENT_SERVICE_BEARER_TOKEN": "synthetic-agent-token"}
         with patch.dict(os.environ, env):
             handler.do_POST()
         return handler.wfile.status, json.loads(handler.wfile.body)
@@ -94,11 +92,17 @@ class HandoffHTTPTests(unittest.TestCase):
         self.assertEqual((code, body["error"]["code"]), (413, "PAYLOAD_TOO_LARGE"))
 
     def test_service_mode_requires_bearer_token(self):
-        code, body = self.invoke(fixture(), mode="service")
+        code, body = self.invoke(fixture(), mode="service", token=None)
         self.assertEqual((code, body["error"]["code"]), (401, "UNAUTHORIZED"))
-        code, response = self.invoke(fixture(), mode="service", token="synthetic-service-token")
+        code, response = self.invoke(fixture(), mode="service", token="synthetic-agent-token")
         self.assertEqual(code, 200)
         self.assertEqual(response["producer"]["agent_id"], "new-product-agent")
+
+    def test_local_handoff_requires_matching_shared_bearer_token(self):
+        for token in (None, "wrong-token"):
+            with self.subTest(token="missing" if token is None else "wrong"):
+                code, body = self.invoke(fixture(), mode="local", token=token)
+                self.assertEqual((code, body["error"]["code"]), (401, "UNAUTHORIZED"))
 
     def test_unknown_route_is_404(self):
         code, body = self.invoke({}, path="/v1/agents/other/runs")
