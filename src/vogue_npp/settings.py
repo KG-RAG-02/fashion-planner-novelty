@@ -8,7 +8,7 @@ from pathlib import Path
 
 try:
     from dotenv import load_dotenv
-except ModuleNotFoundError:  # Keep the local prototype runnable with stdlib only.
+except ModuleNotFoundError:  # Keep the local API runnable with stdlib only.
     def load_dotenv() -> None:
         """Read simple KEY=VALUE lines without replacing existing env values."""
         env_file = Path.cwd() / ".env"

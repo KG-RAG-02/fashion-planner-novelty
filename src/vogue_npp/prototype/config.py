@@ -8,10 +8,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DB_PATH = ROOT / "data" / "local" / "prototype.sqlite3"
-IMAGEGEN_VARIANT_ID = "IMG-27SS-IMAGEGEN-01"
-IMAGEGEN_ASSET = "/assets/27ss-light-utility-anorak-imagegen.png"
-
-
 def database_path() -> Path:
     """Resolve the database path at call time so runtime configuration is honored."""
 

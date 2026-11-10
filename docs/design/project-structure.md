@@ -1,12 +1,12 @@
 # Project_06 structure
 
-Project_06 owns new-product planning. The direction remains `domain` ← planning workflows ← local review UI; domain code does not import the web app, SQLite, or source-specific sales modules.
+Project_06 owns new-product planning. The direction remains `domain` ← planning workflows ← HTTP adapter; domain code does not import a browser UI, SQLite, or source-specific sales modules.
 
 ```text
 src/vogue_npp/
 ├── domain/       planning inputs, evidence-aware evaluation, product concepts and candidates
 ├── workflows/    TrendBatch use case, planning brief and opt-in image generation
-├── prototype/    local planning-only HTTP UI and review persistence
+├── prototype/    Project_08/API client HTTP adapter (planning draft endpoint)
 └── settings.py   runtime image-generation settings
 ```
 
@@ -25,4 +25,4 @@ PYTHONPATH=src python3 -m vogue_npp.prototype.server
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-The local web UI only serves planning review and optional image generation. Image generation requires server enablement and explicit confirmation in the request form.
+The server exposes planning API routes only; it does not serve browser pages or static web assets. Project_08 owns the local UI. Image generation remains an opt-in planning API capability and requires server enablement plus `generate_image: true` in the request.

@@ -31,7 +31,7 @@ Project_07로 이동한 코드(프로젝트 경로 기준):
 - `tests/hm_historical/`: sales adapter/domain, 합성 시나리오와 operations fixture 테스트
 - 관련 H&M 데이터 pipeline 및 planning/operations 설계 문서
 
-Project_06에서는 판매 관련 source, 분석, sales query/repository port, 판매 중심 review workflow/API/UI와 테스트를 제거했습니다. 로컬 화면은 기획 검토와 선택형 시안 생성만 제공합니다. 예전 demo fixture는 판매/재고 점수를 제거하고 점수 없는 기획 검토 예시로 바꿨습니다.
+Project_06에서는 판매 관련 source, 분석, sales query/repository port, 판매 중심 review workflow/API/UI와 테스트를 제거했습니다. Project_08이 로컬 UI를 소유합니다. Project_06은 planning draft API와 선택형 이미지 생성 기능을 제공하며, 브라우저 화면과 정적 리소스는 제공하지 않습니다. 예전 demo fixture는 판매/재고 점수를 제거하고 점수 없는 기획 검토 예시로 바꿨습니다.
 
 ## 데이터·운영 연결 제한
 

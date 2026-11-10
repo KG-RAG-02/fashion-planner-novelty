@@ -13,7 +13,7 @@ Project_06 implements new-product planning only. It consumes request, trend, pro
 - Evidence-aware product candidate and concept generation: `src/vogue_npp/domain/analysis.py`, `candidates.py`, `generator.py`, `concept.py`
 - Knowledge retrieval interface: `src/vogue_npp/domain/retrieval.py`
 - Planning use case and optional image generation: `src/vogue_npp/workflows/`
-- Local planning-only review UI: `src/vogue_npp/prototype/`, `web/prototype/`
+- Project_08-facing planning API adapter: `src/vogue_npp/prototype/server.py`. Project_06 does not own browser UI.
 
 ## Project_07 ownership
 

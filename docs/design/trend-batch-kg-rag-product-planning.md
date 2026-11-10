@@ -34,7 +34,7 @@ PostgreSQL/Neo4j/pgvector 또는 별도 Vector DB, API framework, Pydantic 버�
 | `src/vogue_npp/domain/analysis.py` | Evidence가 있는 트렌드 속성과 자사 상품 속성의 보수적 비교. 카탈로그 미완전성을 상품 부재로 단정하지 않음 | 구현 |
 | `src/vogue_npp/domain/generator.py`, `concept.py` | 결정적 규칙 기반 `ProductConceptDraft` 및 입력 Evidence ID allowlist 검사 | 구현 |
 | `src/vogue_npp/sources/hm/` | 없음 | 판매 처리·adapter는 Project_07로 이동 |
-| `src/vogue_npp/prototype/` | Python 표준 라이브러리 로컬 planning-only HTTP prototype과 SQLite 기획 기록 | 구현. 판매 분석·운영 API/KG 아님 |
+| `src/vogue_npp/prototype/` | Project_08/API client를 위한 Python 표준 라이브러리 planning HTTP adapter와 기존 로컬 검토 기록 | UI는 Project_08 소유. 판매 분석·운영 DB/KG 아님 |
 | H&M sales workflow | 없음 | 판매 분석 기반 workflow 및 UI는 Project_07로 이동 |
 | `src/vogue_npp/workflows/image_generation.py` | 근거/제안 구분 이미지 프롬프트 및 설정·요청별 확인을 거친 이미지 provider 연계 | 구현. 전체 TOP5 자동 시안 pipeline 아님 |
 | `src/vogue_npp/domain/trend_batch.py` | dependency-free `TrendBatch.from_json/from_mapping`; size/length/count/duplicate ID, evidence trace field, HTTP(S) reference format validation. `rank`/`similarity` 같은 unknown fields reject | 구현. Pydantic 미도입 |

@@ -1,6 +1,6 @@
-# Project_06 planning prototype
+# Project_06 planning API
 
-## Run
+## Run locally
 
 From the repository root:
 
@@ -8,18 +8,18 @@ From the repository root:
 PYTHONPATH=src python3 -m vogue_npp.prototype.server
 ```
 
-Open `http://127.0.0.1:8765`. The server binds to loopback by default. Stop it with `Ctrl+C`.
+The service binds to `127.0.0.1:8765` by default. It does not serve a browser UI; Project_08 owns the local interface. Stop the service with `Ctrl+C`.
 
-## What this UI does
+## API boundary
 
-The page shows a planning-only TrendBatch review example and an explicitly requested image-generation form. It does not query sales, market, product or inventory systems. Project_07 sales/market results and upstream product/inventory results are accepted at the domain handoff, not looked up by this prototype.
+`POST /api/planning-draft` accepts planning request, trend, inventory, and optional Project_07 payloads. It does not query upstream source systems. Project_07 sales/market input is passed through as an opaque handoff.
 
-The SQLite file under `data/local/` stores planning briefs, image variants and MD evaluations. It is local state and is not part of the transfer. Existing `.env`, source datasets, generated files and local databases were not altered during the responsibility move.
+The API also supports existing planning brief and image variant operations. SQLite state and generated image files are local runtime artifacts; this service does not serve the browser UI.
 
 ## Image generation
 
-Set `VOGUE_IMAGE_GENERATION_ENABLED=true` and `OPENAI_API_KEY` in the runtime environment. Image requests require the UI confirmation checkbox. The default page does not call the image provider. Generated images are exploratory design material and do not validate fit, materials, demand or production feasibility.
+Set `VOGUE_IMAGE_GENERATION_ENABLED=true` and `OPENAI_API_KEY` in the runtime environment. Image generation is opt-in per API request. Generated images are exploratory design material and do not validate fit, materials, demand or production feasibility.
 
 ## Project_07 data products
 
-The H&M historical analysis and synthetic sales/operations demos were removed from this UI and moved to the Project_07 repository. They are not loaded into the Project_06 planning fixture or brief.
+Project_06 does not load sales, market, H&M historical or operations datasets. Those source and analysis responsibilities belong to Project_07.

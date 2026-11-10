@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from .config import IMAGEGEN_ASSET, IMAGEGEN_VARIANT_ID, database_path
+from .config import database_path
 
 BRIEF_FIELDS = {
     "title", "target_customer", "wearing_situation", "category_season", "price_range",
@@ -81,19 +81,6 @@ def initialize() -> None:
         if version is None or version["value"] != schema_version:
             db.execute("DELETE FROM app_meta WHERE key='fixture_version'")
             db.execute("INSERT INTO app_meta(key,value) VALUES('fixture_version',?)", (schema_version,))
-        imagegen_variant = db.execute("SELECT 1 FROM variants WHERE variant_id=?", (IMAGEGEN_VARIANT_ID,)).fetchone()
-        if imagegen_variant is None:
-            prompt = (
-                "Photorealistic premium fashion product concept photograph, a single young adult Korean female fashion model wearing a light utility anorak for a 27SS city-to-outdoors capsule. "
-                "Full-body straight-on studio composition, neutral warm light-gray seamless background. Lightweight matte shell, relaxed slightly boxy fit, clean hood, half-zip front, functional angled zip pocket, adjustable hem. "
-                "Muted light sage green with restrained dusty blue-gray color-block lower panel and sleeve detail; black relaxed technical trousers and neutral sneakers. "
-                "Realistic fabric grain and natural drape, soft studio lighting, editorial e-commerce product photography. No logo, no text, no watermark, no extra props. Exploratory concept, not a production sample."
-            )
-            db.execute(
-                "INSERT INTO variants(variant_id,brief_version,image_type,title,palette,prompt,model,created_at,svg) VALUES(?,?,?,?,?,?,?,?,?)",
-                (IMAGEGEN_VARIANT_ID, 0, "lookbook", "Light sage utility anorak · ImageGen", "#B9C9A2",
-                 prompt, "OpenAI ImageGen · 세부 모델 버전 미노출", "2026-11-05", ""),
-            )
 
 
 def _initial_brief() -> dict[str, Any]:
@@ -261,18 +248,12 @@ def list_variants() -> list[dict[str, Any]]:
     with connect() as db:
         rows = db.execute(
             "SELECT variant_id,brief_version,image_type,title,palette,prompt,model,created_at,image_url,image_source,evidence_ids_json,prompt_version,review_only FROM variants "
-            "ORDER BY CASE WHEN image_source='model_generated' AND variant_id<>? THEN 0 WHEN variant_id=? THEN 1 ELSE 2 END, created_at DESC",
-            (IMAGEGEN_VARIANT_ID, IMAGEGEN_VARIANT_ID),
+            "WHERE svg<>'' OR image_url<>'' ORDER BY CASE WHEN image_source='model_generated' THEN 0 ELSE 1 END, created_at DESC"
         ).fetchall()
     variants = []
     for row in rows:
         item = dict(row)
-        item["image_url"] = (
-            item["image_url"] or
-            (IMAGEGEN_ASSET if row["variant_id"] == IMAGEGEN_VARIANT_ID else f"/api/variants/{row['variant_id']}.svg")
-        )
-        if row["variant_id"] == IMAGEGEN_VARIANT_ID:
-            item["image_source"] = "model_generated"
+        item["image_url"] = item["image_url"] or f"/api/variants/{row['variant_id']}.svg"
         item["evidence_ids"] = json.loads(item.pop("evidence_ids_json") or "[]")
         item["review_only"] = bool(item["review_only"])
         variants.append(item)
@@ -318,8 +299,4 @@ def list_evaluations() -> list[dict[str, Any]]:
             ) v USING(variant_id)
             ORDER BY e.created_at DESC
         """).fetchall()
-    results = [dict(row) for row in rows]
-    for item in results:
-        if item["variant_id"] == IMAGEGEN_VARIANT_ID:
-            item["image_url"] = IMAGEGEN_ASSET
-    return results
+    return [dict(row) for row in rows]

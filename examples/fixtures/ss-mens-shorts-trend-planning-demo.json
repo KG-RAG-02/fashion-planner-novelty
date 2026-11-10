@@ -99,7 +99,6 @@
     }
   ],
   "candidate_count": 5,
-  "image": "web/prototype/ss-mens-shorts-trend-planning-demo.png",
   "limitations": [
     "Trend documents and numeric catalog/sales/stock rows are complete test fixtures for this run, not user-supplied operational records.",
     "White T-shirt inventory is a separate styling companion; it is not merged into shorts SKU metrics.",
