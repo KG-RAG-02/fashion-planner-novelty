@@ -17,7 +17,7 @@ from vogue_npp.synthetic_planning_workbench import (
     render_draft,
     search_dataset,
 )
-from tools.generate_synthetic_planning_workbench import build_dataset
+from scripts.generate_synthetic_planning_workbench import build_dataset
 
 
 class SyntheticPlanningWorkbenchTests(unittest.TestCase):

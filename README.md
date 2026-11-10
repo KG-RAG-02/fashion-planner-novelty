@@ -1,5 +1,7 @@
 # Project_06 · New Product Planning Agent
 
+공통 저장소 레이아웃과 HTTP 책임 경계는 [`docs/repository-boundaries.md`](docs/repository-boundaries.md)를 참고하세요.
+
 이 저장소는 VOGUE의 **새상품 기획 에이전트**만 구현합니다. 기획안 에이전트는 사용자 요청, 트렌드 결과와 근거, 상품·재고 입력, Project_07의 판매·시장 결과를 받아 검토 가능한 상품 콘셉트와 기획 초안을 만듭니다.
 
 ```text
@@ -24,7 +26,9 @@
 VOGUE_HTTP_MODE=local PYTHONPATH=src python3 -m vogue_npp.prototype.server
 ```
 
-Project_06은 planning draft API를 제공합니다. UI는 Project_08 소유이며, 이 저장소에서는 브라우저 화면을 제공하지 않습니다. 로컬 실행은 명시적으로 `VOGUE_HTTP_MODE=local`을 지정하고 기본 주소 `http://127.0.0.1:8765`를 사용합니다. 공통 handoff 경로는 [`docs/design/http-handoff-v0.1.md`](docs/design/http-handoff-v0.1.md)에 설명되어 있습니다.
+Project_06은 planning draft API를 제공합니다. UI는 Project_08 소유이며, 이 저장소에서는 브라우저 화면을 제공하지 않습니다. 로컬 실행은 명시적으로 `VOGUE_HTTP_MODE=local`을 지정하고 기본 주소 `http://127.0.0.1:8767`을 사용합니다. 기본 포트는 Project_08 UI(8765), Project_07 HTTP(8766)와 겹치지 않습니다. 공통 handoff 경로는 [`contracts/http-handoff-v0.1.md`](contracts/http-handoff-v0.1.md)에 설명되어 있습니다.
+
+Docker Compose는 `service` 모드로 TLS와 Bearer 인증을 사용합니다. 실행 전에 `VOGUE_TLS_CERT_HOST_PATH`, `VOGUE_TLS_KEY_HOST_PATH`, `VOGUE_TLS_CA_HOST_PATH`, `VOGUE_SERVICE_BEARER_TOKEN`을 shell 환경에 설정한 뒤 `docker compose up --build`를 실행하세요. 인증서·키·token은 저장소에 넣지 않습니다. Compose 포트는 host loopback의 `127.0.0.1:8767`에만 공개됩니다.
 
 선택형 이미지 생성을 API 요청에 포함하려면 `.env` 또는 실행 환경에 `VOGUE_IMAGE_GENERATION_ENABLED=true`와 `OPENAI_API_KEY`를 설정합니다. 요청에 `generate_image: true`를 명시해야 외부 이미지 요청이 발생합니다. 비밀값이 들어 있는 `.env`는 커밋하지 마세요.
 
@@ -41,7 +45,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 사내 카탈로그·기획 문서가 확보되기 전 개발·검증에 사용할 완전 합성 데이터와 로컬 탐색 CLI를 제공합니다. 이는 실제 회사 자료나 시장 사실이 아니며 기본 API/RAG에 자동 연결되지 않습니다.
 
 ```bash
-python3 tools/generate_synthetic_planning_workbench.py --seed 20261110
+python3 scripts/generate_synthetic_planning_workbench.py --seed 20261110
 PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench list
 PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench quality
 PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench draft SYN-REQ-PLANNING-001

@@ -4,19 +4,27 @@ services:
       context: .
     image: vogue-new-product-planning:local
     ports:
-      - "127.0.0.1:8765:8765"
+      - "127.0.0.1:8767:8767"
     environment:
       VOGUE_HOST: 0.0.0.0
-      VOGUE_PORT: "8765"
+      VOGUE_HTTP_MODE: service
+      VOGUE_PORT: "8767"
       VOGUE_DB_PATH: /app/data/local/prototype.sqlite3
+      VOGUE_TLS_CERT_FILE: /run/secrets/server_cert
+      VOGUE_TLS_KEY_FILE: /run/secrets/server_key
+      VOGUE_SERVICE_BEARER_TOKEN: ${VOGUE_SERVICE_BEARER_TOKEN:?Set a local service bearer token}
     volumes:
       - vogue-local-data:/app/data/local
+    secrets:
+      - server_cert
+      - server_key
+      - server_ca
     healthcheck:
       test:
         - CMD
         - python3
         - -c
-        - "from urllib.request import urlopen; urlopen('http://127.0.0.1:8765/api/health', timeout=3)"
+        - "import os,ssl; from urllib.request import Request,urlopen; r=Request('https://127.0.0.1:8767/api/health',headers={'Authorization':'Bearer '+os.environ['VOGUE_SERVICE_BEARER_TOKEN']}); urlopen(r,timeout=3,context=ssl.create_default_context(cafile='/run/secrets/server_ca'))"
       interval: 30s
       timeout: 5s
       retries: 3
@@ -25,3 +33,11 @@ services:
 
 volumes:
   vogue-local-data:
+
+secrets:
+  server_cert:
+    file: ${VOGUE_TLS_CERT_HOST_PATH:?Set the local TLS certificate path}
+  server_key:
+    file: ${VOGUE_TLS_KEY_HOST_PATH:?Set the local TLS private key path}
+  server_ca:
+    file: ${VOGUE_TLS_CA_HOST_PATH:?Set the TLS CA certificate path for healthcheck verification}

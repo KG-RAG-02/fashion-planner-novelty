@@ -255,7 +255,7 @@ class PrototypeHandler(BaseHTTPRequestHandler):
 def main() -> None:
     repository.initialize()
     host = os.getenv("VOGUE_HOST", "127.0.0.1")
-    port = int(os.getenv("VOGUE_PORT", "8765"))
+    port = int(os.getenv("VOGUE_PORT", "8767"))
     mode = os.getenv("VOGUE_HTTP_MODE", "")
     if mode == "local":
         if host not in {"127.0.0.1", "localhost", "::1"}:

@@ -1,6 +1,8 @@
 # Project_06 HTTP integration contract proposal
 
-**Status: historical proposal superseded for the Project_06 handoff boundary.** The agreed v0.1 endpoint and input adapter are implemented in [`http-handoff-v0.1.md`](http-handoff-v0.1.md). Production addresses, credentials, deployment, and caller-side timeout configuration remain environment-specific and are not committed.
+> **Superseded:** the team-agreed v0.1 route is implemented. Use [HTTP handoff v0.1](../../contracts/http-handoff-v0.1.md) and [repository boundaries](../repository-boundaries.md) for the current contract and run ports. The proposal below is historical design context.
+
+**Status: historical proposal superseded for the Project_06 handoff boundary.** The agreed v0.1 endpoint and input adapter are implemented in [`http-handoff-v0.1.md`](../../contracts/http-handoff-v0.1.md). Production addresses, credentials, deployment, and caller-side timeout configuration remain environment-specific and are not committed.
 
 ## Current Project_06 behavior (observed locally)
 

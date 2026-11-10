@@ -1,5 +1,7 @@
 # Project_06 Planning Agent 설계 제안
 
+> **현행 HTTP 경계:** 이 문서의 transport 미합의 표기는 과거 설계 상태입니다. 현재 Project_06 `/v1/agents/new-product-agent/runs` 계약과 실행 포트는 [HTTP handoff v0.1](../../contracts/http-handoff-v0.1.md) 및 [저장소 경계 문서](../repository-boundaries.md)를 기준으로 합니다.
+
 - 상태: 경계 설계 제안 · 실제 코드 소유권은 2026-11-06 책임 경계 기록에 따라 판매 분석을 Project_07로 이전
 - 작성 목적: Project_06 Planning Agent 경계와 Project_07 handoff 후보를 명확히 합니다.
 - 적용 범위: `KG-RAG-02/new-product-planning-agent` 저장소 (현재 연결 remote)

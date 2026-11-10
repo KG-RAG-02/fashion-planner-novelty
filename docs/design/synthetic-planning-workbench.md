@@ -32,7 +32,7 @@ Project_06 초안 생성에는 현재 기존 내부 `/api/planning-draft` 변환
 프로젝트 루트에서 실행합니다.
 
 ```bash
-python3 tools/generate_synthetic_planning_workbench.py --seed 20261110
+python3 scripts/generate_synthetic_planning_workbench.py --seed 20261110
 ```
 
 같은 generator version과 seed는 같은 JSON을 만듭니다. `--output`으로 별도 경로를 지정할 수 있습니다. 생성기 버전, seed, snapshot date, dataset ID와 데이터 성격은 JSON metadata에 저장합니다.

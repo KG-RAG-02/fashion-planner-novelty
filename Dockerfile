@@ -4,8 +4,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src \
     VOGUE_HOST=0.0.0.0 \
-    VOGUE_PORT=8765 \
-    VOGUE_DB_PATH=/app/data/local/prototype.sqlite3
+    VOGUE_HTTP_MODE=service \
+    VOGUE_PORT=8767 \
+    VOGUE_DB_PATH=/app/data/local/prototype.sqlite3 \
+    VOGUE_TLS_CERT_FILE=/run/secrets/server_cert \
+    VOGUE_TLS_KEY_FILE=/run/secrets/server_key
 
 WORKDIR /app
 
@@ -19,6 +22,6 @@ RUN useradd --create-home --uid 10001 vogue \
 
 USER vogue
 
-EXPOSE 8765
+EXPOSE 8767
 
 CMD ["python3", "-m", "vogue_npp.prototype.server"]
