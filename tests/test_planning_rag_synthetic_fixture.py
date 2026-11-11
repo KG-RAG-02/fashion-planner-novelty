@@ -114,6 +114,7 @@ class SyntheticPlanningRagFixtureTests(unittest.TestCase):
         statuses = {item["purpose"]: item["status"] for item in response["planning_knowledge"]["by_purpose"]}
         self.assertEqual(statuses, {
             "evidence_lookup": "ok", "planning_reference": "ok", "precedent": "ok", "taxonomy": "ok",
+            "catalog_comparison": "not_configured", "assortment_relation": "not_configured",
         })
         ids_by_purpose = {
             item["purpose"]: {ref["evidence_id"] for ref in item["evidence"]}

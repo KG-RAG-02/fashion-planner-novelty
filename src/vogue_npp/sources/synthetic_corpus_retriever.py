@@ -170,4 +170,9 @@ class SyntheticCorpusRetriever:
             content_hash=str(doc.get("content_hash") or hashlib.sha256(
                 f"{doc.get('source_id', '')}\n{doc.get('locator', '')}\n{doc.get('text', '')}".encode("utf-8")
             ).hexdigest()),
+            dataset_id=doc.get("dataset_id"),
+            is_synthetic=doc.get("synthetic") is True or doc.get("is_synthetic") is True,
+            synthetic_notice=doc.get("synthetic_notice"),
+            generator_version=doc.get("generator_version"),
+            seed=doc.get("seed"),
         )

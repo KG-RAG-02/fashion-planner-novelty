@@ -19,8 +19,11 @@ from ..domain.retrieval import (
 )
 
 
-PURPOSES = ("evidence_lookup", "planning_reference", "precedent", "taxonomy")
-QUERY_PLAN_VERSION = "planning-query-plan-v1"
+PURPOSES = (
+    "evidence_lookup", "planning_reference", "precedent", "taxonomy",
+    "catalog_comparison", "assortment_relation",
+)
+QUERY_PLAN_VERSION = "planning-query-plan-v2"
 
 
 def _unique(values: Iterable[str]) -> tuple[str, ...]:
@@ -111,12 +114,20 @@ def _queries(
             query_plan_version=QUERY_PLAN_VERSION,
             exact_terms=_normalized_terms((*categories, *trend_ids, *terms)),
             candidate_limit=policy.candidate_limit_per_purpose,
+            product_roles=(request.product_role,) if request_usable and request.product_role else (),
+            dataset_id=policy.dataset_id,
+            allow_synthetic=policy.allow_synthetic,
         )))
     return tuple(queries)
 
 
 def _allowed_reference(item, query: RetrievalQuery) -> bool:
-    if not item.verified or item.permission_status != "authorized":
+    if not item.verified:
+        return False
+    if item.permission_status == "authorized":
+        pass
+    elif not (query.allow_synthetic and item.is_synthetic and item.permission_status == "synthetic_only"
+              and (not query.dataset_id or item.dataset_id == query.dataset_id)):
         return False
     if "product_planning" not in item.permitted_uses:
         return False
@@ -127,6 +138,28 @@ def _allowed_reference(item, query: RetrievalQuery) -> bool:
     if query.purpose == "evidence_lookup" and item.evidence_id not in query.evidence_ids:
         return False
     return bool(item.evidence_id and item.source_id)
+
+
+def _query_trace(query: RetrievalQuery) -> dict[str, object]:
+    return {
+        "purpose": query.purpose,
+        "query_plan_version": query.query_plan_version,
+        "category_ids": list(query.category_ids),
+        "product_roles": list(query.product_roles),
+        "season": query.season,
+        "market": list(query.market),
+        "channel": list(query.channel),
+        "attribute_terms": list(query.attribute_terms),
+        "trend_ids": list(query.trend_ids),
+        "exact_terms": list(query.exact_terms),
+        "evidence_ids": list(query.evidence_ids),
+        "allowed_source_ids": list(query.allowed_source_ids),
+        "allowed_source_types": list(query.allowed_source_types),
+        "limit": query.limit,
+        "candidate_limit": query.candidate_limit,
+        "allow_synthetic": query.allow_synthetic,
+        "dataset_id": query.dataset_id,
+    }
 
 
 def retrieve_planning_knowledge(
@@ -150,6 +183,7 @@ def retrieve_planning_knowledge(
             results.append(PurposeRetrieval(
                 purpose, "not_configured", limitations=(note,),
                 query_plan_version=QUERY_PLAN_VERSION,
+                query_trace={"purpose": purpose, "query_plan_version": QUERY_PLAN_VERSION, "search_executed": False},
             ))
             continue
         try:
@@ -157,19 +191,19 @@ def retrieve_planning_knowledge(
         except Exception:
             results.append(PurposeRetrieval(
                 purpose, "error", limitations=(f"{purpose} 검색에 실패했습니다. 검색 결과는 사용하지 않았습니다.",),
-                query_plan_version=QUERY_PLAN_VERSION,
+                query_plan_version=QUERY_PLAN_VERSION, query_trace=_query_trace(query),
             ))
             continue
         if not isinstance(raw, RetrievalResult):
             results.append(PurposeRetrieval(
                 purpose, "error", limitations=(f"{purpose} 검색 응답 형식이 올바르지 않아 결과를 사용하지 않았습니다.",),
-                query_plan_version=QUERY_PLAN_VERSION,
+                query_plan_version=QUERY_PLAN_VERSION, query_trace=_query_trace(query),
             ))
             continue
         if not isinstance(raw.status, str) or raw.status not in {"not_configured", "ok", "partial", "no_results", "error"}:
             results.append(PurposeRetrieval(
                 purpose, "error", limitations=(f"{purpose} 검색 상태를 인식할 수 없습니다.",),
-                query_plan_version=QUERY_PLAN_VERSION,
+                query_plan_version=QUERY_PLAN_VERSION, query_trace=_query_trace(query),
             ))
             continue
 
@@ -182,6 +216,7 @@ def retrieve_planning_knowledge(
                 index_version=raw.index_version,
                 retrieval_run_id=raw.retrieval_run_id,
                 query_plan_version=query.query_plan_version,
+                query_trace=_query_trace(query),
             ))
             continue
 
@@ -214,6 +249,7 @@ def retrieve_planning_knowledge(
             index_version=raw.index_version,
             retrieval_run_id=raw.retrieval_run_id,
             query_plan_version=query.query_plan_version,
+            query_trace=_query_trace(query),
         ))
 
     return PlanningKnowledgeContext(tuple(results))

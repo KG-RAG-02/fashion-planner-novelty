@@ -87,14 +87,14 @@ class PlanningRetrievalTests(unittest.TestCase):
         lookup = next(item for item in retriever.queries if item.purpose == "evidence_lookup")
         self.assertEqual(lookup.request_id, REQUEST_ID)
         self.assertEqual(set(lookup.evidence_ids), {"request-E1", "trend-E1", "stock-E1"})
-        self.assertEqual(lookup.query_plan_version, "planning-query-plan-v1")
+        self.assertEqual(lookup.query_plan_version, "planning-query-plan-v2")
         self.assertEqual(lookup.candidate_limit, 30)
         self.assertIn("outerwear", lookup.exact_terms)
         self.assertNotIn("market-E1", lookup.evidence_ids)
         semantic = next(item for item in retriever.queries if item.purpose == "planning_reference")
         self.assertEqual(semantic.allowed_source_ids, ("SRC-shared",))
         self.assertNotIn("Do not send this full query", semantic.attribute_terms)
-        self.assertEqual({item.status for item in result.by_purpose}, {"no_results"})
+        self.assertEqual({item.status for item in result.by_purpose}, {"no_results", "not_configured"})
 
     def test_only_verified_authorized_allowlisted_references_are_exposed(self):
         retriever = FakeRetriever(RetrievalResult("ok", evidence=(
@@ -106,6 +106,9 @@ class PlanningRetrievalTests(unittest.TestCase):
         )))
         result = retrieve_planning_knowledge(make_context(), retriever=retriever, policy=policy())
         for purpose_result in result.by_purpose:
+            if purpose_result.purpose in {"catalog_comparison", "assortment_relation"}:
+                self.assertEqual(purpose_result.status, "not_configured")
+                continue
             self.assertEqual([item.evidence_id for item in purpose_result.evidence], ["trend-E1"])
             self.assertEqual(purpose_result.status, "partial")
             self.assertTrue(purpose_result.limitations)
@@ -121,22 +124,23 @@ class PlanningRetrievalTests(unittest.TestCase):
         retriever = FakeRetriever(RetrievalResult("error", evidence=(ref("trend-E1"),)))
         result = retrieve_planning_knowledge(make_context(), retriever=retriever, policy=policy())
         self.assertTrue(all(not item.evidence for item in result.by_purpose))
-        self.assertTrue(all(item.status == "error" for item in result.by_purpose))
+        self.assertEqual(sum(item.status == "error" for item in result.by_purpose), 4)
+        self.assertEqual(sum(item.status == "not_configured" for item in result.by_purpose), 2)
 
-    def test_verified_planning_reference_is_visible_to_image_prompt_as_reference_only(self):
+    def test_retrieved_document_text_is_not_sent_to_product_image_prompt(self):
         context = make_context()
         knowledge = retrieve_planning_knowledge(
             context,
-            retriever=FakeRetriever(RetrievalResult("ok", evidence=(ref("trend-E1"),))),
+            retriever=FakeRetriever(RetrievalResult("ok", evidence=(ref("RAG-E1"),))),
             policy=policy(),
         )
         enriched = replace(context, planning_knowledge=knowledge)
         draft, _ = RuleBasedConceptGenerator().generate(enriched)
         request = build_image_generation_request(enriched, draft)
-        self.assertIn("Approved fit guidance.", request.prompt)
-        self.assertIn("기획 참고자료", request.prompt)
-        self.assertIn("trend-E1", request.evidence_ids)
-        self.assertEqual(draft.planning_references[0]["evidence_id"], "trend-E1")
+        self.assertNotIn("Approved fit guidance.", request.prompt)
+        self.assertNotIn("RAG-E1", request.evidence_ids)
+        self.assertTrue(any(item.evidence_id == "RAG-E1" for item in request.excluded_evidence))
+        self.assertEqual(draft.planning_references[0]["evidence_id"], "RAG-E1")
         self.assertNotIn("Approved fit guidance.", [str(item.value) for item in draft.attributes])
 
     def test_api_continues_draft_and_preserves_project07_payload(self):
@@ -175,7 +179,7 @@ class PlanningRetrievalTests(unittest.TestCase):
         self.assertEqual(response["draft"]["planning_references"][0]["permission_status"], "authorized")
         self.assertEqual(
             response["planning_knowledge"]["by_purpose"][0]["query_plan_version"],
-            "planning-query-plan-v1",
+            "planning-query-plan-v2",
         )
 
 

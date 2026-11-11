@@ -12,7 +12,10 @@ from datetime import date
 from typing import Literal, Mapping, Protocol
 
 
-RetrievalPurpose = Literal["evidence_lookup", "planning_reference", "precedent", "taxonomy"]
+RetrievalPurpose = Literal[
+    "evidence_lookup", "planning_reference", "precedent", "taxonomy",
+    "catalog_comparison", "assortment_relation",
+]
 QueryStatus = Literal["not_configured", "ok", "partial", "no_results", "error"]
 
 
@@ -31,6 +34,12 @@ class EvidenceRef:
     permitted_uses: tuple[str, ...] = ()
     content_hash: str | None = None
     matched_by: str | None = None
+    dataset_id: str | None = None
+    is_synthetic: bool = False
+    synthetic_notice: str | None = None
+    generator_version: str | None = None
+    seed: int | None = None
+    supports: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -68,6 +77,9 @@ class RetrievalQuery:
     query_plan_version: str = "planning-query-plan-v1"
     exact_terms: tuple[str, ...] = ()
     candidate_limit: int | None = None
+    product_roles: tuple[str, ...] = ()
+    dataset_id: str | None = None
+    allow_synthetic: bool = False
 
     def __post_init__(self) -> None:
         if self.limit < 1 or self.limit > 500:
@@ -104,6 +116,8 @@ class RetrievalSourcePolicy:
     source_types_by_purpose: Mapping[RetrievalPurpose, tuple[str, ...]] = field(default_factory=dict)
     limit_per_purpose: int = 10
     candidate_limit_per_purpose: int = 30
+    dataset_id: str | None = None
+    allow_synthetic: bool = False
 
     def __post_init__(self) -> None:
         if not 1 <= self.limit_per_purpose <= 100:
@@ -122,6 +136,7 @@ class PurposeRetrieval:
     index_version: str | None = None
     retrieval_run_id: str | None = None
     query_plan_version: str = "planning-query-plan-v1"
+    query_trace: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
