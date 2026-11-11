@@ -18,7 +18,7 @@ PURPOSE_DOCUMENT_TYPES = {
     "planning_reference": {"guideline", "season_brief"},
     "precedent": {"precedent"},
     "taxonomy": {"taxonomy"},
-    "catalog_comparison": {"catalog_record", "product_specification"},
+    "catalog_comparison": {"catalog_record", "product_specification", "product_development_record"},
     "assortment_relation": {"assortment_relation"},
 }
 
@@ -93,6 +93,24 @@ class SyntheticWorkbenchRetriever:
                     continue
                 if "product_planning" not in evidence.get("permitted_uses", []):
                     continue
+                if query.purpose == "catalog_comparison" and query.attribute_terms:
+                    # Attribute-scoped searches return only Evidence attached to
+                    # the matching field/value; a color query must not inherit
+                    # unrelated fit, material, or whole-record Evidence.
+                    match = re.match(r"([A-Z0-9-]+):", str(document.get("body", "")))
+                    product = self._products.get(match.group(1)) if match else None
+                    linked_fields = [
+                        support.removeprefix("product.attributes.")
+                        for support in evidence.get("supports", [])
+                        if isinstance(support, str) and support.startswith("product.attributes.")
+                    ]
+                    if not product or not linked_fields or not any(
+                        field in product.get("attributes", {})
+                        and any(term in _norm(field) or term in _norm(product["attributes"][field])
+                                for term in query.attribute_terms if _norm(term))
+                        for field in linked_fields
+                    ):
+                        continue
                 candidates.append((score, evidence_id, self._to_ref(document, evidence, matched_by)))
 
         candidates.sort(key=lambda row: (-row[0], row[1]))
@@ -139,6 +157,9 @@ class SyntheticWorkbenchRetriever:
         )))
         exact = tuple(dict.fromkeys(_norm(value) for value in query.exact_terms if _norm(value)))
         broad = tuple(dict.fromkeys(_norm(value) for value in (*query.attribute_terms, *query.trend_ids) if _norm(value)))
+        topic_hits = [term for term in broad if term in searchable]
+        if broad and query.purpose not in {"taxonomy", "assortment_relation"} and not topic_hits:
+            return 0, None
         exact_hits = [term for term in exact if term in searchable]
         broad_hits = [term for term in broad if term in searchable and term not in exact_hits]
         if exact_hits or broad_hits:

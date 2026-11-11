@@ -45,6 +45,7 @@ class SyntheticWorkbenchRetrieverTests(unittest.TestCase):
         self.assertEqual(color_ref.locator, "catalog/attributes/color")
         self.assertEqual(len(color_ref.content_hash), 64)
         self.assertIn("합성", result.limitations[0])
+        self.assertEqual({item.evidence_id for item in result.evidence}, {"SYN-EV-ATTR-001-COLOR"})
 
     def test_alias_scope_and_lifecycle_permission_evidence_filters_apply(self):
         result = self.retriever.retrieve(self.query(
@@ -69,7 +70,9 @@ class SyntheticWorkbenchRetrieverTests(unittest.TestCase):
             attribute_terms=("코디",), exact_terms=("outerwear",),
         ))
         self.assertIn("SYN-EV-PRECEDENT-001", {item.evidence_id for item in precedent.evidence})
-        self.assertEqual([item.evidence_id for item in assortment.evidence], ["SYN-EV-ASSORTMENT-001"])
+        assortment_ids = {item.evidence_id for item in assortment.evidence}
+        self.assertIn("SYN-EV-ASSORTMENT-001", assortment_ids)
+        self.assertTrue(any(item_id.startswith("SYN-EV-ASSORTMENT-MATRIX-") for item_id in assortment_ids))
 
     def test_exact_evidence_lookup_never_broadens_to_other_ids(self):
         result = self.retriever.retrieve(self.query(

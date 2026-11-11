@@ -15,7 +15,7 @@ Project_06 초안 생성에는 현재 기존 내부 `/api/planning-draft` 변환
 
 ## 데이터 구성
 
-재생성 결과에는 가상 브랜드/라인 taxonomy, 카탈로그 style과 SKU, 속성별 Evidence 연결, 상품 명세서, 시즌 브리프, 가이드와 precedent 문서, assortment 관계, Evidence/source locator/content hash, inventory 스냅샷, Project_06 draft 입력, Project_07 소유의 standalone handoff fixture가 포함됩니다. 기준 데이터에는 12 styles, 36 documents, 96 Evidence records, 13 inventory records, 1 assortment relation, 3 standalone Project_07 handoffs가 있습니다.
+재생성 결과에는 가상 브랜드/라인 taxonomy, 6개 의류 부문의 카탈로그 style과 SKU, 속성별 Evidence 연결, 테크팩·샘플 개발 이력·BOM 예시, 시즌 line plan, 카테고리 가이드, 가상 검토 선례, outfit 관계, Evidence/source locator/content hash, inventory snapshot, Project_06 draft 입력, Project_07 소유의 standalone handoff fixture가 포함됩니다. 기준 데이터에는 72 styles, 294 documents, 1,109 Evidence records, 73 inventory records, 13 assortment relations, 3 standalone Project_07 handoffs가 있습니다. 핵심 레코드는 실제 업무 자료처럼 보이는 구조와 필드 조합을 사용하지만 값과 문장은 전부 생성한 합성 예시이며 실제 회사 산출물로 표시하지 않습니다.
 
 의도적 품질 사례에는 중복 SKU, 속성 누락, 끊긴 Evidence 참조, 초안 prompt injection 문구, 만료 가이드, 충돌 draft 명세, 단위·기준일 누락, `no_results`, 실제 0 수량이 포함됩니다. 품질 진단은 이를 탐지하고 보고할 뿐 데이터를 자동 수정하지 않습니다.
 

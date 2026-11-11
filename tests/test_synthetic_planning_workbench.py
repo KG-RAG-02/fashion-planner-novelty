@@ -29,8 +29,9 @@ class SyntheticPlanningWorkbenchTests(unittest.TestCase):
         self.assertEqual(build_dataset(20261110), build_dataset(20261110))
         self.assertNotEqual(build_dataset(20261110), build_dataset(20261111))
         generated = build_dataset(20261110)
-        self.assertEqual(generated["generator_version"], "synthetic-planning-workbench-v2")
-        self.assertEqual(len(generated["products"]), 12)
+        self.assertEqual(generated["generator_version"], "synthetic-planning-workbench-v3")
+        self.assertEqual(len(generated["products"]), 72)
+        self.assertGreaterEqual(len(generated["documents"]), 290)
         self.assertTrue(all(item["is_synthetic"] for item in generated["products"] + generated["documents"] + generated["evidence"]))
         self.assertTrue(all(item.get("attribute_evidence_ids") for item in generated["products"]))
 
@@ -56,7 +57,9 @@ class SyntheticPlanningWorkbenchTests(unittest.TestCase):
         args = Namespace(query="가상", season=None, category=None, channel=None, status=None, document_type="guideline", include_inactive=False)
         result = search_dataset(self.dataset, args)
         ids = {item["document_id"] for item in result["documents"]}
-        self.assertEqual(ids, {"SYN-DOC-GUIDE-001"})
+        self.assertIn("SYN-DOC-GUIDE-001", ids)
+        self.assertNotIn("SYN-DOC-GUIDE-002", ids)
+        self.assertNotIn("SYN-DOC-GUIDE-003", ids)
 
     def test_explicit_inactive_search_marks_untrusted_guidance_ineligible(self):
         args = Namespace(query="합성", season=None, category=None, channel=None, status=None, document_type="guideline", include_inactive=True)

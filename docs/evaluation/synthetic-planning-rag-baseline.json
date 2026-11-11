@@ -14,42 +14,37 @@
         "SYN-EV-ATTR-001-COLOR"
       ],
       "expected_no_results": false,
-      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:6e9bb74fa5573c03",
+      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:1da0fd5dd8093789",
       "no_results_correct": true,
       "permission_violations": 0,
-      "precision_at_k": 0.14285714285714285,
+      "precision_at_k": 1.0,
       "purpose": "catalog_comparison",
       "query_id": "catalog_sage_attribute",
       "recall_at_k": 1.0,
-      "retrieval_run_id": "synthetic-workbench:catalog_comparison:d80464b46c4efdf160e6",
+      "retrieval_run_id": "synthetic-workbench:catalog_comparison:163024e73a3cfeb22a2c",
       "returned_evidence_ids": [
-        "SYN-EV-ATTR-001-COLOR",
-        "SYN-EV-ATTR-001-DETAIL",
-        "SYN-EV-ATTR-001-FIT",
-        "SYN-EV-ATTR-001-MATERIAL",
-        "SYN-EV-ATTR-001-SILHOUETTE",
-        "SYN-EV-CAT-001",
-        "SYN-EV-SPEC-001"
+        "SYN-EV-ATTR-001-COLOR"
       ],
       "source_locator_content_hash_complete": true,
       "stale_document_leakage": 0
     },
     {
       "expected_evidence_ids": [
-        "SYN-EV-GUIDE-001"
+        "SYN-EV-GUIDE-001",
+        "SYN-EV-GUIDE-OUTERWEAR-MATERIALS_CLAIMS"
       ],
       "expected_no_results": false,
-      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:6e9bb74fa5573c03",
+      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:1da0fd5dd8093789",
       "no_results_correct": true,
       "permission_violations": 0,
-      "precision_at_k": 0.5,
+      "precision_at_k": 1.0,
       "purpose": "planning_reference",
       "query_id": "guideline_material",
       "recall_at_k": 1.0,
-      "retrieval_run_id": "synthetic-workbench:planning_reference:ea4877e99c2698469ba7",
+      "retrieval_run_id": "synthetic-workbench:planning_reference:8cf42717ec82ebe51c90",
       "returned_evidence_ids": [
         "SYN-EV-GUIDE-001",
-        "SYN-EV-BRIEF-001"
+        "SYN-EV-GUIDE-OUTERWEAR-MATERIALS_CLAIMS"
       ],
       "source_locator_content_hash_complete": true,
       "stale_document_leakage": 0
@@ -59,14 +54,14 @@
         "SYN-EV-PRECEDENT-001"
       ],
       "expected_no_results": false,
-      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:6e9bb74fa5573c03",
+      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:1da0fd5dd8093789",
       "no_results_correct": true,
       "permission_violations": 0,
       "precision_at_k": 1.0,
       "purpose": "precedent",
       "query_id": "precedent_breathability",
       "recall_at_k": 1.0,
-      "retrieval_run_id": "synthetic-workbench:precedent:fc429818239731528f0f",
+      "retrieval_run_id": "synthetic-workbench:precedent:97303f2aed2f508bb5a0",
       "returned_evidence_ids": [
         "SYN-EV-PRECEDENT-001"
       ],
@@ -78,14 +73,14 @@
         "SYN-EV-TAX-001"
       ],
       "expected_no_results": false,
-      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:6e9bb74fa5573c03",
+      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:1da0fd5dd8093789",
       "no_results_correct": true,
       "permission_violations": 0,
       "precision_at_k": 1.0,
       "purpose": "taxonomy",
       "query_id": "taxonomy_outerwear",
       "recall_at_k": 1.0,
-      "retrieval_run_id": "synthetic-workbench:taxonomy:a37aa01a513ec98eda2e",
+      "retrieval_run_id": "synthetic-workbench:taxonomy:efae9173f2d2f6410ecb",
       "returned_evidence_ids": [
         "SYN-EV-TAX-001"
       ],
@@ -94,19 +89,25 @@
     },
     {
       "expected_evidence_ids": [
-        "SYN-EV-ASSORTMENT-001"
+        "SYN-EV-ASSORTMENT-001",
+        "SYN-EV-ASSORTMENT-MATRIX-001",
+        "SYN-EV-ASSORTMENT-MATRIX-007",
+        "SYN-EV-ASSORTMENT-MATRIX-011"
       ],
       "expected_no_results": false,
-      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:6e9bb74fa5573c03",
+      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:1da0fd5dd8093789",
       "no_results_correct": true,
       "permission_violations": 0,
       "precision_at_k": 1.0,
       "purpose": "assortment_relation",
       "query_id": "assortment_upper_to_lower",
       "recall_at_k": 1.0,
-      "retrieval_run_id": "synthetic-workbench:assortment_relation:18a50c8c1c152cd384f9",
+      "retrieval_run_id": "synthetic-workbench:assortment_relation:d8a1010df87dd250b711",
       "returned_evidence_ids": [
-        "SYN-EV-ASSORTMENT-001"
+        "SYN-EV-ASSORTMENT-001",
+        "SYN-EV-ASSORTMENT-MATRIX-001",
+        "SYN-EV-ASSORTMENT-MATRIX-007",
+        "SYN-EV-ASSORTMENT-MATRIX-011"
       ],
       "source_locator_content_hash_complete": true,
       "stale_document_leakage": 0
@@ -116,14 +117,14 @@
         "SYN-EV-ATTR-001-COLOR"
       ],
       "expected_no_results": false,
-      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:6e9bb74fa5573c03",
+      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:1da0fd5dd8093789",
       "no_results_correct": true,
       "permission_violations": 0,
       "precision_at_k": 1.0,
       "purpose": "evidence_lookup",
       "query_id": "exact_evidence_id",
       "recall_at_k": 1.0,
-      "retrieval_run_id": "synthetic-workbench:evidence_lookup:44967e9b84c51f76317a",
+      "retrieval_run_id": "synthetic-workbench:evidence_lookup:0960510ef4547f0105d6",
       "returned_evidence_ids": [
         "SYN-EV-ATTR-001-COLOR"
       ],
@@ -133,14 +134,14 @@
     {
       "expected_evidence_ids": [],
       "expected_no_results": true,
-      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:6e9bb74fa5573c03",
+      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:1da0fd5dd8093789",
       "no_results_correct": true,
       "permission_violations": 0,
       "precision_at_k": 1.0,
       "purpose": "planning_reference",
       "query_id": "expired_guideline_excluded",
       "recall_at_k": null,
-      "retrieval_run_id": "synthetic-workbench:planning_reference:eaa6dc1ca0a0b05148a8",
+      "retrieval_run_id": "synthetic-workbench:planning_reference:0f29b3aa437bcbe7e23c",
       "returned_evidence_ids": [],
       "source_locator_content_hash_complete": true,
       "stale_document_leakage": 0
@@ -148,14 +149,14 @@
     {
       "expected_evidence_ids": [],
       "expected_no_results": true,
-      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:6e9bb74fa5573c03",
+      "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:1da0fd5dd8093789",
       "no_results_correct": true,
       "permission_violations": 0,
       "precision_at_k": 1.0,
       "purpose": "catalog_comparison",
       "query_id": "out_of_scope_no_results",
       "recall_at_k": null,
-      "retrieval_run_id": "synthetic-workbench:catalog_comparison:8a624168e901ca43518f",
+      "retrieval_run_id": "synthetic-workbench:catalog_comparison:8e0ed7da5f6837500989",
       "returned_evidence_ids": [],
       "source_locator_content_hash_complete": true,
       "stale_document_leakage": 0
@@ -163,21 +164,21 @@
   ],
   "dataset_id": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110",
   "evaluation_set_id": "SYNTHETIC-PLANNING-RAG-EVAL-001",
-  "generator_version": "synthetic-planning-workbench-v2",
-  "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:6e9bb74fa5573c03",
+  "generator_version": "synthetic-planning-workbench-v3",
+  "index_version": "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110:1da0fd5dd8093789",
   "notice": "합성 검색 회귀 평가이며 실제 회사 효용이나 운영 성능을 입증하지 않습니다.",
   "query_count": 8,
   "rag": {
     "evidence_free_observation_rate": 0.0,
     "no_results_accuracy": 1.0,
     "permission_violation_count": 0,
-    "precision_at_k": 0.8303571428571428,
+    "precision_at_k": 1.0,
     "recall_at_k": 1.0,
     "source_locator_content_hash_completeness": 1.0,
     "stale_document_leakage_count": 0
   },
   "retrieval_mode": "deterministic lexical synthetic-only",
   "seed": 20261110,
-  "snapshot_sha256": "6e9bb74fa5573c03d23d86d1fb939077b061ba99ef4dd0a2914083446b8df5bd",
+  "snapshot_sha256": "1da0fd5dd80937896ff9aa8a29b4f76e87f5ab178a83df36247c0ccde7cf514d",
   "top_k": 10
 }

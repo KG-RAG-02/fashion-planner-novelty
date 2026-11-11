@@ -138,7 +138,7 @@ def schema_summary(dataset: dict) -> dict:
     return {
         "dataset_metadata": ["dataset_id", "is_synthetic", "synthetic_notice", "schema_version", "generator_version", "seed", "snapshot_date", "data_nature", "notice"],
         "entities": {
-            "products": ["style_id", "brand_id", "line_id", "season", "market", "channels", "category_id", "product_role", "attributes", "attribute_evidence_ids", "skus", "evidence_ids", "source_locator", "content_hash"],
+            "products": ["style_id", "brand_id", "line_id", "season", "market", "channels", "category_id", "product_role", "attributes", "attribute_evidence_ids", "sample_measurements_cm", "bill_of_materials", "sample_stage", "skus", "evidence_ids", "source_locator", "content_hash"],
             "inventory_snapshots": ["style_id", "quantity", "unit", "as_of", "definition", "status", "evidence_ids"],
             "documents": ["document_id", "source_id", "document_type", "version", "lifecycle_status", "effective_from", "effective_to", "scope", "body", "evidence_ids", "permission_status", "permitted_uses", "source_locator", "content_hash"],
             "evidence": ["evidence_id", "source_id", "document_id", "locator", "supports", "permission_status", "permitted_uses", "verified", "content_hash"],

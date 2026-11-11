@@ -1,15 +1,17 @@
 # Synthetic planning workbench data card
 
 - Dataset: `SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110`
-- Generator: `synthetic-planning-workbench-v2`
+- Generator: `synthetic-planning-workbench-v3`
 - Nature: fully fictional test and retrieval-evaluation material
-- Intended use: local software development, deterministic retrieval tests, and draft-workflow evaluation only
+- Intended use: local software development, deterministic retrieval tests, draft-workflow evaluation, and realistic-format interface demos only
 - Prohibited interpretation: real company policy, actual assortment, product performance, customer preference, demand, sales, or market evidence
 - Image content: none; the default synthetic planning RAG corpus is text and structured metadata only
 - Storage: generated fixture in this repository; no external service or production index
 - Reproduction: `python3 scripts/generate_synthetic_planning_workbench.py --seed 20261110`
 - Validation: `PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench quality`
 - IDs: all rows use `SYN-` or `SYNTHETIC-` namespaces and include dataset/generator/seed provenance
+- Scale: 72 fictional styles across six departments, with synthetic catalog records, tech-pack and BOM examples, sample-development logs, size measurements, line-plan briefs, category guides, review precedents, outfit-role relations, and inventory snapshots
+- Authenticity boundary: records use production-like fields and workflow language but are invented; they must retain the visible `SYNTHETIC` identifiers and notice in demos or exports
 - Permission fields: `permission_status=synthetic_only`; this is an internal fixture classification, not company authorization
 - Retention/deletion: normal repository fixture lifecycle; generated local caches remain under ignored `data/local/`
 

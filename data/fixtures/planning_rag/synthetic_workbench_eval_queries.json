@@ -24,7 +24,7 @@
       "attribute_terms": ["소재"],
       "exact_terms": ["outerwear"],
       "allowed_source_types": ["guideline", "season_brief"],
-      "expected_evidence_ids": ["SYN-EV-GUIDE-001"],
+      "expected_evidence_ids": ["SYN-EV-GUIDE-001", "SYN-EV-GUIDE-OUTERWEAR-MATERIALS_CLAIMS"],
       "expect_no_results": false
     },
     {
@@ -59,7 +59,7 @@
       "attribute_terms": [],
       "exact_terms": ["outerwear"],
       "allowed_source_types": ["assortment_relation"],
-      "expected_evidence_ids": ["SYN-EV-ASSORTMENT-001"],
+      "expected_evidence_ids": ["SYN-EV-ASSORTMENT-001", "SYN-EV-ASSORTMENT-MATRIX-001", "SYN-EV-ASSORTMENT-MATRIX-007", "SYN-EV-ASSORTMENT-MATRIX-011"],
       "expect_no_results": false
     },
     {
