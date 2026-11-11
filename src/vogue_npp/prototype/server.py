@@ -32,7 +32,7 @@ from ..domain.retrieval import KnowledgeRetriever, RetrievalSourcePolicy
 from ..settings import load_settings
 from ..workflows.image_generation import (
     DEFAULT_IMAGE_DIR, DEFAULT_IMAGE_MODEL, OpenAIImageEditProvider,
-    build_outfit_image_prompt, fetch_inventory_image, selected_outfit_inventory,
+    build_outfit_image_prompt, fetch_inventory_image, load_r2_inventory_image, selected_outfit_inventory,
     OpenAIImageProvider, run_concept_to_image,
 )
 from ..workflows.planning_retrieval import retrieve_planning_knowledge
@@ -67,6 +67,21 @@ def _build_handoff_result(request_id: str, inputs: dict) -> dict:
     draft["compatibility"] = adapted.provenance
     draft["request_id"] = request_id
     return draft
+
+
+def _stock_article_id(item: dict) -> str | None:
+    """Resolve the H&M article ID from the explicit field or stock SKU list."""
+    explicit = item.get("article_id")
+    if explicit is not None and str(explicit).isdigit():
+        return str(explicit)
+    sku_ids = item.get("sku_ids", ())
+    if isinstance(sku_ids, (list, tuple)):
+        return next((str(value) for value in sku_ids if value is not None and str(value).isdigit()), None)
+    return None
+
+
+def _r2_image_provider_upload_allowed() -> bool:
+    return os.getenv("VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD", "true").strip().casefold() == "true"
 
 
 class PrototypeHandler(BaseHTTPRequestHandler):
@@ -180,6 +195,8 @@ class PrototypeHandler(BaseHTTPRequestHandler):
         try:
             payload = self._body()
             if path == "/api/planning-draft":
+                if not isinstance(payload.get("sales_market_result"), dict):
+                    raise ValueError("sales_market_result는 초안 생성을 위한 필수 JSON 객체입니다.")
                 self._json(200, _build_planning_draft_response(payload))
             elif path == "/api/brief":
                 self._json(201, repository.save_brief(payload))
@@ -511,9 +528,13 @@ def _build_planning_draft_response(
         stock = item.get("inventory") or {}
         # Accept the stock-agent response surface, while retaining the complete
         # original object in input_evidence for fields outside the internal model.
+        raw_sku_ids = item.get("sku_ids", ())
+        sku_ids = tuple(str(value) for value in raw_sku_ids if value is not None) if isinstance(raw_sku_ids, (list, tuple)) else ()
+        article_id = _stock_article_id(item)
         allowed = {
             "style_id": item.get("style_id", item.get("product_id")),
-            "sku_ids": tuple(item.get("sku_ids", ())),
+            "sku_ids": sku_ids,
+            "article_id": article_id,
             "season": item.get("season"), "category": item.get("category"),
             "market": tuple(item.get("market", ())), "channel": tuple(item.get("channel", ())),
             "attributes": attribute_signals(item.get("attributes", ())),
@@ -744,7 +765,7 @@ def _build_planning_draft_response(
                 image_sources = []
                 image_fetch_errors = []
                 for product in selected_products[:3]:
-                    if not product.image_url:
+                    if not product.image_url and not product.article_id:
                         image_fetch_errors.append("INVENTORY_IMAGE_MISSING")
                         image_sources.append({
                             "style_id": product.style_id,
@@ -754,13 +775,28 @@ def _build_planning_draft_response(
                         })
                         continue
                     try:
-                        image_bytes, image_mime = fetch_inventory_image(product.image_url)
+                        if product.image_url:
+                            image_bytes, image_mime = fetch_inventory_image(product.image_url)
+                        else:
+                            if not _r2_image_provider_upload_allowed():
+                                image_fetch_errors.append("R2_IMAGE_PROVIDER_FORWARD_DISABLED")
+                                image_sources.append({
+                                    "style_id": product.style_id,
+                                    "article_id": product.article_id,
+                                    "source_product_index": product.source_product_index,
+                                    "status": "not_forwarded",
+                                    "error_code": "R2_IMAGE_PROVIDER_FORWARD_DISABLED",
+                                })
+                                continue
+                            image_bytes, image_mime = load_r2_inventory_image(product.article_id)
                         references.append((image_bytes, image_mime))
                         image_sources.append({
                             "style_id": product.style_id,
+                            "article_id": product.article_id,
                             "source_product_index": product.source_product_index,
                             "status": "loaded",
                             "mime_type": image_mime,
+                            "source": "stock_agent_r2" if product.article_id and not product.image_url else "handoff_url",
                         })
                     except Exception as image_exc:
                         image_fetch_errors.append(getattr(image_exc, "code", "INVENTORY_IMAGE_UNAVAILABLE"))

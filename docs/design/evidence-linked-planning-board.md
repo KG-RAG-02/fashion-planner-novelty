@@ -31,7 +31,7 @@ For product-image generation, `ImageGenerationRequest.evidence_uses` records eac
 
 `render_planning_board_svg()` deterministically draws headings, cards, claims, status labels and Evidence IDs. The generated new-product image is embedded as the visual. The renderer does not call an image model to draw text. The board endpoint returns an SVG URL plus structured sections and Evidence IDs. Outfit generation remains a separate stage.
 
-Only permitted retrieval results are included in the reference section. The current Project_06 stock schema accepts an optional `products[].image.url` extension, but stock schema 1.0 does not guarantee it. See `contracts/http-handoff-v0.1.md` for the allowlisted HTTPS image-fetch boundary.
+Only permitted retrieval results are included in the reference section. The current Project_06 stock schema accepts an optional `products[].image.url` extension, but stock schema 1.0 does not guarantee it. See `contracts/http-handoff-v0.2.md` for the allowlisted HTTPS image-fetch boundary.
 
 ## Project_07 agreement required
 

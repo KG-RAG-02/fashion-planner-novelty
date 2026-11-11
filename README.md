@@ -26,7 +26,7 @@
 VOGUE_HTTP_MODE=local PYTHONPATH=src python3 -m vogue_npp.prototype.server
 ```
 
-Project_06은 planning draft API를 제공합니다. UI는 Project_08 소유이며, 이 저장소에서는 브라우저 화면을 제공하지 않습니다. 로컬 실행은 명시적으로 `VOGUE_HTTP_MODE=local`을 지정하고 기본 주소 `http://127.0.0.1:8767`을 사용합니다. 기본 포트는 Project_08 UI(8765), Project_07 HTTP(8766)와 겹치지 않습니다. 공통 handoff 경로는 [`contracts/http-handoff-v0.1.md`](contracts/http-handoff-v0.1.md)에 설명되어 있습니다.
+Project_06은 planning draft API를 제공합니다. UI는 Project_08 소유이며, 이 저장소에서는 브라우저 화면을 제공하지 않습니다. 로컬 실행은 명시적으로 `VOGUE_HTTP_MODE=local`을 지정하고 기본 주소 `http://127.0.0.1:8767`을 사용합니다. 기본 포트는 Project_08 UI(8765), Project_07 HTTP(8766)와 겹치지 않습니다. 공통 handoff 경로는 [`contracts/http-handoff-v0.2.md`](contracts/http-handoff-v0.2.md)에 설명되어 있습니다. 초안 생성 요청에는 판매·시장 에이전트 결과 객체가 필수이며, 분석 결과가 없으면 `status: "no_results"`로 전달해야 합니다.
 
 Docker Compose는 `service` 모드로 TLS와 Bearer 인증을 사용합니다. 실행 전에 `VOGUE_TLS_CERT_HOST_PATH`, `VOGUE_TLS_KEY_HOST_PATH`, `VOGUE_TLS_CA_HOST_PATH`, `VOGUE_AGENT_SERVICE_BEARER_TOKEN`을 shell 환경에 설정한 뒤 `docker compose up --build`를 실행하세요. 인증서·키·token은 저장소에 넣지 않습니다. Compose 포트는 host loopback의 `127.0.0.1:8767`에만 공개됩니다.
 
@@ -34,7 +34,7 @@ Docker Compose는 `service` 모드로 TLS와 Bearer 인증을 사용합니다. �
 
 모든 기획 요청에서 신제품 시안 이미지와 근거 연결 기획 보드를 요청합니다. 별도 이미지 생성 플래그는 필요하지 않습니다. 신제품 시안이 생성되면 보드는 SVG 결정적 렌더러가 텍스트와 Evidence ID를 배치해 만듭니다.
 
-착장 생성에서 재고 이미지 URL을 사용하려면 `VOGUE_INVENTORY_IMAGE_ALLOWED_HOSTS`에 승인된 HTTPS 호스트명을 쉼표로 구분해 지정합니다. 기본값은 비어 있어 재고 이미지 URL을 가져오지 않습니다. Stock-agent schema 1.0에는 이미지 필드가 공식 정의되어 있지 않으므로 `products[].image.url`은 현재 선택적으로 수용하는 확장입니다. 계약 상태와 제한은 [`contracts/http-handoff-v0.1.md`](contracts/http-handoff-v0.1.md)에 기록되어 있습니다.
+착장 생성은 선택된 재고 상품의 `article_id` 또는 숫자형 `sku_ids[]`에서 ID를 확인하고, Project_06의 읽기 전용 R2 adapter가 `R2_IMAGE_PREFIX/<앞 3자리>/<article_id>.jpg` 한 장씩 가져올 수 있습니다. stock-agent와 같은 bucket/read-only credential을 `R2_ACCOUNT_ID`, `R2_ENDPOINT`, `R2_BUCKET`, `R2_IMAGE_PREFIX`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` 환경변수로 설정합니다. 로컬 파일 캐시는 `VOGUE_R2_IMAGE_CACHE_DIR`(기본 `data/local/r2_product_images`)에 선택한 이미지만 둡니다. 신제품 단독 이미지 생성에는 재고 이미지가 전달되지 않고 착장 합성 단계에서만 참조됩니다. `VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD`는 기본 `true`이며 `false`로 설정하면 R2 이미지를 외부 이미지 provider에 전송하지 않습니다. Kaggle 데이터 이용 조건상 허용된 환경에서만 켜세요. 기존 허용 host를 통한 `products[].image.url` 입력도 지원합니다. handoff field와 사용 경계는 [`contracts/http-handoff-v0.2.md`](contracts/http-handoff-v0.2.md)에 기록되어 있습니다.
 
 구조화 텍스트 기획 프롬프트는 `VOGUE_TEXT_GENERATION_ENABLED`로 요청할 수 있지만 현재 승인된 텍스트 모델 제공자가 연결되지 않았습니다. 이 설정만 켜면 외부 호출 없이 규칙 기반 초안과 `TEXT_GENERATION_UNAVAILABLE` 상태를 반환합니다.
 
@@ -74,6 +74,8 @@ Project_07 판매·시장 결과는 전체 payload를 불투명 handoff로 보�
 기획 RAG는 현재 허가된 내부 가이드·taxonomy·과거 기획 사례와 입력에 포함된 비판매 Evidence를 위한 검색 경계만 연결합니다. 기본 설정은 `not_configured`이며, 판매·시장 원천 검색과 분석은 Project_07 소유입니다. 상세 범위는 [기획 전용 KG/RAG 설계](docs/design/planning-rag-design.md)를 참고하세요.
 
 다음 단계의 hybrid retrieval, 권한·인덱스 운영 및 평가 계획은 [RAG 고도화 설계안](docs/design/planning-rag-evolution-plan.md)에 정리했습니다. 이 문서는 제안이며 운영 인덱스 연결을 활성화하지 않습니다.
+
+합성 사내 카탈로그·가이드 RAG를 실제 신상품 초안 흐름에 연결하기 위한 데이터 생성, 검색, 근거 추적, 이미지 경계, 평가 작업 순서는 [합성 카탈로그 RAG 기반 기획 계획](docs/design/synthetic-catalog-rag-planning-roadmap.md)에 정리했습니다. 사용할 수 있는 실물 자료는 H&M Kaggle 상품 사진뿐이지만, competition rules의 비상업적·학술 연구 범위와 데이터 접근 제한 때문에 본 계획의 기본 합성/RAG 경로에는 포함하지 않습니다.
 
 검색 흐름 검증용 합성 corpus는 `data/fixtures/planning_rag/synthetic_corpus.json`에 있습니다. `SyntheticCorpusRetriever`는 해당 합성 corpus를 대상으로만 명시적으로 생성해 쓰는 로컬 데모 adapter이며 기본 초안 경로에는 연결되지 않습니다. 실제 회사 문서나 승인된 정책·시장 사실이 아니며 운영 근거로 사용할 수 없습니다. 테스트 실행:
 

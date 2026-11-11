@@ -6,7 +6,7 @@ The shared repository layout is `src/`, `tests/`, `docs/`, `data/`, `examples/`,
 
 ## Ownership and HTTP boundary
 
-Project_06 owns planning-draft generation, its local persistence, and the `new-product-agent` producer result. Its canonical agent route is `POST /v1/agents/new-product-agent/runs` using `vogue-handoff/0.1`. The request ID is carried by the outer envelope; the `input` object contains `planning_request`, `trend_result`, `inventory_product_result`, and `sales_market_result`. The P06-specific accepted versions and result behavior are defined in [`contracts/http-handoff-v0.1.md`](../contracts/http-handoff-v0.1.md).
+Project_06 owns planning-draft generation, its local persistence, and the `new-product-agent` producer result. Its canonical agent route is `POST /v1/agents/new-product-agent/runs` using `vogue-handoff/0.2`. Both canonical and legacy draft routes require the `sales_market_result` JSON object; use status `no_results` when the producer ran but found no analysis. The request ID is carried by the outer envelope; the `input` object contains `planning_request`, `trend_result`, `inventory_product_result`, and `sales_market_result`. The P06-specific accepted versions and result behavior are defined in [`contracts/http-handoff-v0.2.md`](../contracts/http-handoff-v0.2.md).
 
 Project_06 consumes upstream results and does not call Project_07 or Project_08. Project_08 owns sequencing and makes the HTTP calls. Project_06 does not import sibling repositories.
 

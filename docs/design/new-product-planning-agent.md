@@ -1,6 +1,6 @@
 # Project_06 Planning Agent 설계 제안
 
-> **현행 HTTP 경계:** 이 문서의 transport 미합의 표기는 과거 설계 상태입니다. 현재 Project_06 `/v1/agents/new-product-agent/runs` 계약과 실행 포트는 [HTTP handoff v0.1](../../contracts/http-handoff-v0.1.md) 및 [저장소 경계 문서](../repository-boundaries.md)를 기준으로 합니다.
+> **현행 HTTP 경계:** 이 문서의 transport 미합의 표기는 과거 설계 상태입니다. 현재 Project_06 `/v1/agents/new-product-agent/runs` 계약과 실행 포트는 [HTTP handoff v0.2](../../contracts/http-handoff-v0.2.md) 및 [저장소 경계 문서](../repository-boundaries.md)를 기준으로 합니다.
 
 - 상태: 경계 설계 제안 · 실제 코드 소유권은 2026-11-06 책임 경계 기록에 따라 판매 분석을 Project_07로 이전
 - 작성 목적: Project_06 Planning Agent 경계와 Project_07 handoff 후보를 명확히 합니다.
@@ -48,6 +48,7 @@ PlanningRequest + TrendResult + InventoryProductResult + Project_07 Sales & Mark
 - 입력 `partial`은 확보된 정보와 누락 사유를 함께 전달합니다.
 - 입력 `no_results`는 데이터 값 0과 구분합니다. 조회 실패, 자료 없음, 실제 0을 재해석하지 않습니다.
 - Project_07 결과가 미제공이면 판매 관찰을 생성하지 않고 `not_provided`로 구분합니다. 실제 판매량 0, 조건에 맞는 자료 없음(`no_results`), 조회 실패/timeout(`error`), 권한 부족, 상품 ID 매핑 실패 및 정의 불일치를 서로 구별합니다.
+- 현행 HTTP 초안 생성 API에서는 `sales_market_result` 객체를 필수로 받습니다. Project_07이 정상 실행됐지만 분석 결과를 찾지 못한 경우 `status: "no_results"` 객체를 전달하고, 요청 누락·`null`은 입력 오류입니다. 이 필수화는 Project_07의 상세 필드 계약을 확정하거나 opaque payload를 해석할 수 있도록 허용하지 않습니다.
 - `partial/no_results/error`, 입력별 누락·충돌·제한, Evidence ID, 기간, 단위, 통화 및 지표 정의를 기획안 초안에 보존합니다. 이름과 구체 필드는 팀 합의 전 제안입니다.
 - 판매 관측은 미래 수요·고객 선호·시장 성장 증거가 아닙니다. 재고 스냅샷은 판매 추세 대리값이 아닙니다. 출처/기간/정의/단위가 없으면 숫자를 추정하지 않습니다.
 - 상품 속성과 재고 수량은 의미를 구분합니다. `InventoryProductResult`는 필수지만 개별 데이터에 재고 수량이 없으면 미확정으로 표시하고 상품 속성만 활용합니다. 수량은 `quantity`, `unit`, `inventory_definition`, `as_of`, Evidence를 함께 확인한 경우에만 스냅샷 사실로 기록합니다.

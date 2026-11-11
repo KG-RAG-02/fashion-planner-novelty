@@ -5,10 +5,26 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from vogue_npp.prototype.server import _build_planning_board_prompt, _build_planning_draft_response
+from vogue_npp.prototype.server import (
+    _build_planning_board_prompt,
+    _build_planning_draft_response,
+    _r2_image_provider_upload_allowed,
+    _stock_article_id,
+)
 
 
 class PlanningDraftApiTests(unittest.TestCase):
+    def test_stock_article_id_comes_from_stock_product_or_numeric_sku(self):
+        self.assertEqual(_stock_article_id({"article_id": "0999991001", "sku_ids": []}), "0999991001")
+        self.assertEqual(_stock_article_id({"sku_ids": ["0999991001"]}), "0999991001")
+        self.assertIsNone(_stock_article_id({"sku_ids": ["SYN-SKU-A"]}))
+
+    def test_r2_image_provider_upload_requires_explicit_opt_in(self):
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertTrue(_r2_image_provider_upload_allowed())
+        with patch.dict("os.environ", {"VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD": "false"}):
+            self.assertFalse(_r2_image_provider_upload_allowed())
+
     def test_images_are_requested_even_without_true_flags(self):
         payload = {
             "request_id": "board-auto-1",

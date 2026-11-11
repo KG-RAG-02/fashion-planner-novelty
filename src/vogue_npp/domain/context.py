@@ -117,6 +117,7 @@ class InventoryProduct:
     note_origin: ContextOrigin = "unknown"
     source_product_index: int | None = None
     image_url: str | None = None
+    article_id: str | None = None
 
 
 @dataclass(frozen=True)

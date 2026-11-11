@@ -9,7 +9,7 @@ from unittest.mock import patch
 from vogue_npp.prototype.server import PrototypeHandler, _build_handoff_result
 
 
-FIXTURE_PATH = Path(__file__).parent / "fixtures/http-handoff-v0.1/success.json"
+FIXTURE_PATH = Path(__file__).parent / "fixtures/http-handoff-v0.2/success.json"
 
 
 def fixture(trend_status=None):
@@ -59,7 +59,7 @@ class HandoffHTTPTests(unittest.TestCase):
     def test_valid_trend_11_normalizes_without_relabeling_source(self):
         value = fixture()
         result = _build_handoff_result(value["request_id"], value["input"])
-        self.assertEqual(result["compatibility"]["adapter_version"], "project06-input-normalizer/1.0")
+        self.assertEqual(result["compatibility"]["adapter_version"], "project06-input-normalizer/1.1")
         self.assertEqual(result["compatibility"]["input_schemas"]["trend_result"]["source_schema_version"], "1.1")
         self.assertEqual(result["compatibility"]["input_schemas"]["trend_result"]["internal_schema_version"], "1.0")
         self.assertEqual(result["input_evidence"]["trend_result"]["payload"]["schema_version"], "1.1")
@@ -70,7 +70,7 @@ class HandoffHTTPTests(unittest.TestCase):
                 value = fixture(trend_status=status)
                 code, response = self.invoke(value)
                 self.assertEqual(code, 200)
-                self.assertEqual(response["contract_version"], "vogue-handoff/0.1")
+                self.assertEqual(response["contract_version"], "vogue-handoff/0.2")
                 self.assertEqual(response["producer"], {"agent_id": "new-product-agent", "schema_version": "1.0"})
                 self.assertEqual(response["status"], response["result"]["status"])
                 self.assertEqual(response["request_id"], value["request_id"])
@@ -90,6 +90,21 @@ class HandoffHTTPTests(unittest.TestCase):
         self.assertEqual((code, body["error"]["code"]), (422, "UNSUPPORTED_PRODUCER_SCHEMA"))
         code, body = self.invoke(raw=b"{}", content_length=1_000_001)
         self.assertEqual((code, body["error"]["code"]), (413, "PAYLOAD_TOO_LARGE"))
+
+    def test_required_sales_market_result_rejects_missing_and_null(self):
+        value = fixture()
+        del value["input"]["sales_market_result"]
+        code, body = self.invoke(value)
+        self.assertEqual((code, body["error"]["code"]), (422, "INVALID_INPUT"))
+
+        value = fixture()
+        value["input"]["sales_market_result"] = None
+        code, body = self.invoke(value)
+        self.assertEqual((code, body["error"]["code"]), (422, "INVALID_PRODUCER_PAYLOAD"))
+
+        code, body = self.invoke({"planning_request": {}} , path="/api/planning-draft")
+        self.assertEqual(code, 400)
+        self.assertIn("sales_market_result", body["error"])
 
     def test_service_mode_requires_bearer_token(self):
         code, body = self.invoke(fixture(), mode="service", token=None)

@@ -639,3 +639,19 @@ def selected_outfit_inventory(context: ProductPlanningContext):
         for relation in context.styling_relationships
         if relation.inventory_product_index < len(context.inventory.products)
     )
+
+
+def load_r2_inventory_image(article_id: str, *, store=None, cache_dir: Path | None = None) -> tuple[bytes, str]:
+    """Load one product JPEG from the stock-agent R2 object-key convention."""
+    from ..sources.r2_product_images import R2ProductImageSettings, R2ProductImageStore
+
+    settings = R2ProductImageSettings.from_env()
+    if settings is None:
+        raise ImageProviderError("R2_PRODUCT_IMAGES_NOT_CONFIGURED")
+    image_store = store or R2ProductImageStore(settings, cache_dir=cache_dir)
+    try:
+        return image_store.load(article_id)
+    except ValueError:
+        raise ImageProviderError("R2_ARTICLE_ID_INVALID") from None
+    except Exception:
+        raise ImageProviderError("R2_PRODUCT_IMAGE_UNAVAILABLE") from None

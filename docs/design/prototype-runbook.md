@@ -14,7 +14,7 @@ The service binds to `127.0.0.1:8767` by default. The canonical `/runs` route al
 
 `POST /api/planning-draft` accepts planning request, trend, inventory, and optional Project_07 payloads. It does not query upstream source systems. Project_07 sales/market input is passed through as an opaque handoff.
 
-The agreed common handoff is implemented at `POST /v1/agents/new-product-agent/runs`; see [HTTP handoff v0.1](../../contracts/http-handoff-v0.1.md) for request/response fields, supported versions, service mode and errors. The legacy route remains available.
+The agreed common handoff is implemented at `POST /v1/agents/new-product-agent/runs`; see [HTTP handoff v0.2](../../contracts/http-handoff-v0.2.md) for request/response fields, supported versions, service mode and errors. The legacy route remains available.
 
 The API also supports existing planning brief and image variant operations. SQLite state and generated image files are local runtime artifacts; this service does not serve the browser UI.
 

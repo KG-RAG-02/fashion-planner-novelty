@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 
-CONTRACT_VERSION = "vogue-handoff/0.1"
-ADAPTER_VERSION = "project06-input-normalizer/1.0"
+CONTRACT_VERSION = "vogue-handoff/0.2"
+ADAPTER_VERSION = "project06-input-normalizer/1.1"
 INPUT_KEYS = frozenset({
     "planning_request", "trend_result", "inventory_product_result", "sales_market_result",
 })
@@ -71,13 +71,6 @@ def normalize_handoff_inputs(request_id: str, inputs: Mapping[str, Any]) -> Norm
     schema_trace: dict[str, Any] = {}
 
     for name, payload in source_inputs.items():
-        if name == "sales_market_result" and payload is None:
-            schema_trace[name] = {
-                "producer_id": None, "source_schema_version": None,
-                "normalized_schema_version": None, "internal_schema_version": None, "adapter_version": None,
-                "transformed": False, "source_payload_sha256": None,
-            }
-            continue
         if not isinstance(payload, dict):
             raise AdapterCompatibilityError("INVALID_PRODUCER_PAYLOAD", f"{name}는 JSON 객체여야 합니다.")
         if payload.get("request_id") != request_id:
