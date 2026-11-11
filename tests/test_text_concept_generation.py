@@ -1,5 +1,7 @@
 import json
+import os
 import unittest
+from unittest.mock import patch
 
 from vogue_npp.domain.context import (
     AgentResult,
@@ -80,6 +82,11 @@ class FakeStructuredProvider:
 
 
 class TextConceptGenerationTests(unittest.TestCase):
+    def setUp(self):
+        self._rag_env = patch.dict(os.environ, {"VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED": "false"})
+        self._rag_env.start()
+        self.addCleanup(self._rag_env.stop)
+
     def test_prompt_defines_planner_role_and_scopes_market_handoff(self):
         private_sales = {"request_id": "text-plan-1", "agent_id": "sales-market-agent",
                          "status": "partial", "summary": "OPAQUE SALES TEXT"}

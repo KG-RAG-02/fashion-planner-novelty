@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ..domain.retrieval import EvidenceRef, RetrievalQuery, RetrievalResult
-from ..synthetic_planning_workbench import DEFAULT_DATASET, document_eligibility, load_dataset
+from ..synthetic_planning_workbench import DEFAULT_DATASET, document_eligibility, load_dataset, validate_dataset
 
 
 PURPOSE_DOCUMENT_TYPES = {
@@ -34,10 +34,23 @@ class SyntheticWorkbenchRetriever:
     every query explicitly opts into the dataset namespace and synthetic lane.
     """
 
-    def __init__(self, dataset_path: str | Path = DEFAULT_DATASET):
-        self.dataset, self.snapshot_sha256 = load_dataset(Path(dataset_path))
+    def __init__(
+        self,
+        dataset_path: str | Path = DEFAULT_DATASET,
+        *,
+        dataset: dict[str, Any] | None = None,
+        snapshot_sha256: str | None = None,
+        index_version: str | None = None,
+    ):
+        if dataset is None:
+            self.dataset, file_hash = load_dataset(Path(dataset_path))
+            self.snapshot_sha256 = snapshot_sha256 or file_hash
+        else:
+            self.dataset = validate_dataset(dataset)
+            canonical = json.dumps(dataset, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            self.snapshot_sha256 = snapshot_sha256 or hashlib.sha256(canonical).hexdigest()
         self.dataset_id = str(self.dataset["dataset_id"])
-        self.index_version = f"{self.dataset_id}:{self.snapshot_sha256[:16]}"
+        self.index_version = index_version or f"{self.dataset_id}:{self.snapshot_sha256[:16]}"
         self.queries: list[RetrievalQuery] = []
         self._evidence = {row["evidence_id"]: row for row in self.dataset.get("evidence", [])}
         self._products = {row["style_id"]: row for row in self.dataset.get("products", [])}

@@ -4,7 +4,7 @@
 - 대상: Project_06 새상품 기획 에이전트
 - 전제: 실제 회사 내부 카탈로그·가이드·과거 상품 데이터는 접근할 수 없음
 - 현재 합성 기준선: [합성 상품기획 workbench](synthetic-planning-workbench.md)
-- 관련 설계: [기획 RAG](planning-rag-design.md), [RAG 고도화 계획](planning-rag-evolution-plan.md), [데이터 출처·Evidence 경계](data-source-and-evidence-plan.md)
+- 관련 설계: [기획 RAG](planning-rag-design.md), [R2 cloud planning RAG](r2-cloud-planning-rag.md), [RAG 고도화 계획](planning-rag-evolution-plan.md), [데이터 출처·Evidence 경계](data-source-and-evidence-plan.md)
 
 ## 1. 목적과 결정
 
@@ -16,9 +16,9 @@ RAG 검색 결과를 분석 맥락으로 삼아 기획자가 검토할 새 상�
 
 ## 2. 데이터 사용 범위와 H&M 사진 처리
 
-사용 가능한 유일한 외부 실물 자료는 Kaggle의 H&M Personalized Fashion Recommendations 상품 사진이다. Kaggle competition rules는 Competition Data를 비상업적 목적과 학술 연구에 한정하며, 외부에 재배포하거나 참가 규칙에 동의하지 않은 사람에게 접근을 제공하지 못하도록 한다. 따라서 H&M 사진을 회사 카탈로그로 취급하거나, 합성 사내 상품의 실제 이미지처럼 표시하거나, 제품 이미지 생성의 무조건적인 참조 이미지·RAG 문맥으로 전송하지 않는다. 본 계획의 기본 데이터 작업은 H&M 사진을 사용하지 않는다. 별도 실험에 활용하기 전 데이터 접근자/조직의 이용 조건을 확인하고, 허용 범위·보관 위치·모델 전송·결과물 공유 여부를 기록한다. [Kaggle competition rules](https://www.kaggle.com/c/h-and-m-personalized-fashion-recommendations/rules), [Kaggle dataset page](https://www.kaggle.com/competitions/h-and-m-personalized-fashion-recommendations/data?select=transactions_train.csv)
+사용 가능한 유일한 외부 실물 자료는 Kaggle의 H&M Personalized Fashion Recommendations 상품 사진이다. Kaggle rules는 Competition Data 이용을 비상업적 목적·학술 연구로 제한하고, 참가 규칙을 수락하지 않은 주체에 데이터에 접근하게 하거나 전송하는 것을 제한한다. 현재 구현은 사용자의 요청에 따라 카테고리별 최대 3장 사진을 R2에서 가져와 시각 분석 provider에 보낼 수 있는 설정을 제공한다. 이는 사용조건에 대한 법무/조직 승인으로 간주하지 않는다. H&M 사진을 회사 카탈로그로 표시하거나 합성 상품의 실제 이미지로 사용하지 않으며, 제품 이미지 생성 참조로 자동 전송하지 않는다. 실제 상업 서비스 전환 전 Kaggle dataset의 이 사용·provider 전송·보관·분석 결과 공유에 대한 조직 승인을 받아야 한다. [Kaggle competition rules](https://www.kaggle.com/c/h-and-m-personalized-fashion-recommendations/rules), [Kaggle dataset page](https://www.kaggle.com/competitions/h-and-m-personalized-fashion-recommendations/data?select=transactions_train.csv)
 
-초기 합성 데이터는 실제 사진 없이 텍스트와 구조 데이터로 구성한다. 이미지 기능 검증이 꼭 필요할 때만 승인된 로컬 환경에서 H&M 사진을 **비검색·비생성 평가용**으로 제한해 다루는 방안을 별도 승인 대상으로 기록한다. 사진으로부터 속성 태그·캡션을 생성하거나 임베딩을 만들어 저장하는 것도 데이터 이용 범위와 파생물 취급에 포함해 사전 검토한다. Kaggle 접근 권한 자체가 상업적 서비스, API 전송, 파생 데이터 배포 권한을 의미한다고 가정하지 않는다.
+합성 데이터는 실제 사진 없이 텍스트와 구조 데이터로 유지한다. 현재 H&M 사진은 요청 카테고리에 맞춘 별도 외부 visual-reference 분석에만 사용한다. 이미지에서 생성한 관찰·임베딩·캡션은 합성 내부 Evidence로 귀속하지 않는다. 사진으로부터 속성 태그·캡션을 생성하거나 임베딩을 저장하고 공유하는 것은 파생물 취급과 이용조건에 대한 추가 검토가 필요하다. Kaggle 접근 권한 자체가 상업적 서비스, API 전송, 파생 데이터 배포 권한을 의미한다고 가정하지 않는다.
 
 ## 3. 목표 데이터셋
 
@@ -215,9 +215,9 @@ flowchart TD
 ## 11. 구현 기록 (2026-11-11)
 
 - **Phase 0–1 및 corpus 확장 완료:** Kaggle H&M 사진은 기본 generator·검색 corpus에서 분리했다. 데이터 카드는 합성 자료와 사진의 경계를 기록한다. schema v3 고정 seed `20261110`은 6개 카테고리에 72 styles, 294 documents, 1,109 Evidence, 73 inventory snapshots, 13 assortment 관계를 생성한다. 카탈로그, 테크팩, BOM, 샘플 개발 이력, 사이즈 측정 예시, 시즌 line plan, 카테고리 가이드, 가상 검토 선례가 실제 업무 시스템과 비슷한 구조를 가지며, 전 레코드에 synthetic marker와 locator/hash를 유지한다. 기존 중복 SKU·누락 속성·끊긴 Evidence 등의 의도적 품질 anomaly는 계속 남겨 검사한다. Kaggle 이용 조건에 대한 조직 차원의 허가 확인은 이 구현에서 수행하지 않았다.
-- **Phase 2 완료:** 별도 synthetic dataset namespace의 deterministic lexical retriever를 추가했다. catalog comparison, planning reference, precedent, taxonomy, assortment relation, exact Evidence lookup을 목적별로 분리하고, allowlist·역할·카테고리·시즌·lifecycle·유효기간·권한·Evidence 조건을 적용한다. vector/graph index나 외부 자료원은 연결하지 않았다.
-- **Phase 3 완료:** `VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED` 기본값은 `false`다. 명시적으로 켠 경우에만 workbench를 초안 전 검색에 사용한다. 검색 상태·query trace·snapshot·Evidence 연결을 응답에 보존하고, synthetic observation·design proposal·미확정 질문을 다른 필드로 출력한다. Project_07은 opaque 경계에 그대로 남는다.
-- **Phase 4 완료:** 검색 문서 본문과 합성 사진은 신제품 이미지 provider 입력에서 제외한다. planning board는 synthetic context를 표시하고 출처 Evidence를 연결한다. 재고 코디 이미지 단계에서는 Kaggle H&M article ID 사진도 R2에서 가져와 image provider로 전송한다. 이 허용은 generic R2 upload 설정과 독립적으로 적용되며 신제품 단독 이미지에는 재고 이미지를 보내지 않는다. `VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD=true` 기본값은 다른 R2 재고 이미지 흐름에 유지된다.
+- **Phase 2 완료:** 별도 synthetic dataset namespace의 deterministic lexical retriever를 JSON fixture와 R2 DuckDB source 양쪽에 연결했다. catalog comparison, planning reference, precedent, taxonomy, assortment relation, exact Evidence lookup을 목적별로 분리하고, allowlist·역할·카테고리·시즌·lifecycle·유효기간·권한·Evidence 조건을 적용한다. vector/graph index는 미구성이다.
+- **Phase 3 완료:** `VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED` 기본값은 `.env.example`에서 `false`다. 활성화하면 source 기본값은 R2이며, `local`은 fixture fallback이다. 검색 상태·query trace·snapshot·Evidence 연결을 응답에 보존하고, synthetic observation·design proposal·미확정 질문을 다른 필드로 출력한다. Project_07은 opaque 경계에 그대로 남는다.
+- **Phase 4 완료:** 검색 문서 본문과 합성 사진은 신제품 이미지 provider 입력에서 제외한다. planning board는 synthetic context를 표시하고 출처 Evidence를 연결한다. H&M Kaggle 사진은 category-scoped 시각 참고로 최대 3장을 R2에서 가져와 별도 `hm_visual_references` output에 관찰·locator·article ID를 연결한다. 이는 신제품 생성 reference가 아니며, Kaggle 이용조건·provider 전송 권한을 기술 설정만으로 승인하지 않는다. provider 전송 gate는 `VOGUE_HM_KAGGLE_IMAGE_ALLOW_PROVIDER_UPLOAD`와 `VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD`를 따른다.
 - **Phase 5 완료:** 고정 평가 세트 8개 질의, no-RAG baseline, deterministic retriever 지표를 추가했다. 확장 snapshot `1da0fd5d…`에서 Recall@10, Precision@10, 출처·locator·hash 완전성, no-results 정확도는 1.00이고, 권한 위반·stale 유입·Evidence 없는 관찰은 0건이다. no-RAG Recall@10은 0.00이다. 이 평가는 합성 fixture 회귀 결과일 뿐 실제 현업 효용을 입증하지 않는다. MD 품질의 사람 점수는 아직 기록하지 않았으며 평가 rubric만 제공한다.
 
 재현 명령: `PYTHONPATH=src python3 scripts/evaluate_synthetic_planning_rag.py --output docs/evaluation/synthetic-planning-rag-baseline.json`. 기준 질의 세트는 `data/fixtures/planning_rag/synthetic_workbench_eval_queries.json`, 검토 rubric은 `docs/evaluation/synthetic-planning-rag-rubric.md`에 둔다. 다음 확장 전에는 합성 평가의 품질 기준을 검토하고, 실제 회사 자료·H&M 사진의 새 사용은 별도 권한 및 데이터 계약 검토 대상으로 유지한다.

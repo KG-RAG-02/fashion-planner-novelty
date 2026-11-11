@@ -1,6 +1,6 @@
-# 합성 상품기획 데이터와 로컬 workbench
+# 합성 상품기획 데이터와 R2 workbench
 
-- 상태: 로컬 개발·검증 도구 · 실제 자료 연결 없음
+- 상태: 로컬 fixture + R2 versioned DuckDB 읽기 adapter · 실제 회사 내부 자료 연결 없음
 - 데이터셋: `SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110`
 - Snapshot date: `2026-11-11`
 - 데이터카드: [Synthetic planning workbench data card](../../data/fixtures/synthetic_planning_workbench/DATA_CARD.md)
@@ -9,9 +9,9 @@
 
 이 fixture와 CLI는 카탈로그, 명세서, 브리프, 가이드 문서, Evidence 관계 및 입력 상태를 개발·테스트하기 위한 가상 예시입니다. 가상 브랜드·상품·SKU·날짜·수치·문장은 실제 회사·정책·고객·시장·사업 결과를 나타내지 않습니다. 문서의 `approved_example`은 **합성 데이터셋 안에서 검색 규칙을 시험하기 위한 상태 이름**일 뿐 회사 승인 상태가 아닙니다.
 
-Project_06 초안 생성에는 현재 기존 내부 `/api/planning-draft` 변환 경로와 규칙 기반 생성기를 사용합니다. 기본 RAG는 `not_configured`여서 합성 문서가 생성기 근거로 자동 유입되지 않습니다. CLI는 해당 요청에 맞는 문서 후보를 따로 나열하며 “적용 완료”로 표시하지 않습니다. 판매·시장 handoff 예시는 별도 fixture로 살펴볼 수 있지만 Project_06 draft 입력에는 연결되어 있지 않습니다. 따라서 Project_06은 이 자료에서 판매 지표를 계산하거나 재집계하지 않습니다.
+Project_06 초안은 기존 `/api/planning-draft` 경로와 규칙 기반 생성기를 사용합니다. `VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED=true`이면 기본 source `r2`에서 versioned 병합 DuckDB를 내려받아 read-only 모드로 열고, `synthetic_*` 테이블을 검색합니다. `VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE=local`은 fixture 검증용 선택지입니다. 병합 DB의 R2 경로, ETag cache, 검색 adapter, H&M 사진 참고/시각 분석 흐름은 [R2 cloud planning RAG design](r2-cloud-planning-rag.md)에 기록했습니다. 판매·시장 handoff는 여전히 Project_07의 opaque 경계를 유지하며 Project_06은 판매 지표를 계산하거나 재집계하지 않습니다.
 
-실제 자료 connector, 외부 서비스, 공개 API 계약 변경, 운영 DB/인덱스 연결은 구현하지 않았습니다. 합성 workbench는 별도 dataset namespace를 가진 명시적 opt-in 개발 경로로만 검색됩니다. `VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED=true` 설정 시 API가 이 고정 fixture를 직접 사용하며, 기본값은 `false`입니다. 일반 `authorized` 소스 정책과 섞이지 않고 `allow_synthetic`와 일치하는 dataset ID가 query 및 Evidence에 있어야 합니다. 실제 자료가 검색 가능한 index에 들어가지는 않습니다.
+실제 회사 자료 connector나 실제 회사 내부 지식 인덱스 연결은 없습니다. R2 image/catalog 데이터는 H&M Kaggle 공개 자료에 기반한 외부 참고로 별도 취급합니다. 합성 workbench는 별도 dataset namespace를 가진 명시적 opt-in 경로로 검색됩니다. `.env.example` 기본값은 `VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED=false`이며, 활성화한 경우 source 기본값은 `r2`입니다. 일반 `authorized` 소스 정책과 섞이지 않고 `allow_synthetic`와 일치하는 dataset ID가 query 및 Evidence에 있어야 합니다. R2의 H&M 이미지 분석은 합성 회사 문서 근거로 변환되지 않습니다.
 
 ## 데이터 구성
 
@@ -70,9 +70,9 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 
 ## Project_06 RAG 연결
 
-`SyntheticWorkbenchRetriever`는 taxonomy, catalog comparison, planning reference, precedent, assortment relation, exact Evidence lookup 목적을 분리해 제공합니다. 결과는 source allowlist, 문서 유형, 시즌·카테고리·역할, lifecycle, 유효기간, Evidence 상태, permitted use로 거릅니다. 반환 ref에는 dataset/snapshot ID, 합성 표시, source locator, content hash, Evidence가 뒷받침하는 속성 경로, retrieval run ID를 보존합니다. 검색은 deterministic lexical 기준선이며 vector/graph 인덱스가 아닙니다.
+`SyntheticWorkbenchRetriever`는 taxonomy, catalog comparison, planning reference, precedent, assortment relation, exact Evidence lookup 목적을 분리해 제공합니다. JSON fixture와 R2 DuckDB adapter가 같은 필터·Evidence 계약을 공유합니다. 결과는 source allowlist, 문서 유형, 시즌·카테고리·역할, lifecycle, 유효기간, Evidence 상태, permitted use로 거릅니다. 반환 ref에는 dataset/snapshot ID, R2 object version, 합성 표시, source locator, content hash, Evidence가 뒷받침하는 속성 경로, retrieval run ID를 보존합니다. 검색은 deterministic lexical 기준선이며 vector/graph 인덱스가 아닙니다.
 
-API는 환경변수가 켜졌을 때만 이 fixture 검색기를 자동 선택합니다. 검색 실패/빈 결과는 각 목적별 상태로 반환하고 초안 생성을 계속합니다. Project_07은 이 검색 계획에 사용되지 않으며 기존 opaque payload 보존 경계를 유지합니다.
+API는 환경변수가 켜졌을 때 R2 adapter를 자동 선택합니다. 검색 실패/빈 결과는 각 목적별 상태로 반환하고 초안 생성을 계속합니다. 이미지 참고는 H&M 후보 사진을 최대 3장까지 R2에서 선택·분석한 뒤 `hm_visual_references` 별도 응답으로 돌려줍니다. 사진 관찰은 Evidence가 연결된 합성 자료의 주장으로 쓰이지 않습니다. Project_07은 이 검색 계획에 사용되지 않으며 기존 opaque payload 보존 경계를 유지합니다.
 
 ## 실제 자료 전환 시 필요한 승인
 

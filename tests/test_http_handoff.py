@@ -51,7 +51,11 @@ class HandoffHTTPTests(unittest.TestCase):
         handler.send_response = lambda status: setattr(handler.wfile, "status", status)
         handler.send_header = lambda *_: None
         handler.end_headers = lambda: None
-        env = {"VOGUE_HTTP_MODE": mode, "VOGUE_AGENT_SERVICE_BEARER_TOKEN": "synthetic-agent-token"}
+        env = {
+            "VOGUE_HTTP_MODE": mode,
+            "VOGUE_AGENT_SERVICE_BEARER_TOKEN": "synthetic-agent-token",
+            "VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED": "false",
+        }
         with patch.dict(os.environ, env):
             handler.do_POST()
         return handler.wfile.status, json.loads(handler.wfile.body)

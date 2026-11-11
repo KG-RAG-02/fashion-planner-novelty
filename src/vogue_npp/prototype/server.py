@@ -29,7 +29,7 @@ from ..domain.context import (
 )
 from ..domain.generator import ConceptGenerator
 from ..domain.prompt_safety import serialize_untrusted_prompt_data
-from ..domain.retrieval import KnowledgeRetriever, RetrievalSourcePolicy
+from ..domain.retrieval import KnowledgeRetriever, RetrievalResult, RetrievalSourcePolicy
 from ..settings import load_settings
 from ..workflows.image_generation import (
     DEFAULT_IMAGE_DIR, DEFAULT_IMAGE_MODEL, OpenAIImageEditProvider,
@@ -94,6 +94,69 @@ def _is_hm_kaggle_image(product) -> bool:
         or re.search(r"(?:^|/)\d{3}/\d{10}\.jpg(?:$|[?#])", image_url)
     )
     return is_hm_kaggle
+
+
+class _UnavailableSyntheticRetriever:
+    """Keep planning available while reporting a cloud-index outage explicitly."""
+
+    def retrieve(self, query):
+        return RetrievalResult(
+            "error",
+            limitations=("R2 기획 데이터베이스에 연결하지 못해 이번 초안에서 검색 근거를 사용하지 않았습니다.",),
+            index_version="r2:unavailable",
+            retrieval_run_id=f"r2-unavailable:{query.purpose}:{query.request_id or 'no-request-id'}",
+        )
+
+
+def _configure_synthetic_retrieval():
+    """Select the configured R2 default or an explicitly requested local fixture."""
+    if not _synthetic_planning_rag_enabled():
+        return None, None, {"source": "disabled", "status": "not_configured"}
+    source = os.getenv("VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE", "r2").strip().casefold()
+    from ..sources.synthetic_workbench_retriever import PURPOSE_DOCUMENT_TYPES, SyntheticWorkbenchRetriever
+    from ..sources.r2_synthetic_workbench import R2SyntheticWorkbenchRetriever, WORKBENCH_DOCUMENT_TYPES
+
+    try:
+        if source == "local":
+            retriever = SyntheticWorkbenchRetriever()
+        elif source == "r2":
+            retriever = R2SyntheticWorkbenchRetriever()
+        else:
+            raise ValueError("unsupported source")
+    except Exception:
+        retriever = _UnavailableSyntheticRetriever()
+        dataset_id = os.getenv("VOGUE_SYNTHETIC_PLANNING_DATASET_ID", "SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110")
+        status = {"source": source, "status": "unavailable", "dataset_id": dataset_id, "index_version": "r2:unavailable"}
+        document_types = {purpose: tuple(sorted(types or WORKBENCH_DOCUMENT_TYPES))
+                          for purpose, types in PURPOSE_DOCUMENT_TYPES.items()}
+        return retriever, RetrievalSourcePolicy(
+            source_types_by_purpose=document_types,
+            dataset_id=dataset_id,
+            allow_synthetic=True,
+        ), status
+
+    source_ids: dict[str, tuple[str, ...]] = {}
+    source_types: dict[str, tuple[str, ...]] = {}
+    from ..synthetic_planning_workbench import document_eligibility
+    for purpose, types in PURPOSE_DOCUMENT_TYPES.items():
+        eligible = [
+            doc for doc in retriever.dataset["documents"]
+            if document_eligibility(retriever.dataset, doc)[0]
+            and (types is None or doc.get("document_type") in types)
+        ]
+        source_ids[purpose] = tuple(dict.fromkeys(doc["source_id"] for doc in eligible))
+        source_types[purpose] = tuple(sorted(types or {doc["document_type"] for doc in eligible}))
+    return retriever, RetrievalSourcePolicy(
+        source_ids_by_purpose=source_ids,
+        source_types_by_purpose=source_types,
+        dataset_id=retriever.dataset_id,
+        allow_synthetic=True,
+    ), {
+        "source": source,
+        "status": "ready",
+        "dataset_id": retriever.dataset_id,
+        "index_version": retriever.index_version,
+    }
 
 
 class PrototypeHandler(BaseHTTPRequestHandler):
@@ -172,6 +235,17 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                 else:
                     mime, _ = mimetypes.guess_type(target.name)
                     self._send(200, target.read_bytes(), mime or "application/octet-stream")
+            elif path.startswith("/api/hm-reference-images/"):
+                filename = path.removeprefix("/api/hm-reference-images/")
+                match = re.fullmatch(r"(\d{10})\.jpg", filename)
+                if not match:
+                    self._json(404, {"error": "H&M 참고 이미지를 찾을 수 없습니다."})
+                else:
+                    try:
+                        image_bytes, image_mime = load_r2_inventory_image(match.group(1))
+                        self._send(200, image_bytes, image_mime)
+                    except Exception:
+                        self._json(404, {"error": "H&M 참고 이미지를 찾을 수 없습니다."})
             elif path == "/api/bootstrap":
                 self._json(200, {
                     "brief": repository.get_brief(),
@@ -326,28 +400,10 @@ def _build_planning_draft_response(
     concept_generator: ConceptGenerator | None = None,
 ) -> dict:
     """Build a readable draft from the four upstream planning inputs."""
-    if knowledge_retriever is None and retrieval_policy is None and _synthetic_planning_rag_enabled():
-        from ..sources.synthetic_workbench_retriever import PURPOSE_DOCUMENT_TYPES, SyntheticWorkbenchRetriever
-        from ..synthetic_planning_workbench import document_eligibility
-
-        synthetic_retriever = SyntheticWorkbenchRetriever()
-        source_ids: dict[str, tuple[str, ...]] = {}
-        source_types: dict[str, tuple[str, ...]] = {}
-        for purpose, types in PURPOSE_DOCUMENT_TYPES.items():
-            eligible = [
-                doc for doc in synthetic_retriever.dataset["documents"]
-                if document_eligibility(synthetic_retriever.dataset, doc)[0]
-                and (types is None or doc.get("document_type") in types)
-            ]
-            source_ids[purpose] = tuple(dict.fromkeys(doc["source_id"] for doc in eligible))
-            source_types[purpose] = tuple(sorted(types or {doc["document_type"] for doc in eligible}))
-        knowledge_retriever = synthetic_retriever
-        retrieval_policy = RetrievalSourcePolicy(
-            source_ids_by_purpose=source_ids,
-            source_types_by_purpose=source_types,
-            dataset_id=synthetic_retriever.dataset_id,
-            allow_synthetic=True,
-        )
+    settings = load_settings()  # Load .env before feature/source selection.
+    planning_knowledge_source = {"source": "injected" if knowledge_retriever else "disabled", "status": "not_configured"}
+    if knowledge_retriever is None and retrieval_policy is None:
+        knowledge_retriever, retrieval_policy, planning_knowledge_source = _configure_synthetic_retrieval()
     request_payload = payload.get("planning_request")
     trend_payload = payload.get("trend_result")
     inventory_payload = payload.get("inventory_product_result")
@@ -698,7 +754,20 @@ def _build_planning_draft_response(
     )
     # Text generation is explicitly disabled by default. No concrete provider
     # is registered; until approval, enabling only returns a safe rule fallback.
-    settings = load_settings()
+    visual_references = None
+    if (planning_knowledge_source.get("source") == "r2" and knowledge_retriever is not None
+            and hasattr(knowledge_retriever, "find_hm_catalog_candidates")):
+        from ..sources.hm_visual_references import analyze_hm_visual_references
+        visual_references = analyze_hm_visual_references(
+            knowledge_retriever,
+            category=request.category,
+            api_key=settings.image_generation_api_key,
+            max_references=max(1, min(int(os.getenv("VOGUE_HM_IMAGE_REFERENCE_LIMIT", "3")), 3)),
+        )
+    if visual_references and visual_references.get("limitations"):
+        draft_data_limitations = visual_references["limitations"]
+    else:
+        draft_data_limitations = []
     generator = concept_generator or PromptedConceptGenerator(
         enabled=settings.text_generation_enabled,
     )
@@ -753,7 +822,7 @@ def _build_planning_draft_response(
 
     draft_data = asdict(draft)
     draft_data["limitations"] = list(dict.fromkeys((
-        *draft_data.get("limitations", ()), *planning_knowledge.limitations,
+        *draft_data.get("limitations", ()), *planning_knowledge.limitations, *draft_data_limitations,
     )))
     draft_data["title"] = f"{draft.season or '시즌 미정'} {draft.category or '카테고리 미정'} 신제품 기획 초안"
     draft_data["review_status"] = "md_review_required"
@@ -767,7 +836,6 @@ def _build_planning_draft_response(
         image_model = str(payload.get("image_model", "gpt-image-2.5-flare"))
         if image_model not in COMPARISON_IMAGE_MODELS:
             raise ValueError("지원하지 않는 이미지 모델입니다.")
-        settings = load_settings()
         workflow = run_concept_to_image(
             context,
             provider=(OpenAIImageProvider(
@@ -916,12 +984,14 @@ def _build_planning_draft_response(
         "input_statuses": dict(context.input_statuses),
         "draft": draft_data,
         "generation_metadata": generation_metadata,
+        "planning_knowledge_source": planning_knowledge_source,
         "planning_knowledge": _planning_knowledge_payload(planning_knowledge),
         "planning_analysis": _planning_analysis_payload(context, draft),
         "input_evidence": input_evidence,
         "stock_trend_results": [asdict(item) for item in inventory.trend_results],
         "image": image_result,
         "outfit_image": outfit_result,
+        "hm_visual_references": visual_references,
         "planning_board": planning_board_result,
         "validation_issues": [asdict(issue) for issue in issues],
         "evidence_ids": list(context.evidence_ids),
@@ -932,7 +1002,7 @@ def _build_planning_draft_response(
 
 
 def _synthetic_planning_rag_enabled() -> bool:
-    """Synthetic workbench retrieval is opt-in and never selects an external index."""
+    """Synthetic workbench retrieval is opt-in and reads its configured snapshot source."""
     return os.getenv("VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED", "false").strip().casefold() == "true"
 
 

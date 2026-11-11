@@ -4,8 +4,10 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+from email.message import Message
 
 from vogue_npp.prototype.server import (
+    PrototypeHandler,
     _build_planning_board_prompt,
     _build_planning_draft_response,
     _is_hm_kaggle_image,
@@ -15,10 +17,41 @@ from vogue_npp.prototype.server import (
 
 
 class PlanningDraftApiTests(unittest.TestCase):
+    def setUp(self):
+        self._rag_env = patch.dict("os.environ", {"VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED": "false"})
+        self._rag_env.start()
+        self.addCleanup(self._rag_env.stop)
+
     def test_stock_article_id_comes_from_stock_product_or_numeric_sku(self):
         self.assertEqual(_stock_article_id({"article_id": "0999991001", "sku_ids": []}), "0999991001")
         self.assertEqual(_stock_article_id({"sku_ids": ["0999991001"]}), "0999991001")
         self.assertIsNone(_stock_article_id({"sku_ids": ["SYN-SKU-A"]}))
+
+    def test_hm_reference_image_route_validates_id_and_serves_jpeg(self):
+        handler = object.__new__(PrototypeHandler)
+        handler.headers = Message()
+        handler.path = "/api/hm-reference-images/0999991001.jpg"
+        handler.client_address = ("127.0.0.1", 1234)
+        captured = {}
+        handler._send = lambda status, content, content_type: captured.update(
+            status=status, content=content, content_type=content_type,
+        )
+        with patch.dict("os.environ", {"VOGUE_HTTP_MODE": "local"}), patch(
+            "vogue_npp.prototype.server.load_r2_inventory_image",
+            return_value=(b"jpeg-bytes", "image/jpeg"),
+        ) as loader:
+            handler.do_GET()
+        loader.assert_called_once_with("0999991001")
+        self.assertEqual(captured, {"status": 200, "content": b"jpeg-bytes", "content_type": "image/jpeg"})
+        handler.path = "/api/hm-reference-images/../0999991001.jpg"
+        error = {}
+        handler._json = lambda status, payload: error.update(status=status, payload=payload)
+        with patch.dict("os.environ", {"VOGUE_HTTP_MODE": "local"}), patch(
+            "vogue_npp.prototype.server.load_r2_inventory_image"
+        ) as invalid_loader:
+            handler.do_GET()
+        invalid_loader.assert_not_called()
+        self.assertEqual(error["status"], 404)
 
     def test_r2_image_provider_upload_requires_explicit_opt_in(self):
         with patch.dict("os.environ", {}, clear=True):

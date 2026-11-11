@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+import os
+from unittest.mock import patch
 
 from vogue_npp.domain.retrieval import (
     EvidenceRef,
@@ -40,6 +42,11 @@ def fixture_and_policy():
 
 
 class SyntheticPlanningRagFixtureTests(unittest.TestCase):
+    def setUp(self):
+        self._rag_env = patch.dict(os.environ, {"VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED": "false"})
+        self._rag_env.start()
+        self.addCleanup(self._rag_env.stop)
+
     def test_fixture_is_entirely_marked_synthetic_and_has_expected_document_types(self):
         data, _ = fixture_and_policy()
         self.assertTrue(data["synthetic"])

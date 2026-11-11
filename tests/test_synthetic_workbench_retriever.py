@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import json
 from unittest.mock import patch
 
 from vogue_npp.domain.retrieval import RetrievalQuery
@@ -92,10 +93,13 @@ class SyntheticWorkbenchRetrieverTests(unittest.TestCase):
             "trend_result": {"request_id": "synthetic-api-test", "schema_version": "1.0", "status": "no_results"},
             "inventory_product_result": {"request_id": "synthetic-api-test", "schema_version": "1.0", "status": "no_results"},
         }
-        with patch.dict("os.environ", {"VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED": "false"}):
+        with patch.dict("os.environ", {"VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED": "false"}, clear=True):
             disabled = _build_planning_draft_response(payload)
         self.assertFalse(disabled["planning_knowledge"]["synthetic"])
-        with patch.dict("os.environ", {"VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED": "true"}):
+        with patch.dict("os.environ", {
+            "VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED": "true",
+            "VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE": "local",
+        }, clear=True):
             enabled = _build_planning_draft_response(payload)
         self.assertTrue(enabled["planning_knowledge"]["synthetic"])
         self.assertEqual(enabled["planning_knowledge"]["synthetic_dataset_ids"], [self.retriever.dataset_id])
@@ -107,6 +111,29 @@ class SyntheticWorkbenchRetrieverTests(unittest.TestCase):
                              if item["purpose"] == "catalog_comparison")
         self.assertTrue(catalog_trace["allow_synthetic"])
         self.assertEqual(catalog_trace["dataset_id"], self.retriever.dataset_id)
+
+    def test_r2_unavailable_keeps_draft_and_reports_source_error(self):
+        from unittest.mock import patch
+        from vogue_npp.prototype.server import _build_planning_draft_response
+
+        payload = {
+            "request_id": "r2-error-draft",
+            "planning_request": {"request_id": "r2-error-draft", "schema_version": "1.0", "status": "ok", "season": "27SS", "category": "outerwear"},
+            "trend_result": {"request_id": "r2-error-draft", "schema_version": "1.0", "status": "no_results"},
+            "inventory_product_result": {"request_id": "r2-error-draft", "schema_version": "1.0", "status": "no_results"},
+        }
+        with patch.dict("os.environ", {
+            "VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED": "true",
+            "VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE": "r2",
+        }, clear=True), patch(
+            "vogue_npp.sources.r2_synthetic_workbench.R2SyntheticWorkbenchRetriever",
+            side_effect=RuntimeError("secret-like provider detail"),
+        ):
+            response = _build_planning_draft_response(payload)
+        self.assertEqual(response["planning_knowledge_source"]["status"], "unavailable")
+        self.assertEqual(response["planning_knowledge_source"]["source"], "r2")
+        self.assertTrue(response["draft"])
+        self.assertNotIn("secret-like provider detail", json.dumps(response, ensure_ascii=False))
 
 
 if __name__ == "__main__":

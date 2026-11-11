@@ -13,9 +13,10 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET = ROOT / "data/fixtures/synthetic_planning_workbench/dataset.json"
-def load_dataset(path: Path = DEFAULT_DATASET) -> tuple[dict[str, Any], str]:
-    raw = path.read_bytes()
-    data = json.loads(raw)
+
+
+def validate_dataset(data: dict[str, Any]) -> dict[str, Any]:
+    """Validate the synthetic-only workbench contract regardless of its storage backend."""
     if not isinstance(data, dict) or data.get("data_nature") != "synthetic_only":
         raise ValueError("This workbench accepts datasets marked data_nature=synthetic_only only.")
     if not str(data.get("dataset_id", "")).startswith("SYNTHETIC-") or data.get("is_synthetic") is not True:
@@ -32,6 +33,12 @@ def load_dataset(path: Path = DEFAULT_DATASET) -> tuple[dict[str, Any], str]:
                 raise ValueError(f"Every {collection} row must carry the matching synthetic dataset marker.")
             if not row.get("synthetic_notice") or not row.get("generator_version") or row.get("seed") != data.get("seed"):
                 raise ValueError(f"Every {collection} row must carry synthetic provenance metadata.")
+    return data
+
+
+def load_dataset(path: Path = DEFAULT_DATASET) -> tuple[dict[str, Any], str]:
+    raw = path.read_bytes()
+    data = validate_dataset(json.loads(raw))
     return data, hashlib.sha256(raw).hexdigest()
 
 

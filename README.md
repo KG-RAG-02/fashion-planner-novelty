@@ -46,7 +46,9 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 
 ## 합성 상품기획 workbench
 
-사내 카탈로그·기획 문서가 확보되기 전 개발·검증에 사용할 완전 합성 데이터와 로컬 탐색 CLI를 제공합니다. 이는 실제 회사 자료나 시장 사실이 아니며 기본 API/RAG에 자동 연결되지 않습니다.
+사내 카탈로그·기획 문서가 확보되기 전 개발·검증에 사용할 완전 합성 데이터와 로컬 탐색 CLI를 제공합니다. 이는 실제 회사 자료나 시장 사실이 아닙니다. `VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED=true`이면 `/api/planning-draft`는 기본적으로 versioned R2 DuckDB의 `synthetic_*` 테이블을 읽기 전용으로 검색합니다. R2 DB 캐시는 ETag별 `data/local/r2_planning_db`에 둡니다. `VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE=local`을 지정하면 JSON fixture를 사용할 수 있습니다.
+
+활성 R2 source에서는 요청 카테고리와 맞는 H&M Kaggle 상품 사진을 최대 3장 가져와, 허용 설정이 켜진 경우 시각 분석을 수행합니다. 관찰은 합성 내부 근거와 분리된 `hm_visual_references` 응답으로 반환되며 제품 소재·가격·수요를 추정하지 않습니다. 상세 설정과 검증 상태는 [R2 cloud planning RAG 설계](docs/design/r2-cloud-planning-rag.md)를 참고하세요.
 
 ```bash
 python3 scripts/generate_synthetic_planning_workbench.py --seed 20261110
@@ -63,7 +65,9 @@ PYTHONPATH=src python3 -m vogue_npp.synthetic_planning_workbench draft SYN-REQ-P
 - `domain/trend_batch.py`, `domain/trend_evaluator.py`: 트렌드 배치 검증과 Trend × Category 평가
 - `domain/candidates.py`, `workflows/trend_planning.py`: 상품기획 후보·기획 브리프·점수 설정·다양성 선택
 - `domain/retrieval.py`, `workflows/planning_retrieval.py`: 목적·source allowlist 기반 기획 검색, Query Plan 추적, Evidence 권한 필터
-- `sources/synthetic_corpus_retriever.py`, `sources/hybrid_retriever.py`: 명시 호출형 합성 corpus 검색 및 backend-neutral RRF 병합기. 실제 BM25/vector 인덱스 adapter는 미구성
+- `sources/r2_synthetic_workbench.py`, `sources/synthetic_workbench_retriever.py`: R2 DuckDB 버전 캐시와 synthetic Evidence 검색
+- `sources/r2_product_images.py`, `sources/hm_visual_references.py`: 선택 H&M 사진의 R2 수신과 제한된 시각 분석
+- `sources/synthetic_corpus_retriever.py`, `sources/hybrid_retriever.py`: fixture corpus 검색 및 backend-neutral RRF 병합기. 실제 BM25/vector 인덱스 adapter는 미구성
 - `workflows/image_generation.py`: opt-in 시안 생성
 - `prototype/server.py`: Project_08 및 API 클라이언트용 HTTP adapter. `/api/planning-draft`는 내부 입력 모델에 맞춘 API이며 공용 wire contract가 아닙니다.
 
