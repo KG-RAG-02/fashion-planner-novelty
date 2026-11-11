@@ -32,9 +32,11 @@ from ..domain.retrieval import KnowledgeRetriever, RetrievalSourcePolicy
 from ..settings import load_settings
 from ..workflows.image_generation import (
     DEFAULT_IMAGE_DIR, DEFAULT_IMAGE_MODEL, OpenAIImageEditProvider,
+    build_outfit_image_prompt, fetch_inventory_image, selected_outfit_inventory,
     OpenAIImageProvider, run_concept_to_image,
 )
 from ..workflows.planning_retrieval import retrieve_planning_knowledge
+from ..workflows.planning_board import build_planning_board, render_planning_board_svg
 from ..workflows.text_concept_generation import PromptedConceptGenerator
 
 
@@ -432,6 +434,12 @@ def _build_planning_draft_response(
             for key in ("season", "category", "target_customer")
             if raw_context.get(key, request_payload.get(key)) is not None
         } | request_payload.get("field_origins", {}),
+        field_evidence_ids={
+            key: tuple((raw_context.get(key, request_payload.get(key)) or {}).get("evidence_ids", ()))
+            for key in ("season", "category", "target_customer")
+            if isinstance(raw_context.get(key, request_payload.get(key)), dict)
+            and (raw_context.get(key, request_payload.get(key)) or {}).get("evidence_ids")
+        },
     )
     def normalize_trend_candidates(data: dict) -> tuple[TrendCandidate, ...]:
         candidates = data.get("trend_candidates", data.get("candidates"))
@@ -518,6 +526,12 @@ def _build_planning_draft_response(
             "note": item.get("note", item.get("reason")),
             "note_origin": "unknown",
             "source_product_index": source_index,
+            "image_url": (
+                item.get("image", {}).get("url")
+                if isinstance(item.get("image"), dict)
+                and isinstance(item.get("image", {}).get("url"), str)
+                else None
+            ),
         }
         return InventoryProduct(**allowed)
 
@@ -689,8 +703,12 @@ def _build_planning_draft_response(
     draft_data["title"] = f"{draft.season or '시즌 미정'} {draft.category or '카테고리 미정'} 신제품 기획 초안"
     draft_data["review_status"] = "md_review_required"
     image_result = None
+    outfit_result = None
     planning_board_result = None
-    if payload.get("generate_image") is True:
+    # The integration contract always requests both image stages. Runtime image
+    # provider activation remains controlled by server settings.
+    generate_image_requested = True
+    if generate_image_requested:
         image_model = str(payload.get("image_model", "gpt-image-2.5-flare"))
         if image_model not in COMPARISON_IMAGE_MODELS:
             raise ValueError("지원하지 않는 이미지 모델입니다.")
@@ -711,59 +729,114 @@ def _build_planning_draft_response(
             "model": workflow.image.model or image_model,
             "image_url": f"/api/generated-images/{image_name}" if image_name else None,
             "evidence_ids": list(workflow.image.request.evidence_ids),
+            "evidence_uses": [asdict(item) for item in workflow.image.request.evidence_uses],
+            "excluded_evidence": [asdict(item) for item in workflow.image.request.excluded_evidence],
             "limitations": list(workflow.image.limitations),
             "error_code": workflow.image.error_code,
             "review_only": workflow.image.review_only,
         }
-        if payload.get("generate_planning_board") is True:
-            board_model = str(payload.get("planning_board_model", "gpt-image-2.5-sunburst"))
-            if board_model not in COMPARISON_IMAGE_MODELS:
-                raise ValueError("지원하지 않는 기획안 보드 이미지 모델입니다.")
-            if workflow.image.status != "generated" or not image_path or not image_path.is_file():
-                planning_board_result = {
-                    "status": "blocked",
-                    "model": board_model,
-                    "image_url": None,
-                    "limitations": ("신제품 예시 이미지가 생성되지 않아 기획안 보드 생성을 건너뛰었습니다.",),
+        outfit_prompt = build_outfit_image_prompt(context)
+        outfit_result = None
+        if outfit_prompt and workflow.image.status == "generated" and image_path and image_path.is_file():
+            try:
+                selected_products = selected_outfit_inventory(context)
+                references = [(image_path.read_bytes(), "image/png")]
+                image_sources = []
+                image_fetch_errors = []
+                for product in selected_products[:3]:
+                    if not product.image_url:
+                        image_fetch_errors.append("INVENTORY_IMAGE_MISSING")
+                        image_sources.append({
+                            "style_id": product.style_id,
+                            "source_product_index": product.source_product_index,
+                            "status": "missing",
+                            "error_code": "INVENTORY_IMAGE_MISSING",
+                        })
+                        continue
+                    try:
+                        image_bytes, image_mime = fetch_inventory_image(product.image_url)
+                        references.append((image_bytes, image_mime))
+                        image_sources.append({
+                            "style_id": product.style_id,
+                            "source_product_index": product.source_product_index,
+                            "status": "loaded",
+                            "mime_type": image_mime,
+                        })
+                    except Exception as image_exc:
+                        image_fetch_errors.append(getattr(image_exc, "code", "INVENTORY_IMAGE_UNAVAILABLE"))
+                        image_sources.append({
+                            "style_id": product.style_id,
+                            "source_product_index": product.source_product_index,
+                            "status": "unavailable",
+                            "error_code": getattr(image_exc, "code", "INVENTORY_IMAGE_UNAVAILABLE"),
+                        })
+                outfit_generated = OpenAIImageEditProvider(
+                    api_key=settings.image_generation_api_key or "",
+                    model=image_model,
+                ).generate_from_reference(
+                    outfit_prompt,
+                    tuple(references),
+                    mime_type="image/png",
+                )
+                outfit_name = f"{image_path.stem}-outfit.png"
+                outfit_path = GENERATED_IMAGE_ROOT / outfit_name
+                outfit_path.parent.mkdir(parents=True, exist_ok=True)
+                outfit_path.write_bytes(outfit_generated.image_bytes)
+                outfit_result = {
+                    "status": "generated", "model": outfit_generated.model,
+                    "image_url": f"/api/generated-images/{outfit_name}",
+                    "reference_image_url": image_result["image_url"],
+                    "prompt": outfit_prompt,
+                    "inventory_image_sources": image_sources,
+                    "inventory_image_errors": list(dict.fromkeys(image_fetch_errors)),
+                    "limitations": ["재고 아이템을 이용한 검토용 착장 시안이며 실제 재고 상태나 착장 선호를 보증하지 않습니다."],
+                    "review_only": True,
                 }
-            else:
-                try:
-                    board_prompt = _build_planning_board_prompt(context, draft, image_path)
-                    board_generated = OpenAIImageEditProvider(
-                        api_key=settings.image_generation_api_key or "",
-                        model=board_model,
-                    ).generate_from_reference(
-                        board_prompt,
-                        image_path.read_bytes(),
-                        mime_type="image/png",
-                        size="1536x1024",
-                    )
-                    board_name = f"{image_path.stem}-planning-board.png"
-                    board_path = GENERATED_IMAGE_ROOT / board_name
-                    board_path.parent.mkdir(parents=True, exist_ok=True)
-                    board_path.write_bytes(board_generated.image_bytes)
-                    planning_board_result = {
-                        "status": "generated",
-                        "model": board_generated.model,
-                        "image_url": f"/api/generated-images/{board_name}",
-                        "reference_image_url": image_result["image_url"],
-                        "evidence_ids": list(dict.fromkeys((
-                            *context.evidence_ids,
-                            *(item.evidence_id for item in planning_knowledge.evidence),
-                        ))),
-                        "limitations": ["별도 이미지 모델이 만든 시각 요약 보드이며 텍스트 기획서와 MD 검토를 대체하지 않습니다."],
-                        "review_only": True,
-                    }
-                except Exception as exc:
-                    error_code = getattr(exc, "code", "PLANNING_BOARD_GENERATION_FAILED")
-                    planning_board_result = {
-                        "status": "failed",
-                        "model": board_model,
-                        "image_url": None,
-                        "error_code": error_code,
-                        "limitations": ["기획안 보드 이미지 생성에 실패했습니다. 신제품 이미지와 텍스트 초안은 유지됩니다."],
-                        "review_only": True,
-                    }
+            except Exception as exc:
+                outfit_result = {
+                    "status": "failed", "model": image_model,
+                    "error_code": getattr(exc, "code", "OUTFIT_IMAGE_GENERATION_FAILED"),
+                    "limitations": ["착장 이미지 생성에 실패했으며 신제품 이미지는 유지됩니다."],
+                    "review_only": True,
+                }
+        elif outfit_prompt:
+            outfit_result = {
+                "status": "blocked", "image_url": None,
+                "limitations": ["신제품 이미지가 생성되지 않아 착장 이미지 생성을 건너뛰었습니다."],
+                "review_only": True,
+            }
+        if workflow.image.status != "generated" or not image_path or not image_path.is_file():
+            planning_board_result = {
+                "status": "blocked",
+                "image_url": None,
+                "limitations": ("신제품 예시 이미지가 생성되지 않아 기획안 보드 생성을 건너뛰었습니다.",),
+            }
+        else:
+            try:
+                board = build_planning_board(context, draft)
+                board_name = f"{image_path.stem}-planning-board.svg"
+                board_path = GENERATED_IMAGE_ROOT / board_name
+                board_path.parent.mkdir(parents=True, exist_ok=True)
+                board_path.write_bytes(render_planning_board_svg(board, image_path))
+                planning_board_result = {
+                    "status": "generated",
+                    "renderer": "deterministic-svg-v1",
+                    "image_url": f"/api/generated-images/{board_name}",
+                    "reference_image_url": image_result["image_url"],
+                    "sections": [asdict(section) for section in board.sections],
+                    "evidence_ids": list(board.evidence_ids),
+                    "limitations": list(board.limitations),
+                    "review_only": True,
+                }
+            except Exception as exc:
+                error_code = getattr(exc, "code", "PLANNING_BOARD_GENERATION_FAILED")
+                planning_board_result = {
+                    "status": "failed",
+                    "image_url": None,
+                    "error_code": error_code,
+                    "limitations": ["기획안 보드 생성에 실패했습니다. 신제품 이미지와 텍스트 초안은 유지됩니다."],
+                    "review_only": True,
+                }
     return {
         "status": "partial" if context.limitations or context.conflicts or context.input_statuses.get("sales_market_result") != "ok" else "ok",
         "request_id": context.request_id,
@@ -774,6 +847,7 @@ def _build_planning_draft_response(
         "input_evidence": input_evidence,
         "stock_trend_results": [asdict(item) for item in inventory.trend_results],
         "image": image_result,
+        "outfit_image": outfit_result,
         "planning_board": planning_board_result,
         "validation_issues": [asdict(issue) for issue in issues],
         "evidence_ids": list(context.evidence_ids),

@@ -1,11 +1,48 @@
 import json
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from vogue_npp.prototype.server import _build_planning_board_prompt, _build_planning_draft_response
 
 
 class PlanningDraftApiTests(unittest.TestCase):
+    def test_images_are_requested_even_without_true_flags(self):
+        payload = {
+            "request_id": "board-auto-1",
+            "planning_request": {"request_id": "board-auto-1", "season": "27SS", "category": "outerwear"},
+            "trend_result": {"request_id": "board-auto-1", "status": "no_results", "candidates": []},
+            "inventory_product_result": {"request_id": "board-auto-1", "status": "no_results", "products": []},
+            "generate_image": False,
+            "generate_planning_board": False,
+        }
+        fake_settings = SimpleNamespace(
+            text_generation_enabled=False,
+            image_generation_enabled=True,
+            image_generation_api_key="test-key",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            product_image = root / "product.png"
+            product_image.write_bytes(b"test-png")
+            fake_workflow = SimpleNamespace(image=SimpleNamespace(
+                status="generated", model="fake-model", image_path=str(product_image),
+                request=SimpleNamespace(evidence_ids=(), evidence_uses=(), excluded_evidence=()),
+                limitations=(), error_code=None, review_only=True,
+            ))
+            with patch("vogue_npp.prototype.server.load_settings", return_value=fake_settings), \
+                 patch("vogue_npp.prototype.server.run_concept_to_image", return_value=fake_workflow), \
+                 patch("vogue_npp.prototype.server.GENERATED_IMAGE_ROOT", root / "generated"):
+                response = _build_planning_draft_response(payload)
+            self.assertEqual(response["image"]["status"], "generated")
+            self.assertEqual(response["planning_board"]["status"], "generated")
+            self.assertTrue(response["planning_board"]["image_url"].endswith(".svg"))
+            board_path = root / "generated" / Path(response["planning_board"]["image_url"]).name
+            self.assertIn(b"deterministic", response["planning_board"]["renderer"].encode())
+            self.assertTrue(board_path.is_file())
+
     def test_builds_draft_from_all_four_inputs_and_preserves_zero_and_evidence(self):
         payload = {
             "request_id": "draft-1",

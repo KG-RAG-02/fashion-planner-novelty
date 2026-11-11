@@ -19,9 +19,10 @@ from vogue_npp import (
     run_concept_to_image,
 )
 from vogue_npp.domain.context import InventoryProductResult, TrendResult
+from vogue_npp.domain.generator import RuleBasedConceptGenerator
 from vogue_npp.domain.prompt_safety import serialize_untrusted_prompt_data
 from vogue_npp.workflows.image_generation import (
-    OpenAIImageEditProvider, OpenAIImageProvider,
+    OpenAIImageEditProvider, OpenAIImageProvider, build_image_generation_request,
 )
 from vogue_npp.domain.concept import validate_concept_draft
 
@@ -140,7 +141,48 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         self.assertIn("근거 ID가 없는 트렌드명", " ".join(result.image.request.limitations))
         self.assertNotIn("소재=", result.image.request.prompt)
 
-    def test_category_conflict_blocks_generation_but_retains_prompt(self) -> None:
+    def test_opaque_sales_market_payload_and_evidence_are_excluded_from_product_image(self) -> None:
+        context = make_context()
+        context = replace(context, sales_market_result={
+            "agent_id": "sales-market-agent", "status": "partial",
+            "summary": "PRIVATE_MARKET_SUMMARY", "analysis_scope": "PRIVATE_SCOPE",
+            "findings": [{"text": "PRIVATE_FINDING", "evidence_ids": ["market:E-1"]}],
+            "evidence": [{"evidence_id": "market:E-2"}],
+        }, input_statuses={**context.input_statuses, "sales_market_result": "partial"},
+           evidence_ids=(*context.evidence_ids, "market:E-1", "market:E-2"))
+        draft, _ = RuleBasedConceptGenerator().generate(context)
+        request = build_image_generation_request(context, draft)
+        for private_value in ("PRIVATE_MARKET_SUMMARY", "PRIVATE_SCOPE", "PRIVATE_FINDING", "market:E-1", "market:E-2"):
+            self.assertNotIn(private_value, request.prompt)
+            self.assertNotIn(private_value, request.evidence_ids)
+        self.assertEqual({item.evidence_id for item in request.excluded_evidence if item.source == "sales_market_result"},
+                         {"market:E-1", "market:E-2"})
+
+    def test_only_claim_linked_request_and_compatible_trend_evidence_are_used(self) -> None:
+        context = make_context()
+        request = replace(context.request, requested_attributes=(
+            AttributeSignal("color", "forest green", "user_requested", ("request:color",)),
+        ))
+        mismatched_candidate = replace(
+            context.trends.candidates[0], category="denim", evidence_ids=("trend:wrong-scope",),
+            attributes=(AttributeSignal("pattern", "wrong pattern", "evidence_observation", ("trend:wrong-scope",)),),
+        )
+        context = replace(
+            context, request=request,
+            trends=replace(context.trends, candidates=(mismatched_candidate,)),
+            evidence_ids=(*context.evidence_ids, "request:color", "trend:wrong-scope"),
+        )
+        draft, _ = RuleBasedConceptGenerator().generate(context)
+        image_request = build_image_generation_request(context, draft)
+        self.assertIn("request:color", image_request.evidence_ids)
+        self.assertNotIn("trend:wrong-scope", image_request.evidence_ids)
+        self.assertNotIn("wrong pattern", image_request.prompt)
+        self.assertTrue(any(item.evidence_id == "trend:wrong-scope" and "범위" in item.reason
+                            for item in image_request.excluded_evidence))
+        self.assertTrue(any(item.evidence_id == "request:color" and item.supports == "color=forest green"
+                            for item in image_request.evidence_uses))
+
+    def test_inventory_category_does_not_block_or_enter_product_generation(self) -> None:
         provider = FakeImageProvider()
         result = run_concept_to_image(
             make_context(inventory_category="denim"),
@@ -148,10 +190,10 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
             image_generation_enabled=True,
             confirm_image_generation=True,
         )
-        self.assertEqual(result.image.status, "blocked")
-        self.assertTrue(result.image.request.conflicts)
-        self.assertEqual(provider.calls, 0)
-        self.assertIn("해결되지 않은 입력 충돌", result.image.request.prompt)
+        self.assertEqual(result.image.status, "generated")
+        self.assertFalse(result.image.request.conflicts)
+        self.assertEqual(provider.calls, 1)
+        self.assertNotIn("denim", result.image.request.prompt)
 
     def test_complementary_bottom_stock_is_pairing_context_not_category_conflict(self) -> None:
         context = make_context(
@@ -174,9 +216,8 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         self.assertFalse(pairing_claim.evidence_ids)
         self.assertIn("청바지가 많이 남는다", pairing_claim.value or "")
         self.assertIn("미확인 정보", pairing_claim.value or "")
-        self.assertIn("요청 신상품: outdoor 상의", result.image.request.prompt)
-        self.assertIn("함께 코디할 재고 맥락: 청바지 (하의)", result.image.request.prompt)
-        self.assertIn("재고 소진·매출 효과의 증거가 아님", result.image.request.prompt)
+        self.assertNotIn("청바지", result.image.request.prompt)
+        self.assertFalse(result.image.request.styling_relationships)
         self.assertNotIn("카테고리 불일치", result.image.request.prompt)
 
     def test_freeform_jeans_note_maps_to_bottom_role_without_fabricating_category_or_stock(self) -> None:
@@ -192,8 +233,7 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         self.assertIsNone(product.quantity)
         self.assertIsNone(product.as_of)
         self.assertFalse(product.evidence_ids)
-        self.assertIn("청바지 (하의)", result.image.request.prompt)
-        self.assertIn("수량, 기준일 및 실제 재고 상태를 추정하지 않음", result.image.request.prompt)
+        self.assertNotIn("청바지", result.image.request.prompt)
 
     def test_evidenced_companion_stock_facts_stay_separate_from_new_top_attributes(self) -> None:
         context = make_context(
@@ -215,8 +255,9 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         self.assertIn("코디 맥락의 재고 상품 속성: color=dark indigo", " ".join(
             claim.value or "" for claim in result.draft.relation_to_own_products
         ))
-        self.assertIn("inventory:E-2", result.image.request.evidence_ids)
-        self.assertIn("재고 상품의 관찰 속성 (상의 속성이 아님): color=dark indigo", result.image.request.prompt)
+        self.assertNotIn("inventory:E-1", result.image.request.evidence_ids)
+        self.assertNotIn("inventory:E-2", result.image.request.evidence_ids)
+        self.assertNotIn("dark indigo", result.image.request.prompt)
 
     def test_fake_provider_generates_only_after_two_opt_ins_and_persists_link(self) -> None:
         provider = FakeImageProvider()
@@ -246,7 +287,7 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
             self.assertEqual(result.image.model, "fake-model-v1")
             self.assertTrue(result.image.review_only)
             self.assertFalse(result.image.request.conflicts)
-            self.assertIn("청바지가 많이 남는다", provider.request.prompt)
+            self.assertNotIn("청바지가 많이 남는다", provider.request.prompt)
 
     def test_openai_adapter_decodes_image_without_real_network_call(self) -> None:
         from vogue_npp.workflows.image_generation import build_image_generation_request
@@ -294,6 +335,26 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         self.assertEqual(body["model"], "gpt-image-2.5-sunburst")
         self.assertIn(base64.b64encode(reference).decode("ascii"), body["images"][0]["image_url"])
         self.assertEqual(body["prompt"], "Make a planning board")
+
+    def test_openai_edit_adapter_accepts_product_and_inventory_references(self) -> None:
+        response = {"data": [{"b64_json": base64.b64encode(b"outfit-png").decode("ascii")}]}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_args):
+                return False
+            def read(self):
+                return json.dumps(response).encode("utf-8")
+
+        with patch("urllib.request.urlopen", return_value=FakeResponse()) as open_url:
+            OpenAIImageEditProvider(api_key="secret-test-key").generate_from_reference(
+                "Create outfit", ((b"product-png", "image/png"), (b"stock-jpg", "image/jpeg")),
+            )
+        body = json.loads(open_url.call_args.args[0].data)
+        self.assertEqual(len(body["images"]), 2)
+        self.assertTrue(body["images"][0]["image_url"].startswith("data:image/png;base64,"))
+        self.assertTrue(body["images"][1]["image_url"].startswith("data:image/jpeg;base64,"))
 
 if __name__ == "__main__":
     unittest.main()

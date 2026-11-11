@@ -5,8 +5,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import re
 import ssl
+import ipaddress
+import socket
 import urllib.error
 import urllib.request
 import uuid
@@ -20,7 +23,7 @@ from ..domain.generator import RuleBasedConceptGenerator
 from ..domain.analysis import dimension_mismatches
 from ..domain.prompt_safety import serialize_untrusted_prompt_data
 from ..domain.prompt_registry import load_prompt, prompt_version_id, render_prompt
-from ..domain.styling import StylingRelationship, display_inventory_label
+from ..domain.styling import StylingRelationship
 
 
 ImageStatus = Literal["not_requested", "ready", "generated", "blocked", "failed"]
@@ -50,6 +53,23 @@ class ImageGenerationRequest:
     styling_relationships: tuple[StylingRelationship, ...] = ()
     system_prompt: str = IMAGE_DESIGNER_SYSTEM_PROMPT
     purpose: str = "MD/디자이너 검토용 상품 콘셉트 시안"
+    evidence_uses: tuple["ImageEvidenceUse", ...] = ()
+    excluded_evidence: tuple["ImageEvidenceExclusion", ...] = ()
+
+
+@dataclass(frozen=True)
+class ImageEvidenceUse:
+    evidence_id: str
+    source: str
+    source_ref: str
+    supports: str
+
+
+@dataclass(frozen=True)
+class ImageEvidenceExclusion:
+    evidence_id: str
+    source: str
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -90,271 +110,209 @@ def build_image_generation_request(
     context: ProductPlanningContext,
     draft: ProductConceptDraft,
 ) -> ImageGenerationRequest:
-    """Build a prompt that separates user scope, evidence, and visual proposals."""
-    evidence: list[str] = []
-    used_evidence_ids: list[str] = []
+    """Build a product-only prompt and an auditable Evidence allowlist."""
+    known_ids = set(context.evidence_ids)
+    if context.planning_knowledge:
+        known_ids.update(item.evidence_id for item in context.planning_knowledge.evidence if item.evidence_id)
+    used_ids: list[str] = []
+    evidence_uses: list[ImageEvidenceUse] = []
+    excluded: list[ImageEvidenceExclusion] = []
     user_scope: list[str] = []
-    proposals: list[str] = []
-    for attribute in draft.attributes:
-        if attribute.value is None:
-            continue
-        if attribute.name.strip().casefold() not in _DESIGN_ATTRIBUTE_NAMES:
-            continue
-        item = f"{attribute.name}={attribute.value}"
-        if attribute.kind == "evidence_observation" and attribute.evidence_ids:
-            ids = ", ".join(attribute.evidence_ids)
-            evidence.append(f"- {item} [Evidence: {ids}]")
-            used_evidence_ids.extend(attribute.evidence_ids)
-        elif attribute.kind == "user_requested":
-            user_scope.append(f"- {item} (사용자가 지정한 조건)")
-        elif attribute.kind in {"proposal", "hypothesis", "to_validate", "interpretation"}:
-            proposals.append(f"- {item} (확정 사실이 아닌 시각화 제안/가설)")
+    evidence_lines: list[str] = []
+    proposal_lines: list[str] = []
+    unverified_trends: list[str] = []
+    request_usable = context.input_statuses.get("planning_request") in {"ok", "partial"}
+    trend_usable = context.input_statuses.get("trend_result") in {"ok", "partial"}
 
-    trend_terms = [candidate.name.strip() for candidate in context.trends.candidates if candidate.name.strip()]
-    trend_input_usable = context.input_statuses.get("trend_result") in {"ok", "partial"}
-    request_input_usable = context.input_statuses.get("planning_request") in {"ok", "partial"}
-    usable_candidates = tuple(
-        candidate for candidate in context.trends.candidates
-        if trend_input_usable and request_input_usable and candidate.name.strip()
-        and candidate.evidence_ids and not dimension_mismatches(context.request, candidate)
-    )
-    verified_trends = [candidate.name.strip() for candidate in usable_candidates]
-    unverified_trends = [name for name in trend_terms if name not in verified_trends]
-    if context.request.original_query:
-        user_scope.insert(0, f"- 원문 요청: {context.request.original_query}")
-    if context.request.result.evidence_ids:
-        user_scope.append(
-            "- 요청 조건 출처 Evidence: " + ", ".join(context.request.result.evidence_ids)
-        )
-        used_evidence_ids.extend(context.request.result.evidence_ids)
-    if context.request.season:
+    def use_ids(ids, *, source: str, source_ref: str, supports: str) -> tuple[str, ...]:
+        accepted = []
+        for evidence_id in dict.fromkeys(ids):
+            if evidence_id in known_ids:
+                accepted.append(evidence_id)
+                used_ids.append(evidence_id)
+                evidence_uses.append(ImageEvidenceUse(evidence_id, source, source_ref, supports))
+            else:
+                excluded.append(ImageEvidenceExclusion(
+                    str(evidence_id), source, "입력 전체 Evidence 목록에 등록되지 않은 ID",
+                ))
+        return tuple(accepted)
+
+    def exclude_ids(ids, *, source: str, reason: str) -> None:
+        for evidence_id in dict.fromkeys(ids):
+            excluded.append(ImageEvidenceExclusion(str(evidence_id), source, reason))
+
+    def design_name(name: str) -> bool:
+        return name.strip().casefold() in _DESIGN_ATTRIBUTE_NAMES
+
+    if context.request.original_query and request_usable:
+        user_scope.append(f"- 원문 요청: {context.request.original_query}")
+    if context.request.season and request_usable:
         origin = context.request.field_origins.get("season", "unknown")
         user_scope.append(f"- 시즌: {context.request.season} (출처: {origin})")
-    if context.request.category:
+        ids = use_ids(context.request.field_evidence_ids.get("season", ()), source="planning_request",
+                      source_ref="season", supports=f"시즌 {context.request.season}")
+        if ids:
+            user_scope.append("  [Evidence: " + ", ".join(ids) + "]")
+    if context.request.category and request_usable:
         origin = context.request.field_origins.get("category", "unknown")
         user_scope.append(f"- 카테고리: {context.request.category} (출처: {origin})")
-    if verified_trends:
-        evidence.append("- 근거 연결 트렌드명: " + ", ".join(dict.fromkeys(verified_trends)))
-        used_evidence_ids.extend(evidence_id for candidate in usable_candidates for evidence_id in candidate.evidence_ids)
-
-    inventory_context: list[str] = []
-    inventory_result = context.inventory.result
-    if context.input_statuses.get("inventory_product_result") in {"ok", "partial"}:
-        inventory_context.append(
-            f"상품·재고 입력 상태: {inventory_result.status}; agent: {inventory_result.agent_id}"
-        )
-        for product in context.inventory.products:
-            refs = tuple(product.evidence_ids)
-            label = product.style_id or display_inventory_label(product)
-            facts = [f"상품={label}"]
-            if product.category:
-                facts.append(f"카테고리={product.category}")
-            if product.quantity is not None:
-                facts.append(f"재고={product.quantity} {product.unit or '(단위 미상)'}")
-            if product.inventory_definition:
-                facts.append(f"재고 정의={product.inventory_definition}")
-            if product.as_of:
-                facts.append(f"기준 시점={product.as_of}")
-            inventory_context.append(
-                "- 기존 상품 기록: " + "; ".join(facts)
-                + f" [Evidence: {', '.join(refs) if refs else '제품별 Evidence 미연결'}]"
-            )
-            used_evidence_ids.extend(refs)
-            for signal in product.attributes:
-                if signal.value is None:
-                    continue
-                if signal.evidence_ids:
-                    inventory_context.append(
-                        f"  - 기존 상품 관찰 속성: {signal.name}={signal.value} "
-                        f"[Evidence: {', '.join(signal.evidence_ids)}]"
-                    )
-                    used_evidence_ids.extend(signal.evidence_ids)
-                else:
-                    inventory_context.append(
-                        f"  - 기존 상품 전달 속성(필드별 Evidence 미연결): {signal.name}={signal.value}; "
-                        "신상품 디자인 근거로 사용하지 않음"
-                    )
-        if inventory_result.evidence_ids:
-            inventory_context.append(
-                "- 상품·재고 결과 수준 Evidence (개별 상품/속성 연결은 확인 필요): "
-                + ", ".join(inventory_result.evidence_ids)
-            )
-            used_evidence_ids.extend(inventory_result.evidence_ids)
-
-    market_context: list[str] = []
-    sales = context.sales_market_result
-    if sales:
-        market_status = context.input_statuses.get("sales_market_result", "unknown")
-        market_usable = market_status in {"ok", "partial"}
-        market_context.append(
-            f"판매·시장 입력 상태: {market_status}; "
-            f"agent: {sales.get('agent_id', '미제공')}"
-        )
-        if market_usable:
-            scope = sales.get("analysis_scope", sales.get("scope"))
-            if scope is not None:
-                market_context.append(
-                    "- 분석 범위: " + str(scope if isinstance(scope, str) else json.dumps(scope, ensure_ascii=False, sort_keys=True))
-                )
-            if sales.get("summary"):
-                market_context.append(f"- 상위 분석 요약: {sales['summary']}")
-
-        def add_market_findings(value, path: str = "") -> None:
-            if not market_usable:
-                return
-            if isinstance(value, dict):
-                for key, child in value.items():
-                    if key in {"findings", "observations"} and isinstance(child, (list, tuple)):
-                        for finding in child:
-                            if not isinstance(finding, dict):
-                                continue
-                            statement = finding.get("statement") or finding.get("text") or finding.get("summary")
-                            if statement is None and finding.get("measure") is not None:
-                                statement = f"{finding.get('measure')}={finding.get('value')} {finding.get('unit', '')}".strip()
-                            if not statement:
-                                continue
-                            refs = tuple(finding.get("evidence_ids", ()))
-                            metrics = []
-                            if finding.get("measure") is not None:
-                                metrics.append(str(finding["measure"]))
-                            if finding.get("value") is not None:
-                                metrics.append(f"값={finding['value']} {finding.get('unit', '')}".strip())
-                            metric_text = f"; {'; '.join(metrics)}" if metrics else ""
-                            market_context.append(
-                                f"- 상위 분석 관측 ({path or key}): {statement}{metric_text} "
-                                f"[Evidence: {', '.join(refs) if refs else '항목별 Evidence 미연결'}]"
-                            )
-                            used_evidence_ids.extend(refs)
-                    else:
-                        add_market_findings(child, f"{path}.{key}".strip("."))
-            elif isinstance(value, (list, tuple)):
-                for child in value:
-                    add_market_findings(child, path)
-
-        add_market_findings(sales)
-        if sales.get("limitations"):
-            market_context.extend(f"- 상위 분석 제한사항: {item}" for item in sales["limitations"])
-        def collect_market_ids(value) -> tuple[str, ...]:
-            found: list[str] = []
-            if isinstance(value, dict):
-                for key, child in value.items():
-                    if key == "evidence_id" and isinstance(child, str):
-                        found.append(child)
-                    elif key in {"evidence_ids", "input_evidence_ids"}:
-                        if isinstance(child, str):
-                            found.append(child)
-                        elif isinstance(child, (list, tuple)):
-                            found.extend(str(item) for item in child if item)
-                    else:
-                        found.extend(collect_market_ids(child))
-            elif isinstance(value, (list, tuple)):
-                for child in value:
-                    found.extend(collect_market_ids(child))
-            return tuple(dict.fromkeys(found))
-
-        sales_result_ids = collect_market_ids(sales) if market_usable else ()
-        if sales_result_ids:
-            market_context.append(
-                "- 판매·시장 결과 수준 Evidence (개별 finding 연결은 입력 상태에서 확인): "
-                + ", ".join(sales_result_ids)
-            )
-            used_evidence_ids.extend(sales_result_ids)
-
-    styling_sections: list[str] = []
-    for relation in context.styling_relationships:
-        if relation.inventory_product_index >= len(context.inventory.products):
+        ids = use_ids(context.request.field_evidence_ids.get("category", ()), source="planning_request",
+                      source_ref="category", supports=f"카테고리 {context.request.category}")
+        if ids:
+            user_scope.append("  [Evidence: " + ", ".join(ids) + "]")
+    for signal in context.request.requested_attributes if request_usable else ():
+        if signal.value is None or not design_name(signal.name):
             continue
-        product = context.inventory.products[relation.inventory_product_index]
-        target_role = "상의" if relation.requested_role == "upper_body" else "하의"
-        companion_role = "상의" if relation.inventory_role == "upper_body" else "하의"
-        item_label = display_inventory_label(product)
-        lines = [
-            f"- 요청 신상품: {context.request.category or '미분류'} {target_role}",
-            f"- 함께 코디할 재고 맥락: {item_label} ({companion_role})",
-            f"- 연결 방식: {relation.rule_version} ({relation.request_role_source}; {relation.inventory_role_source})",
-            "- 이 코디 관계는 분류 규칙 기반 제안이며 구매 선호·재고 소진·매출 효과의 증거가 아님",
-        ]
-        if product.note:
-            lines.append(
-                f"- 사용자 제공 미확인 재고 메모: ‘{product.note}’; 수량, 기준일 및 실제 재고 상태를 추정하지 않음"
-            )
-        if relation.inventory_evidence_ids:
-            lines.append(
-                "- 연결된 재고 Evidence (재고 상품 기록만 지지하며 코디 효과를 입증하지 않음): "
-                + ", ".join(relation.inventory_evidence_ids)
-            )
-        evidenced_companion_attrs = [
-            signal for signal in product.attributes
-            if signal.value is not None and signal.origin == "evidence_observation" and signal.evidence_ids
-        ]
-        for signal in evidenced_companion_attrs:
-            lines.append(
-                f"- 재고 상품의 관찰 속성 (상의 속성이 아님): {signal.name}={signal.value} "
-                f"[Evidence: {', '.join(signal.evidence_ids)}]"
-            )
-            used_evidence_ids.extend(signal.evidence_ids)
-        used_evidence_ids.extend(relation.inventory_evidence_ids)
-        styling_sections.append("\n".join(lines))
+        label = f"{signal.name}={signal.value}"
+        if signal.origin == "user_requested":
+            ids = use_ids(signal.evidence_ids, source="planning_request",
+                          source_ref=f"requested_attributes.{signal.name}", supports=label)
+            user_scope.append(f"- {label} (사용자가 지정한 조건)" + (f" [Evidence: {', '.join(ids)}]" if ids else ""))
+        else:
+            proposal_lines.append(f"- 출처 확인 필요 속성 {label}: 사용자 고정 조건으로 처리하지 않음")
+            exclude_ids(signal.evidence_ids, source="planning_request",
+                        reason="요청 속성의 사용자 지정 출처가 확인되지 않음")
 
-    limitations = list(draft.limitations)
-    if unverified_trends:
-        limitations.append("근거 ID가 없는 트렌드명은 시각적 사실이나 디자인 지시로 사용하지 않음: " + ", ".join(dict.fromkeys(unverified_trends)))
-    if not evidence:
-        limitations.append("이미지 프롬프트에 반영할 근거 연결 디자인 속성이 없음.")
-    if not proposals:
-        proposals.append("- 색상·소재·실루엣·패턴·디테일은 미확정이며, 이미지 모델이 선택하는 경우 모두 시각화 제안으로 취급")
-    prompt_sections = [
-        "상품기획 검토용 콘셉트 이미지 1장을 생성합니다. 완성 상품, 실제 상품 사진, 승인된 디자인 또는 생산 지시가 아닙니다.",
-        "사용자가 지정한 범위 (사실로 고정):\n" + ("\n".join(user_scope) if user_scope else "- 미제공"),
-        "근거로 확인된 디자인 관찰 (표시된 Evidence 범위 안에서만 반영):\n" + ("\n".join(evidence) if evidence else "- 없음"),
-        "시각화 제안 (사실이 아닌 탐색용 가설):\n" + "\n".join(proposals),
-        "미확인·제외 조건:\n- 소재 성능, 실제 핏, 수요, 고객 선호, 생산 가능성을 주장하지 않음.\n- 근거 없는 트렌드 의미나 재고 효과를 만들지 않음.\n- 로고, 문구, 워터마크를 추가하지 않음.\n- 임의로 정한 시각 요소는 모두 검토용 제안임을 전제로 함.",
-    ]
-    if inventory_context:
-        prompt_sections.append(
-            "상품·재고 Evidence 컨텍스트 (기존 상품에 대한 사실이며 신상품 디자인 사양이 아님):\n"
-            + "\n".join(inventory_context)
-            + "\n재고는 조회 시점 스냅샷이며 수요·판매 추세로 해석하지 않음."
+    candidate_names = {candidate.name.strip() for candidate in context.trends.candidates if candidate.name.strip()}
+    for candidate in context.trends.candidates if trend_usable else ():
+        source_ref = f"trend_candidates.{candidate.source_style_id or candidate.name}"
+        mismatches = dimension_mismatches(context.request, candidate) if request_usable else ("request_status",)
+        if not candidate.name.strip() or mismatches:
+            reason = "요청 범위와 일치하지 않음" if mismatches else "후보명이 없음"
+            exclude_ids(candidate.evidence_ids, source="trend_result", reason=reason)
+            for signal in candidate.attributes:
+                exclude_ids(signal.evidence_ids, source="trend_result", reason=reason)
+            exclude_ids(candidate.description_evidence_ids, source="trend_result", reason=reason)
+            continue
+        if candidate.evidence_ids:
+            ids = use_ids(candidate.evidence_ids, source="trend_result", source_ref=source_ref,
+                          supports=f"트렌드 후보 {candidate.name}")
+            if ids:
+                evidence_lines.append(f"- 적격 트렌드 후보: {candidate.name} [Evidence: {', '.join(ids)}]")
+        else:
+            unverified_trends.append(candidate.name)
+            proposal_lines.append(f"- 미검증 트렌드명 ‘{candidate.name}’은 디자인 사실로 사용하지 않음")
+        for signal in candidate.attributes:
+            if signal.value is None or not design_name(signal.name):
+                exclude_ids(signal.evidence_ids, source="trend_result", reason="시각 디자인 속성이 아님")
+                continue
+            value_text = f"{signal.name}={signal.value}"
+            if signal.evidence_ids:
+                ids = use_ids(signal.evidence_ids, source="trend_result",
+                              source_ref=f"{source_ref}.attributes.{signal.name}", supports=value_text)
+                if ids:
+                    evidence_lines.append(f"- 트렌드 관찰: {value_text} [Evidence: {', '.join(ids)}]")
+            else:
+                unverified_trends.append(f"{candidate.name}:{value_text}")
+                proposal_lines.append(f"- 근거 미연결 속성 {value_text}: 확정 사실이 아닌 검증 필요 항목")
+        if candidate.description_evidence_ids and candidate.description:
+            ids = use_ids(candidate.description_evidence_ids, source="trend_result",
+                          source_ref=f"{source_ref}.description", supports=candidate.description)
+            if ids:
+                evidence_lines.append(f"- 트렌드 설명: {candidate.description} [Evidence: {', '.join(ids)}]")
+    if not trend_usable:
+        for candidate in context.trends.candidates:
+            exclude_ids(candidate.evidence_ids, source="trend_result", reason="트렌드 입력 상태가 사용 가능 상태가 아님")
+            for signal in candidate.attributes:
+                exclude_ids(signal.evidence_ids, source="trend_result", reason="트렌드 입력 상태가 사용 가능 상태가 아님")
+            exclude_ids(candidate.description_evidence_ids, source="trend_result", reason="트렌드 입력 상태가 사용 가능 상태가 아님")
+
+    # Producer-level IDs without a field/claim relation are retained in input trace,
+    # but intentionally cannot support a visual instruction.
+    linked_request_ids = {
+        evidence_id for signal in context.request.requested_attributes for evidence_id in signal.evidence_ids
+    } | {
+        evidence_id for ids in context.request.field_evidence_ids.values() for evidence_id in ids
+    }
+    exclude_ids(
+        (eid for eid in context.request.result.evidence_ids if eid not in linked_request_ids),
+        source="planning_request", reason="요청 전체 수준 ID이며 시각 속성에 연결되지 않음",
+    )
+    if not request_usable:
+        exclude_ids(linked_request_ids, source="planning_request", reason="요청 입력 상태가 사용 가능 상태가 아님")
+    linked_trend_ids = {
+        evidence_id
+        for candidate in context.trends.candidates
+        for evidence_id in (
+            *candidate.evidence_ids,
+            *candidate.description_evidence_ids,
+            *(eid for signal in candidate.attributes for eid in signal.evidence_ids),
         )
-    if market_context:
-        prompt_sections.append(
-            "판매·시장 Evidence 컨텍스트 (상위 분석 결과를 그대로 전달; 시각 디자인 속성이나 미래 수요 근거가 아님):\n"
-            + "\n".join(market_context)
-            + "\n관측을 매출 전망·고객 선호·신상품 디자인 사양으로 바꾸지 않음."
-        )
+    }
+    exclude_ids(
+        (eid for eid in context.trends.result.evidence_ids if eid not in linked_trend_ids),
+        source="trend_result", reason="트렌드 결과 수준 ID이며 후보·속성·설명에 연결되지 않음",
+    )
+    if not trend_usable:
+        exclude_ids(context.trends.result.evidence_ids, source="trend_result", reason="트렌드 입력 상태가 사용 가능 상태가 아님")
+    inventory_ids = set(context.inventory.result.evidence_ids)
+    for product in context.inventory.products:
+        inventory_ids.update(product.evidence_ids)
+        for signal in product.attributes:
+            inventory_ids.update(signal.evidence_ids)
+    exclude_ids(inventory_ids, source="inventory_product_result", reason="재고 근거는 착장 단계 전용")
+    sales_ids: set[str] = set()
+    def collect_sales_ids(value) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key == "evidence_id" and isinstance(child, str):
+                    sales_ids.add(child)
+                elif key in {"evidence_ids", "input_evidence_ids"}:
+                    if isinstance(child, str):
+                        sales_ids.add(child)
+                    elif isinstance(child, (list, tuple)):
+                        sales_ids.update(str(item) for item in child if isinstance(item, str))
+                else:
+                    collect_sales_ids(child)
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                collect_sales_ids(child)
+    if context.sales_market_result:
+        collect_sales_ids(context.sales_market_result)
+    exclude_ids(sales_ids, source="sales_market_result", reason="opaque handoff 계약으로 신제품 이미지 사용 불가")
+
     planning_references: dict[str, str] = {}
-    if context.planning_knowledge is not None:
-        for result in context.planning_knowledge.by_purpose:
-            if result.purpose not in {"planning_reference", "taxonomy"}:
+    knowledge = context.planning_knowledge
+    if knowledge:
+        for result in knowledge.by_purpose:
+            if result.purpose not in {"planning_reference", "taxonomy"} or result.status not in {"ok", "partial"}:
                 continue
             for item in result.evidence:
-                if not item.quote:
+                if (not item.quote or not item.evidence_id or not item.source_id
+                        or not item.verified or item.permission_status != "authorized"
+                        or "product_planning" not in item.permitted_uses):
                     continue
                 planning_references.setdefault(
                     item.evidence_id,
-                    f"- 기획 참고자료: {item.source_name or item.source_id}; "
-                    f"{item.quote} [Evidence: {item.evidence_id}]",
+                    f"- 허가된 기획 참고자료: {item.source_name or item.source_id}; {item.quote} [Evidence: {item.evidence_id}]",
                 )
-                used_evidence_ids.append(item.evidence_id)
+                use_ids((item.evidence_id,), source="authorized_planning_reference",
+                        source_ref=item.locator or item.source_id, supports=item.quote)
     if planning_references:
-        prompt_sections.append(
-            "허가된 기획 참고자료 (검토용 기준이며 상품 사실이나 시장 성과를 단정하지 않음):\n"
-            + "\n".join(planning_references.values())
-        )
-    if styling_sections:
-        proposals.append("- 요청 상의와 연결된 하의 재고 맥락을 함께 보여주는 코디 구성 (재고 소진 효과는 주장하지 않음)")
+        evidence_lines.extend(planning_references.values())
 
-    conflict_text = tuple(
-        f"{conflict.field}: {conflict.message} ({dict(conflict.values)!r})"
-        for conflict in context.conflicts
-    )
-    if styling_sections:
-        prompt_sections.insert(
-            3,
-            "코디 맥락 (요청 상품과 재고 상품을 구분):\n" + "\n".join(styling_sections),
-        )
-    if conflict_text:
-        prompt_sections.append("해결되지 않은 입력 충돌 (임의로 해소하지 말 것):\n" + "\n".join(f"- {item}" for item in conflict_text))
+    # Retain stable, unique exclusions while preserving multiple source-specific reasons.
+    excluded = list(dict.fromkeys(excluded))
+    limitations = list(draft.limitations)
+    if unverified_trends:
+        limitations.append("근거 ID가 없는 트렌드명 또는 속성은 신제품 이미지 사실로 사용하지 않았습니다: "
+                           + ", ".join(dict.fromkeys(unverified_trends)))
+    if not evidence_lines:
+        limitations.append("이미지 입력에 원문 출처가 검증된 트렌드·참고 관찰이 없습니다.")
+    if context.sales_market_result:
+        limitations.append("판매·시장 상세 결과는 opaque handoff이므로 신제품 이미지 입력에서 제외했습니다.")
+    if any(not claim.evidence_ids for claim in context.request.requested_attributes if claim.value is not None):
+        limitations.append("사용자 지정 디자인 속성 중 일부에는 속성별 Evidence ID가 연결되지 않았습니다.")
+    if not proposal_lines:
+        proposal_lines.append("- 색상·소재·실루엣·패턴·디테일은 미확정이며, 임의 선택은 모두 검토용 시각화 제안")
+    prompt_sections = [
+        "상품기획 검토용 신제품 콘셉트 이미지 1장을 생성합니다. 완성 상품, 실제 상품 사진, 승인된 디자인 또는 생산 지시가 아닙니다.",
+        "사용자 요청 범위 (재고·판매시장 데이터 제외):\n" + ("\n".join(user_scope) if user_scope else "- 미제공"),
+        "요청 범위와 일치하며 속성·설명 단위로 Evidence가 연결된 디자인 관찰:\n" + ("\n".join(evidence_lines) if evidence_lines else "- 제공 가능한 검증 관찰 없음"),
+        "검토용 제안 또는 미검증 항목 (사실로 표현하지 않음):\n" + "\n".join(proposal_lines),
+        "미확인·제외 조건:\n- 재고·판매·시장 결과는 사용하지 않음.\n- 근거 없는 트렌드 의미, 수요, 고객 선호, 생산 가능성을 주장하지 않음.\n- 로고, 문구, 워터마크를 추가하지 않음.",
+    ]
+    conflict_text: tuple[str, ...] = ()
     prompt = render_prompt("concept_image", "user", {
         "UNTRUSTED_PLANNING_INPUT_JSON": serialize_untrusted_prompt_data(
             {"planning_context_sections": prompt_sections},
@@ -368,12 +326,14 @@ def build_image_generation_request(
         prompt=prompt,
         prompt_version=PROMPT_VERSION,
         prompt_sha256=digest,
-        evidence_ids=tuple(dict.fromkeys(used_evidence_ids)),
-        proposal_fields=tuple(dict.fromkeys(proposals)),
+        evidence_ids=tuple(dict.fromkeys(used_ids)),
+        proposal_fields=tuple(dict.fromkeys(proposal_lines)),
         limitations=tuple(dict.fromkeys(limitations)),
-        conflicts=conflict_text,
-        styling_relationships=context.styling_relationships,
+        conflicts=(),
+        styling_relationships=(),
         system_prompt=IMAGE_DESIGNER_SYSTEM_PROMPT,
+        evidence_uses=tuple(dict.fromkeys(evidence_uses)),
+        excluded_evidence=tuple(excluded),
     )
 
 
@@ -529,7 +489,7 @@ class OpenAIImageEditProvider:
     def generate_from_reference(
         self,
         prompt: str,
-        reference_image: bytes,
+        reference_image: bytes | tuple[bytes | tuple[bytes, str], ...],
         *,
         mime_type: str = "image/png",
         size: str = "1536x1024",
@@ -538,10 +498,18 @@ class OpenAIImageEditProvider:
             raise ImageProviderError("IMAGE_API_KEY_MISSING")
         if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
             raise ImageProviderError("IMAGE_API_REFERENCE_FORMAT_UNSUPPORTED")
-        data_url = f"data:{mime_type};base64,{base64.b64encode(reference_image).decode('ascii')}"
+        references = (reference_image,) if isinstance(reference_image, bytes) else reference_image
+        if not references or len(references) > 4:
+            raise ImageProviderError("IMAGE_API_REFERENCE_COUNT_UNSUPPORTED")
+        data_urls = []
+        for reference in references:
+            image, image_mime = reference if isinstance(reference, tuple) else (reference, mime_type)
+            if image_mime not in {"image/png", "image/jpeg", "image/webp"}:
+                raise ImageProviderError("IMAGE_API_REFERENCE_FORMAT_UNSUPPORTED")
+            data_urls.append(f"data:{image_mime};base64,{base64.b64encode(image).decode('ascii')}")
         body = json.dumps({
             "model": self.model,
-            "images": [{"image_url": data_url}],
+            "images": [{"image_url": data_url} for data_url in data_urls],
             "prompt": prompt,
             "size": size,
             "quality": "high",
@@ -578,3 +546,96 @@ class OpenAIImageEditProvider:
         except (KeyError, IndexError, TypeError, ValueError):
             raise ImageProviderError("IMAGE_API_IMAGE_MISSING") from None
         return GeneratedImage(image_bytes, "image/png", self.provider_name, self.model)
+
+
+def fetch_inventory_image(url: str, *, timeout_seconds: int = 8, max_bytes: int = 8_000_000) -> tuple[bytes, str]:
+    """Fetch a bounded public HTTPS image, rejecting redirects and private hosts."""
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        raise ImageProviderError("INVENTORY_IMAGE_URL_INVALID")
+    allowed_hosts = {
+        host.strip().casefold()
+        for host in os.getenv("VOGUE_INVENTORY_IMAGE_ALLOWED_HOSTS", "").split(",")
+        if host.strip()
+    }
+    hostname = parsed.hostname.casefold()
+    if not any(hostname == host or hostname.endswith("." + host) for host in allowed_hosts):
+        raise ImageProviderError("INVENTORY_IMAGE_HOST_NOT_ALLOWED")
+    try:
+        addresses = socket.getaddrinfo(parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM)
+        if not addresses or any(not ipaddress.ip_address(item[4][0]).is_global for item in addresses):
+            raise ImageProviderError("INVENTORY_IMAGE_HOST_NOT_PUBLIC")
+    except (OSError, ValueError):
+        raise ImageProviderError("INVENTORY_IMAGE_HOST_UNAVAILABLE") from None
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *_args, **_kwargs):
+            return None
+
+    opener = urllib.request.build_opener(NoRedirect())
+    request = urllib.request.Request(url, headers={"Accept": "image/png,image/jpeg,image/webp"})
+    try:
+        with opener.open(request, timeout=timeout_seconds) as response:
+            content_type = response.headers.get_content_type()
+            length = response.headers.get("Content-Length")
+            if content_type not in {"image/png", "image/jpeg", "image/webp"}:
+                raise ImageProviderError("INVENTORY_IMAGE_FORMAT_UNSUPPORTED")
+            if length and int(length) > max_bytes:
+                raise ImageProviderError("INVENTORY_IMAGE_TOO_LARGE")
+            content = response.read(max_bytes + 1)
+            if not content or len(content) > max_bytes:
+                raise ImageProviderError("INVENTORY_IMAGE_TOO_LARGE")
+            signatures = {
+                "image/png": content.startswith(b"\x89PNG\r\n\x1a\n"),
+                "image/jpeg": content.startswith(b"\xff\xd8\xff"),
+                "image/webp": len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP",
+            }
+            if not signatures.get(content_type, False):
+                raise ImageProviderError("INVENTORY_IMAGE_CONTENT_INVALID")
+            return content, content_type
+    except urllib.error.HTTPError as exc:
+        raise ImageProviderError(f"INVENTORY_IMAGE_HTTP_{exc.code}") from None
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise ImageProviderError("INVENTORY_IMAGE_UNAVAILABLE") from None
+
+
+def build_outfit_image_prompt(context: ProductPlanningContext) -> str | None:
+    """Build a companion outfit brief, isolated from new-product generation."""
+    if context.input_statuses.get("inventory_product_result") not in {"ok", "partial"}:
+        return None
+    relationships = [
+        relation for relation in context.styling_relationships
+        if relation.inventory_product_index < len(context.inventory.products)
+    ]
+    if not relationships:
+        return None
+    products = []
+    for relation in relationships:
+        product = context.inventory.products[relation.inventory_product_index]
+        role = "상의" if relation.inventory_role == "upper_body" else "하의"
+        facts = [f"역할={role}", f"상품={product.style_id or product.category or product.note or '미제공'}"]
+        if product.category:
+            facts.append(f"카테고리={product.category}")
+        for attribute in product.attributes:
+            if attribute.value is not None:
+                facts.append(f"{attribute.name}={attribute.value}")
+        if product.note:
+            facts.append(f"참고 메모={product.note}")
+        products.append("; ".join(facts))
+    return (
+        "제공된 신제품 참조 이미지의 의상은 그대로 유지하고, 아래 재고 의상과 함께 입은 검토용 착장 이미지를 생성합니다. "
+        "새상품의 색상·형태·디테일을 바꾸거나 재고 상품을 신제품으로 재해석하지 마세요. "
+        "재고 의상을 역할에 맞게 착장하고 로고·문구는 추가하지 마세요.\n"
+        "재고 착장 아이템:\n" + "\n".join(f"- {item}" for item in products)
+    )
+
+
+def selected_outfit_inventory(context: ProductPlanningContext):
+    """Return only inventory products paired by the existing role compatibility rule."""
+    return tuple(
+        context.inventory.products[relation.inventory_product_index]
+        for relation in context.styling_relationships
+        if relation.inventory_product_index < len(context.inventory.products)
+    )

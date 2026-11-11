@@ -74,6 +74,7 @@ class PlanningRequest:
     missing_fields: tuple[str, ...] = ()
     constraints: tuple[str, ...] = ()
     field_origins: Mapping[str, ContextOrigin] = field(default_factory=dict)
+    field_evidence_ids: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -115,6 +116,7 @@ class InventoryProduct:
     note: str | None = None
     note_origin: ContextOrigin = "unknown"
     source_product_index: int | None = None
+    image_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -269,10 +271,6 @@ def _comparable_context(
         [channel for candidate in trends for channel in candidate.channel]
     )
     inventory_seasons = _unique([product.season for product in products if product.season])
-    inventory_categories = _unique(
-        [product.category for index, product in enumerate(products)
-         if product.category and index not in paired_inventory_indexes]
-    )
     inventory_markets = _unique(
         [market for product in products for market in product.market]
     )
@@ -286,8 +284,6 @@ def _comparable_context(
         values["season"]["inventory"] = inventory_seasons
     if trend_categories:
         values["category"]["trend"] = trend_categories
-    if inventory_categories:
-        values["category"]["inventory"] = inventory_categories
     if trend_markets:
         values["market"]["trend"] = trend_markets
     if inventory_markets:
@@ -438,6 +434,7 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
             *(evidence_id for candidate in inputs.trend.candidates for evidence_id in candidate.evidence_ids),
             *(evidence_id for product in inputs.inventory.products for evidence_id in product.evidence_ids),
             *(evidence_id for attr in inputs.request.requested_attributes for evidence_id in attr.evidence_ids),
+            *(evidence_id for ids in inputs.request.field_evidence_ids.values() for evidence_id in ids),
             *(evidence_id for candidate in inputs.trend.candidates for attr in candidate.attributes for evidence_id in attr.evidence_ids),
             *(evidence_id for product in inputs.inventory.products for attr in product.attributes for evidence_id in attr.evidence_ids),
             *(

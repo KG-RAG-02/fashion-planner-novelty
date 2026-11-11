@@ -25,4 +25,4 @@ PYTHONPATH=src python3 -m vogue_npp.prototype.server
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-The server exposes planning API routes only; it does not serve browser pages or static web assets. Project_08 owns the local UI. Image generation remains an opt-in planning API capability and requires server enablement plus `generate_image: true` in the request.
+The server exposes planning API routes only; it does not serve browser pages or static web assets. Project_08 owns the local UI. Every planning-draft API request requests a product image and, after successful product image generation, a planning-board image. Actual provider calls still require server image-generation enablement and credentials.

@@ -30,7 +30,11 @@ Project_06은 planning draft API를 제공합니다. UI는 Project_08 소유이�
 
 Docker Compose는 `service` 모드로 TLS와 Bearer 인증을 사용합니다. 실행 전에 `VOGUE_TLS_CERT_HOST_PATH`, `VOGUE_TLS_KEY_HOST_PATH`, `VOGUE_TLS_CA_HOST_PATH`, `VOGUE_AGENT_SERVICE_BEARER_TOKEN`을 shell 환경에 설정한 뒤 `docker compose up --build`를 실행하세요. 인증서·키·token은 저장소에 넣지 않습니다. Compose 포트는 host loopback의 `127.0.0.1:8767`에만 공개됩니다.
 
-선택형 이미지 생성을 API 요청에 포함하려면 `.env` 또는 실행 환경에 `VOGUE_IMAGE_GENERATION_ENABLED=true`와 `LLM_API_KEY`를 설정합니다. 요청에 `generate_image: true`를 명시해야 외부 이미지 요청이 발생합니다. 비밀값이 들어 있는 `.env`는 커밋하지 마세요.
+이미지 생성 요청은 API가 항상 수행합니다. 실제 외부 이미지 생성을 사용하려면 `.env` 또는 실행 환경에 `VOGUE_IMAGE_GENERATION_ENABLED=true`와 `LLM_API_KEY`를 설정해야 합니다. 비밀값이 들어 있는 `.env`는 커밋하지 마세요. 서버 설정이 비활성화되어 있으면 이미지 요청 상태는 반환되지만 provider 호출은 진행하지 않습니다.
+
+모든 기획 요청에서 신제품 시안 이미지와 근거 연결 기획 보드를 요청합니다. 별도 이미지 생성 플래그는 필요하지 않습니다. 신제품 시안이 생성되면 보드는 SVG 결정적 렌더러가 텍스트와 Evidence ID를 배치해 만듭니다.
+
+착장 생성에서 재고 이미지 URL을 사용하려면 `VOGUE_INVENTORY_IMAGE_ALLOWED_HOSTS`에 승인된 HTTPS 호스트명을 쉼표로 구분해 지정합니다. 기본값은 비어 있어 재고 이미지 URL을 가져오지 않습니다. Stock-agent schema 1.0에는 이미지 필드가 공식 정의되어 있지 않으므로 `products[].image.url`은 현재 선택적으로 수용하는 확장입니다. 계약 상태와 제한은 [`contracts/http-handoff-v0.1.md`](contracts/http-handoff-v0.1.md)에 기록되어 있습니다.
 
 구조화 텍스트 기획 프롬프트는 `VOGUE_TEXT_GENERATION_ENABLED`로 요청할 수 있지만 현재 승인된 텍스트 모델 제공자가 연결되지 않았습니다. 이 설정만 켜면 외부 호출 없이 규칙 기반 초안과 `TEXT_GENERATION_UNAVAILABLE` 상태를 반환합니다.
 

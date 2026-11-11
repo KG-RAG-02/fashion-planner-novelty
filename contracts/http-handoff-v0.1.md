@@ -32,6 +32,8 @@ Successful domain responses use HTTP 200, including `partial`, `no_results`, and
 
 The normalizer is `project06-input-normalizer/1.0`. It does not rewrite the source Trend payload or its `schema_version`. Unsupported versions, missing producer metadata, request ID mismatches, unknown top-level envelope/input fields, or unsupported statuses return a compatibility/validation error. Producer-owned nested payloads are retained verbatim as JSON and are not projected into a new wire schema.
 
+For stock schema 1.0, this contract does not define a product-image field. Project_06 currently accepts the observed optional nested shape `products[].image.url` as an implementation extension and retains the raw payload unchanged. This shape is not evidence of a producer-approved or universally available stock-agent output. The stock-agent owner must confirm and version the field before it is treated as a guaranteed contract. When present, image URLs are fetched only from HTTPS hosts explicitly listed in `VOGUE_INVENTORY_IMAGE_ALLOWED_HOSTS` (comma-separated hostnames); redirects, non-public resolved addresses, unsupported image types, and responses larger than 8 MB are rejected. At most three compatible stock images are sent with the new-product image to the outfit edit request.
+
 Project_06 only produces a review draft. `draft.review_status` remains `md_review_required`; the service does not automatically adopt products or decide price, cost, quantity, or purchase orders.
 
 ## HTTP errors
