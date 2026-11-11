@@ -85,15 +85,15 @@ def _r2_image_provider_upload_allowed() -> bool:
     return os.getenv("VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD", "true").strip().casefold() == "true"
 
 
-def _hm_kaggle_image_provider_upload_allowed(product) -> bool:
-    """Require a separate explicit opt-in for Kaggle article photography."""
+def _is_hm_kaggle_image(product) -> bool:
+    """Identify the H&M Kaggle article-image layout used in R2."""
     article_id = getattr(product, "article_id", None)
     image_url = getattr(product, "image_url", None) or ""
     is_hm_kaggle = bool(
         (article_id and re.fullmatch(r"\d{10}", str(article_id)))
         or re.search(r"(?:^|/)\d{3}/\d{10}\.jpg(?:$|[?#])", image_url)
     )
-    return not is_hm_kaggle or os.getenv("VOGUE_HM_KAGGLE_IMAGE_ALLOW_PROVIDER_UPLOAD", "false").strip().casefold() == "true"
+    return is_hm_kaggle
 
 
 class PrototypeHandler(BaseHTTPRequestHandler):
@@ -809,20 +809,10 @@ def _build_planning_draft_response(
                         })
                         continue
                     try:
-                        if not _hm_kaggle_image_provider_upload_allowed(product):
-                            image_fetch_errors.append("HM_KAGGLE_IMAGE_PROVIDER_FORWARD_DISABLED")
-                            image_sources.append({
-                                "style_id": product.style_id,
-                                "article_id": product.article_id,
-                                "source_product_index": product.source_product_index,
-                                "status": "not_forwarded",
-                                "error_code": "HM_KAGGLE_IMAGE_PROVIDER_FORWARD_DISABLED",
-                            })
-                            continue
                         if product.image_url:
                             image_bytes, image_mime = fetch_inventory_image(product.image_url)
                         else:
-                            if not _r2_image_provider_upload_allowed():
+                            if not _r2_image_provider_upload_allowed() and not _is_hm_kaggle_image(product):
                                 image_fetch_errors.append("R2_IMAGE_PROVIDER_FORWARD_DISABLED")
                                 image_sources.append({
                                     "style_id": product.style_id,

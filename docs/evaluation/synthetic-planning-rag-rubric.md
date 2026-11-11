@@ -24,7 +24,7 @@ For each evaluated draft, record pass/fail for:
 - Design proposals are not presented as factual observations.
 - Project_07 details remain opaque unless its contract is explicitly changed.
 - RAG source text and synthetic product images are absent from the new-product image provider request.
-- H&M Kaggle article photos are not forwarded to an image provider by default.
+- H&M Kaggle article photos are forwarded only through the selected outfit-image path, never the new-product-only image request.
 
 ## Recording results
 

@@ -8,7 +8,7 @@ from unittest.mock import patch
 from vogue_npp.prototype.server import (
     _build_planning_board_prompt,
     _build_planning_draft_response,
-    _hm_kaggle_image_provider_upload_allowed,
+    _is_hm_kaggle_image,
     _r2_image_provider_upload_allowed,
     _stock_article_id,
 )
@@ -26,14 +26,12 @@ class PlanningDraftApiTests(unittest.TestCase):
         with patch.dict("os.environ", {"VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD": "false"}):
             self.assertFalse(_r2_image_provider_upload_allowed())
 
-    def test_hm_kaggle_article_images_need_separate_provider_opt_in(self):
+    def test_hm_kaggle_article_images_are_always_identified_for_provider_transfer(self):
         hm_product = SimpleNamespace(article_id="0999991001", image_url=None)
         local_product = SimpleNamespace(article_id=None, image_url="https://example.test/product.jpg")
         with patch.dict("os.environ", {}, clear=True):
-            self.assertFalse(_hm_kaggle_image_provider_upload_allowed(hm_product))
-            self.assertTrue(_hm_kaggle_image_provider_upload_allowed(local_product))
-        with patch.dict("os.environ", {"VOGUE_HM_KAGGLE_IMAGE_ALLOW_PROVIDER_UPLOAD": "true"}):
-            self.assertTrue(_hm_kaggle_image_provider_upload_allowed(hm_product))
+            self.assertTrue(_is_hm_kaggle_image(hm_product))
+            self.assertFalse(_is_hm_kaggle_image(local_product))
 
     def test_images_are_requested_even_without_true_flags(self):
         payload = {
