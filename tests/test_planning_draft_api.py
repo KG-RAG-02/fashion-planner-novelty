@@ -333,7 +333,7 @@ class PlanningDraftApiTests(unittest.TestCase):
         self.assertTrue(any("Evidence가 없습니다" in item for item in response["limitations"]))
         self.assertFalse(any("일치하지 않습니다" in item for item in response["limitations"]))
 
-    def test_project07_payload_is_not_parsed_into_planning_board_prompt(self):
+    def test_project07_payload_is_preserved_and_available_to_planner_not_board_prompt(self):
         payload = {
             "planning_request": {"request_id": "opaque-1", "season": "27SS", "category": "쇼츠"},
             "trend_result": {"request_id": "opaque-1", "status": "no_results", "trends": []},
@@ -351,8 +351,8 @@ class PlanningDraftApiTests(unittest.TestCase):
             AgentResult, InventoryProductResult, PlanningInputs, PlanningRequest, TrendResult,
             build_planning_context,
         )
-        # The visual prompt receives context from the input boundary. Project_07's
-        # detailed values must not be extracted into image-generation instructions.
+        # The board prompt receives producer findings as display data, without
+        # changing them into image-generation design instructions.
         context = build_planning_context(PlanningInputs(
             request=PlanningRequest(AgentResult("user-request", "opaque-1", "1.0", "ok"), season="27SS", category="쇼츠"),
             trend=TrendResult(AgentResult("trend-analysis-agent", "opaque-1", "1.0", "no_results")),
@@ -366,8 +366,9 @@ class PlanningDraftApiTests(unittest.TestCase):
         self.assertIn(data_marker, prompt)
         prompt_data = json.loads(prompt.split(data_marker, 1)[1])
         self.assertEqual(prompt_data["sales_market_input_status"], "partial")
-        self.assertNotIn("OPAQUE_PRIVATE_FINDING", prompt)
-        self.assertNotIn("OPAQUE_PRIVATE_SUMMARY", prompt)
+        self.assertFalse(response["draft"]["sales_market_result"] is None)
+        self.assertIn("OPAQUE_PRIVATE_FINDING", prompt)
+        self.assertIn("OPAQUE_PRIVATE_SUMMARY", prompt)
         self.assertNotIn("OPAQUE_PRIVATE_LIMITATION", prompt)
 
     def test_injection_text_is_preserved_as_data_without_changing_agent_metadata(self):

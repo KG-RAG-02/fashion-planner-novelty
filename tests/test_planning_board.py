@@ -48,7 +48,7 @@ class PlanningBoardTests(unittest.TestCase):
         draft, _ = RuleBasedConceptGenerator().generate(context)
         return build_planning_board(context, draft)
 
-    def test_board_links_claims_to_source_and_keeps_sales_opaque(self):
+    def test_board_links_sales_findings_to_producer_evidence(self):
         board = self.make_board({
             "request_id": "board-test-1", "agent_id": "sales-market-agent", "status": "partial",
             "schema_version": "1.0", "findings": [{"text": "opaque finding", "evidence_ids": ["MARKET-E1"]}],
@@ -56,9 +56,9 @@ class PlanningBoardTests(unittest.TestCase):
         trend = next(section for section in board.sections if section.section_id == "trend")
         self.assertTrue(any("TREND-E1" in claim.evidence_ids for claim in trend.claims))
         sales = next(section for section in board.sections if section.section_id == "sales_market")
-        self.assertEqual(sales.state, "blocked")
+        self.assertEqual(sales.state, "partial")
         self.assertTrue(any("MARKET-E1" in claim.evidence_ids for claim in sales.claims))
-        self.assertFalse(any("opaque finding" in claim.text for claim in sales.claims))
+        self.assertTrue(any("opaque finding" in claim.text for claim in sales.claims))
 
     def test_svg_renderer_places_exact_evidence_labels_and_embeds_product_visual(self):
         board = self.make_board({
@@ -73,7 +73,7 @@ class PlanningBoardTests(unittest.TestCase):
         self.assertIn("REQ-E1", svg)
         self.assertIn(base64.b64encode(b"fake-png").decode("ascii"), svg)
         self.assertIn("MD 검토용 초안 · 자동 승인 아님", svg)
-        self.assertIn("상세 해석 보류", svg)
+        self.assertIn("opaque finding", svg)
         ET.fromstring(svg)
 
     def test_synthetic_rag_context_is_explicit_on_board(self):

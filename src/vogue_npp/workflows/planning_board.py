@@ -194,10 +194,26 @@ def build_planning_board(context: ProductPlanningContext, draft: ProductConceptD
         sales_state = "failed"
         sales_notes = ("판매·시장 입력 오류",)
     else:
-        sales_state = "blocked"
-        sales_notes = ("Project_07 상세 계약 합의 전: 원본 및 Evidence ID 보존, 상세 의미 해석 보류",)
-        if sales_ids:
-            sales_claims.append(_claim("전달된 Evidence ID (상세 연결 미검증)", "to_validate", sales_ids,
+        sales_state = _state(sales_status, has_claims=bool(sales_payload))
+        sales_notes = ("판매·시장 에이전트가 전달한 분석 결과를 기획 맥락으로 사용했습니다. 원자료 재집계는 하지 않았습니다.",)
+        def sales_findings(value, path="sales_market_result"):
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if key in {"summary", "text", "finding", "observation", "interpretation", "label", "value"}:
+                        if isinstance(child, (str, int, float)) and str(child).strip():
+                            evidence_ids = value.get("evidence_ids", value.get("input_evidence_ids", ()))
+                            if isinstance(evidence_ids, str):
+                                evidence_ids = (evidence_ids,)
+                            sales_claims.append(_claim(str(child), "producer_finding", evidence_ids,
+                                source="sales-market-agent", source_ref=f"{path}.{key}"))
+                    elif key not in {"evidence", "evidence_id", "evidence_ids", "input_evidence_ids"}:
+                        sales_findings(child, f"{path}.{key}")
+            elif isinstance(value, (list, tuple)):
+                for index, child in enumerate(value[:50]):
+                    sales_findings(child, f"{path}[{index}]")
+        sales_findings(sales_payload)
+        if sales_ids and not sales_claims:
+            sales_claims.append(_claim("전달된 Evidence ID", "to_validate", sales_ids,
                                        source="sales-market-agent", source_ref="sales_market_result"))
 
     reference_claims = []

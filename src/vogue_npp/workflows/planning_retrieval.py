@@ -26,6 +26,31 @@ PURPOSES = (
 QUERY_PLAN_VERSION = "planning-query-plan-v2"
 
 
+def _sales_market_terms(payload: object, *, max_terms: int = 24) -> tuple[str, ...]:
+    """Extract bounded search terms from producer findings, never IDs or metadata."""
+    if not isinstance(payload, dict):
+        return ()
+    found: list[str] = []
+    allowed_keys = {"summary", "findings", "observations", "sales_data", "market", "channel", "category", "product", "text", "name", "value", "label", "segment"}
+    skip_keys = {"errors", "limitations", "follow_up_questions", "evidence", "evidence_ids", "evidence_id", "request_id", "agent_id", "schema_version", "status"}
+    def visit(value: object, key: str = "") -> None:
+        if len(found) >= max_terms or key in skip_keys:
+            return
+        if isinstance(value, dict):
+            for child_key, child in value.items():
+                if child_key in allowed_keys:
+                    visit(child, child_key)
+        elif isinstance(value, (list, tuple)):
+            for child in value[:20]:
+                visit(child, key)
+        elif isinstance(value, str) and value.strip():
+            found.append(value.strip()[:160])
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            found.append(str(value))
+    visit(payload)
+    return _unique(found[:max_terms])
+
+
 def _unique(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(value.strip() for value in values if isinstance(value, str) and value.strip()))
 
@@ -82,6 +107,8 @@ def _queries(
           if attribute.value is not None and attribute.evidence_ids),
         *(attribute.name for candidate in compatible_trends for attribute in candidate.attributes
           if attribute.evidence_ids),
+        *(_sales_market_terms(context.sales_market_result)
+          if context.input_statuses.get("sales_market_result") in {"ok", "partial"} else ()),
     ))
     evidence_ids = _input_evidence_ids(context)
 

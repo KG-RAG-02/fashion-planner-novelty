@@ -3,8 +3,8 @@
 These types are internal domain models, not the shared wire contract. A transport
 adapter should map the agreed PlanningRequest, TrendResult, and
 InventoryProductResult schemas into these models after those schemas are
-available and synchronized across repositories. Project_07 sales research is
-accepted only as an opaque, evidence-aware handoff payload.
+available and synchronized across repositories. Project_07 results are
+consumed as producer-authored findings; Project_06 does not recalculate them.
 """
 
 from __future__ import annotations
@@ -151,7 +151,7 @@ class InventoryProductResult:
 
 @dataclass(frozen=True)
 class PlanningInputs:
-    """Planning inputs, including Project_07's result as an opaque handoff."""
+    """Planning inputs, including the producer-authored Project_07 result."""
 
     request: PlanningRequest
     trend: TrendResult
@@ -187,6 +187,7 @@ class ProductPlanningContext:
     questions_for_validation: tuple[str, ...] = ()
     sales_market_result: Mapping[str, Any] | None = None
     planning_knowledge: PlanningKnowledgeContext | None = None
+    hm_visual_references: Mapping[str, Any] | None = None
 
 
 def _unique(values: Sequence[str]) -> tuple[str, ...]:

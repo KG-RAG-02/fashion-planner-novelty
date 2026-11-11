@@ -39,7 +39,8 @@ def make_context():
         (InventoryProduct("ST-1", (), category="outerwear", evidence_ids=("stock-E1",)),),
     )
     sales = {"request_id": REQUEST_ID, "agent_id": "sales-market-agent", "status": "ok",
-             "evidence": [{"evidence_id": "market-E1"}], "findings": []}
+             "evidence": [{"evidence_id": "market-E1"}], "findings": [],
+             "summary": "summary phrase"}
     return build_planning_context(PlanningInputs(request, trend, inventory, sales))
 
 
@@ -80,7 +81,7 @@ class PlanningRetrievalTests(unittest.TestCase):
         self.assertFalse(retriever.queries)
         self.assertEqual({item.status for item in result.by_purpose}, {"not_configured"})
 
-    def test_queries_are_scoped_and_market_evidence_is_never_resolved(self):
+    def test_queries_use_market_terms_but_do_not_resolve_market_evidence(self):
         retriever = FakeRetriever()
         result = retrieve_planning_knowledge(make_context(), retriever=retriever, policy=policy())
         self.assertEqual(len(retriever.queries), 4)
@@ -94,6 +95,7 @@ class PlanningRetrievalTests(unittest.TestCase):
         semantic = next(item for item in retriever.queries if item.purpose == "planning_reference")
         self.assertEqual(semantic.allowed_source_ids, ("SRC-shared",))
         self.assertNotIn("Do not send this full query", semantic.attribute_terms)
+        self.assertIn("summary phrase", semantic.attribute_terms)
         self.assertEqual({item.status for item in result.by_purpose}, {"no_results", "not_configured"})
 
     def test_only_verified_authorized_allowlisted_references_are_exposed(self):

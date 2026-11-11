@@ -141,7 +141,7 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         self.assertIn("근거 ID가 없는 트렌드명", " ".join(result.image.request.limitations))
         self.assertNotIn("소재=", result.image.request.prompt)
 
-    def test_opaque_sales_market_payload_and_evidence_are_excluded_from_product_image(self) -> None:
+    def test_sales_market_payload_and_evidence_are_not_sent_raw_to_product_image(self) -> None:
         context = make_context()
         context = replace(context, sales_market_result={
             "agent_id": "sales-market-agent", "status": "partial",
@@ -155,6 +155,11 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         for private_value in ("PRIVATE_MARKET_SUMMARY", "PRIVATE_SCOPE", "PRIVATE_FINDING", "market:E-1", "market:E-2"):
             self.assertNotIn(private_value, request.prompt)
             self.assertNotIn(private_value, request.evidence_ids)
+        planner_draft = replace(draft, product_definition=replace(
+            draft.product_definition, value="기획자 제안 통합 상품 실루엣",
+        ))
+        planner_request = build_image_generation_request(context, planner_draft)
+        self.assertIn("기획자 제안 통합 상품 실루엣", planner_request.prompt)
         self.assertEqual({item.evidence_id for item in request.excluded_evidence if item.source == "sales_market_result"},
                          {"market:E-1", "market:E-2"})
 

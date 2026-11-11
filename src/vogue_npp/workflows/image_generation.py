@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol
 
-from ..domain.concept import ProductConceptDraft, ValidationIssue
+from ..domain.concept import ProductConceptDraft, ValidationIssue, validate_concept_draft
 from ..domain.context import ProductPlanningContext
 from ..domain.generator import RuleBasedConceptGenerator
 from ..domain.analysis import dimension_mismatches
@@ -277,7 +277,7 @@ def build_image_generation_request(
                 collect_sales_ids(child)
     if context.sales_market_result:
         collect_sales_ids(context.sales_market_result)
-    exclude_ids(sales_ids, source="sales_market_result", reason="opaque handoff 계약으로 신제품 이미지 사용 불가")
+    exclude_ids(sales_ids, source="sales_market_result", reason="판매·시장 결과는 기획자 분석 입력이며 이미지 API에는 원문을 직접 전달하지 않음")
 
     planning_reference_ids: set[str] = set()
     knowledge = context.planning_knowledge
@@ -310,7 +310,7 @@ def build_image_generation_request(
     if not evidence_lines:
         limitations.append("이미지 입력에 원문 출처가 검증된 요청·트렌드 관찰이 없습니다.")
     if context.sales_market_result:
-        limitations.append("판매·시장 상세 결과는 opaque handoff이므로 신제품 이미지 입력에서 제외했습니다.")
+        limitations.append("판매·시장 결과 원문은 이미지 API에 직접 전달하지 않고, 기획자가 만든 시각 제안만 반영했습니다.")
     if any(not claim.evidence_ids for claim in context.request.requested_attributes if claim.value is not None):
         limitations.append("사용자 지정 디자인 속성 중 일부에는 속성별 Evidence ID가 연결되지 않았습니다.")
     if not proposal_lines:
@@ -412,13 +412,17 @@ def run_image_generation(
 def run_concept_to_image(
     context: ProductPlanningContext,
     *,
+    draft: ProductConceptDraft | None = None,
     provider: ImageGenerationProvider | None = None,
     image_generation_enabled: bool = False,
     confirm_image_generation: bool = False,
     output_dir: Path = DEFAULT_IMAGE_DIR,
 ) -> ConceptImageWorkflowResult:
-    """Run the current concept generator, then prepare and optionally create an image."""
-    draft, issues = RuleBasedConceptGenerator().generate(context)
+    """Prepare an image from the supplied planner draft or the rule fallback."""
+    if draft is None:
+        draft, issues = RuleBasedConceptGenerator().generate(context)
+    else:
+        issues = validate_concept_draft(context, draft)
     image_request = build_image_generation_request(context, draft)
     image_result = run_image_generation(
         image_request,
