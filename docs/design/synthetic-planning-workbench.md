@@ -11,7 +11,7 @@
 
 Project_06 초안 생성에는 현재 기존 내부 `/api/planning-draft` 변환 경로와 규칙 기반 생성기를 사용합니다. 기본 RAG는 `not_configured`여서 합성 문서가 생성기 근거로 자동 유입되지 않습니다. CLI는 해당 요청에 맞는 문서 후보를 따로 나열하며 “적용 완료”로 표시하지 않습니다. 판매·시장 handoff 예시는 별도 fixture로 살펴볼 수 있지만 Project_06 draft 입력에는 연결되어 있지 않습니다. 따라서 Project_06은 이 자료에서 판매 지표를 계산하거나 재집계하지 않습니다.
 
-실제 자료 connector, 외부 서비스, 공개 API 계약 변경, 운영 DB/인덱스 연결은 구현하지 않았습니다. 이 데이터셋을 일반 RAG index에 복사하지 마세요. 현재 RAG allowlist는 `permission_status=authorized`를 요구하고 이 fixture는 `synthetic_only`를 사용하므로 기본 검색 경로에서 제외됩니다.
+실제 자료 connector, 외부 서비스, 공개 API 계약 변경, 운영 DB/인덱스 연결은 구현하지 않았습니다. 합성 workbench는 별도 dataset namespace를 가진 명시적 opt-in 개발 경로로만 검색됩니다. `VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED=true` 설정 시 API가 이 고정 fixture를 직접 사용하며, 기본값은 `false`입니다. 일반 `authorized` 소스 정책과 섞이지 않고 `allow_synthetic`와 일치하는 dataset ID가 query 및 Evidence에 있어야 합니다. 실제 자료가 검색 가능한 index에 들어가지는 않습니다.
 
 ## 데이터 구성
 
@@ -67,6 +67,12 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
 테스트는 seed 재현, non-synthetic 데이터 거부, 기본 검색의 draft/expired 제외, 품질 오류 탐지, `no_results`와 quantity 0 구분, Evidence 추적, Project_07 handoff 상태 보존, draft의 synthetic 고지 및 prompt injection 문서 격리를 확인합니다. 이는 합성 파이프라인 동작만 검증하며, MD 효용·시장성·실제 회사 정책에 대한 검증이 아닙니다.
+
+## Project_06 RAG 연결
+
+`SyntheticWorkbenchRetriever`는 taxonomy, catalog comparison, planning reference, precedent, assortment relation, exact Evidence lookup 목적을 분리해 제공합니다. 결과는 source allowlist, 문서 유형, 시즌·카테고리·역할, lifecycle, 유효기간, Evidence 상태, permitted use로 거릅니다. 반환 ref에는 dataset/snapshot ID, 합성 표시, source locator, content hash, Evidence가 뒷받침하는 속성 경로, retrieval run ID를 보존합니다. 검색은 deterministic lexical 기준선이며 vector/graph 인덱스가 아닙니다.
+
+API는 환경변수가 켜졌을 때만 이 fixture 검색기를 자동 선택합니다. 검색 실패/빈 결과는 각 목적별 상태로 반환하고 초안 생성을 계속합니다. Project_07은 이 검색 계획에 사용되지 않으며 기존 opaque payload 보존 경계를 유지합니다.
 
 ## 실제 자료 전환 시 필요한 승인
 

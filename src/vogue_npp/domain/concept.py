@@ -329,7 +329,12 @@ def validate_concept_draft(
                 code="UNKNOWN_RETRIEVED_EVIDENCE_ID",
                 message="A planning reference must cite an authorized Evidence ID returned by retrieval.",
             ))
-        if reference.get("permission_status") != "authorized":
+        allowed_synthetic = (
+            reference.get("permission_status") == "synthetic_only"
+            and reference.get("is_synthetic") is True
+            and bool(reference.get("dataset_id"))
+        )
+        if reference.get("permission_status") != "authorized" and not allowed_synthetic:
             issues.append(ValidationIssue(
                 path=f"planning_references[{index}].permission_status",
                 code="UNAUTHORIZED_PLANNING_REFERENCE",

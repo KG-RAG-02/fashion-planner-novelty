@@ -200,6 +200,12 @@ def _planning_reference_records(context: ProductPlanningContext) -> tuple[dict[s
                 "permitted_uses": item.permitted_uses,
                 "content_hash": item.content_hash,
                 "matched_by": item.matched_by,
+                "dataset_id": item.dataset_id,
+                "is_synthetic": item.is_synthetic,
+                "synthetic_notice": item.synthetic_notice,
+                "generator_version": item.generator_version,
+                "seed": item.seed,
+                "supports": item.supports,
             })
     return tuple(records.values())
 

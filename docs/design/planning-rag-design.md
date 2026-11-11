@@ -1,6 +1,6 @@
 # Project_06 기획 전용 KG/RAG 설계
 
-- 상태: 검색 경계·초안 API 연결 구현, 운영 자료원 미연결
+- 상태: 합성 workbench 검색·초안 근거 연결 구현, 실제 운영 자료원 미연결
 - 범위: 사용자 요청, Trend Agent 결과, 상품·재고 Agent 결과를 사람이 검토할 신제품 기획 초안으로 묶는 검색 보조 기능
 - 책임 경계: 판매·시장 원천 검색, 집계 및 해석은 Project_07 소유
 - 관련 문서: [데이터 출처·Evidence 경계](data-source-and-evidence-plan.md), [TrendBatch 기반 상품기획 설계](trend-batch-kg-rag-product-planning.md), [Project_07 handoff](project-07-handoff-proposal.md)
@@ -21,7 +21,7 @@ RAG는 판매 원장, 경쟁사 매출, 시장 규모, 가격·원가, 수요 �
 
 `src/vogue_npp/domain/retrieval.py`에는 기술 중립 `KnowledgeRetriever` 포트, `RetrievalQuery`, `EvidenceRef`, `KGPath`, 그리고 검색이 수행되지 않았음을 명시하는 `EmptyKnowledgeRetriever`가 있다. 현재 질의는 검색 목적·scope·allowlist·query plan 버전·exact terms·후보/최종 한도를 추적하며, TrendBatch 기획 흐름에서 선택적으로 호출한다. `sources/hybrid_retriever.py`에는 lexical/dense adapter 결과를 RRF로 병합하는 backend-neutral orchestrator가 있지만 실제 BM25/vector 인덱스 adapter는 없다. `sources/synthetic_corpus_retriever.py`는 명시 호출형 합성 데이터 테스트/demo에만 사용한다.
 
-기획 초안 API는 retrieval workflow를 호출해 경로별 상태와 허가된 참고 자료를 응답에 보존한다. `RuleBasedConceptGenerator`는 검색 결과를 새로운 상품 사실로 만들지 않는다. 허가된 인용문은 MD 검토 섹션과 선택 이미지 프롬프트의 참고 자료로 전달한다. 기본 `RetrievalSourcePolicy`는 비어 있어 모든 경로가 `not_configured`이며, 실제 문서 저장소·BM25/vector 인덱스·그래프 저장소·권한 확인 adapter는 연결되어 있지 않다. 테스트는 합성 fixture 및 fake lexical/dense adapter만 사용한다.
+기획 초안 API는 `VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED=true`에서만 버전 고정된 synthetic workbench 검색기를 선택한다. 기본값은 `false`이며, 실제 회사 데이터나 운영 connector를 선택하지 않는다. 응답에는 목적별 query trace, filter, dataset/index snapshot, Evidence locator와 content hash, synthetic notice가 보존된다. 합성 관찰은 `planning_analysis.observations`의 `synthetic_observation`으로, 해석·제안·미확정 질문은 별도 슬롯으로 직렬화된다. 기본 RuleBased 경로는 검색 결과를 승인된 신상품 사실로 바꾸지 않는다. RAG 원문과 합성 상품 사진은 신제품 이미지 provider prompt에 넣지 않는다. 테스트는 합성 fixture 및 fake lexical/dense adapter만 사용한다.
 
 ## 3. 책임 경계와 데이터 흐름
 

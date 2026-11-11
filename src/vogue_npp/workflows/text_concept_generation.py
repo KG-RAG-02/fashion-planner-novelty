@@ -56,10 +56,14 @@ def _allowed_references(context: ProductPlanningContext) -> list[dict[str, objec
     if context.planning_knowledge is None:
         return allowed
     for result in context.planning_knowledge.by_purpose:
-        if result.purpose not in {"planning_reference", "precedent", "taxonomy"}:
+        if result.purpose not in {"planning_reference", "precedent", "taxonomy", "catalog_comparison", "assortment_relation"}:
             continue
         for item in result.evidence:
-            if not item.verified or item.permission_status != "authorized":
+            if not item.verified:
+                continue
+            if item.permission_status == "authorized":
+                pass
+            elif not (item.is_synthetic and item.permission_status == "synthetic_only" and item.dataset_id):
                 continue
             if "product_planning" not in item.permitted_uses:
                 continue
@@ -73,6 +77,10 @@ def _allowed_references(context: ProductPlanningContext) -> list[dict[str, objec
                 "source_date": item.source_date.isoformat() if item.source_date else None,
                 "permission_status": item.permission_status,
                 "permitted_uses": list(item.permitted_uses),
+                "supports": list(item.supports),
+                "dataset_id": item.dataset_id,
+                "is_synthetic": item.is_synthetic,
+                "synthetic_notice": item.synthetic_notice,
             })
     return allowed
 
@@ -149,7 +157,7 @@ def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
             "details_are_opaque_and_not_included": True,
             "instruction": "Do not infer or state sales/market findings from this handoff.",
         },
-        "authorized_planning_references": references,
+        "retrieved_planning_references": references,
         "conflicts": [{"field": item.field, "values": dict(item.values), "message": item.message}
                       for item in context.conflicts],
         "limitations": list(context.limitations),
@@ -301,6 +309,10 @@ def parse_concept_output(
             "quote": item["quote"],
             "permission_status": item["permission_status"],
             "permitted_uses": tuple(item["permitted_uses"]),
+            "supports": tuple(item["supports"]),
+            "dataset_id": item["dataset_id"],
+            "is_synthetic": item["is_synthetic"],
+            "synthetic_notice": item["synthetic_notice"],
         }
         for item in _allowed_references(context)
     )

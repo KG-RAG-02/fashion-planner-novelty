@@ -4,7 +4,7 @@ Prompt sources are versioned assets. Runtime code loads these files through `vog
 
 | Component | Current version | Stable prompt ID | Purpose |
 |---|---|---|---|
-| `text_planning` | `v1` | `new-product-planner-v1` | Structured text planning draft provider seam |
+| `text_planning` | `v2` | `new-product-planner-v2-synthetic-rag` | Structured text planning draft provider seam with synthetic-source labeling |
 | `concept_image` | `v2` | `product-concept-image-prompt-v2-designer` | Optional review-only concept image |
 
 Each version directory has a `system_template.md`, `user_template.md`, and generated `rendered_system.md`. The user template contains a named placeholder for untrusted JSON input. Application code serializes and bounds that data before substitution. Do not insert data into the system template.

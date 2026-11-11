@@ -50,6 +50,9 @@ class PlanningBoard:
     sections: tuple[BoardSection, ...]
     evidence_ids: tuple[str, ...]
     limitations: tuple[str, ...]
+    synthetic_context: bool = False
+    synthetic_dataset_ids: tuple[str, ...] = ()
+    synthetic_notice: str | None = None
 
 
 def _state(status: str, *, has_claims: bool = False, has_unverified: bool = False) -> BoardState:
@@ -201,11 +204,11 @@ def build_planning_board(context: ProductPlanningContext, draft: ProductConceptD
     knowledge = context.planning_knowledge
     if knowledge:
         for result in knowledge.by_purpose:
-            if result.purpose not in {"planning_reference", "precedent", "taxonomy"}:
+            if result.purpose not in {"planning_reference", "precedent", "taxonomy", "catalog_comparison", "assortment_relation"}:
                 continue
             for ref in result.evidence:
                 reference_claims.append(_claim(
-                    f"{ref.source_name or ref.source_id}: {ref.quote or ref.locator or '인용 미제공'}",
+                    f"{'[합성 데이터 관찰] ' if ref.is_synthetic else ''}{ref.source_name or ref.source_id}: {ref.quote or ref.locator or '인용 미제공'}",
                     "observation", (ref.evidence_id,), source=ref.source_name or ref.source_id,
                     source_ref=ref.locator,
                 ))
@@ -254,6 +257,9 @@ def build_planning_board(context: ProductPlanningContext, draft: ProductConceptD
     evidence_ids = tuple(dict.fromkeys(
         evidence_id for section in sections for claim in section.claims for evidence_id in claim.evidence_ids
     ))
+    synthetic_refs = tuple(item for item in knowledge.evidence if item.is_synthetic) if knowledge else ()
+    synthetic_dataset_ids = tuple(sorted({item.dataset_id for item in synthetic_refs if item.dataset_id}))
+    synthetic_notice = next((item.synthetic_notice for item in synthetic_refs if item.synthetic_notice), None)
     return PlanningBoard(
         title=f"{context.request.season or '시즌 미정'} {context.request.category or '카테고리 미정'} 신상품 기획안",
         season=context.request.season or "시즌 미정",
@@ -262,6 +268,9 @@ def build_planning_board(context: ProductPlanningContext, draft: ProductConceptD
         process=("ISSUE", "INSIGHT", "PROPOSAL"), sections=sections,
         evidence_ids=evidence_ids,
         limitations=tuple(dict.fromkeys((*context.limitations, *draft.limitations))),
+        synthetic_context=bool(synthetic_refs),
+        synthetic_dataset_ids=synthetic_dataset_ids,
+        synthetic_notice=synthetic_notice,
     )
 
 
@@ -302,6 +311,9 @@ def render_planning_board_svg(board: PlanningBoard, product_image_path: Path) ->
         '<text x="1320" y="52" fill="#102c21" font-size="13" font-weight="700" font-family="sans-serif">MD REVIEW DRAFT</text>',
         '<text x="1300" y="84" fill="#dce5db" font-size="11" font-family="sans-serif">'
         + html.escape(board.review_label) + '</text>',
+        *([f'<rect x="1010" y="58" width="225" height="22" rx="4" fill="#fff0bd"/>',
+           f'<text x="1021" y="73" fill="#684b18" font-size="11" font-weight="700" font-family="sans-serif">합성 데이터 참고</text>']
+          if board.synthetic_context else []),
         '<rect x="28" y="105" width="1544" height="42" rx="7" fill="#dce2d8"/>',
     ]
     step_text = "   →   ".join(board.process)

@@ -112,8 +112,11 @@ def build_image_generation_request(
 ) -> ImageGenerationRequest:
     """Build a product-only prompt and an auditable Evidence allowlist."""
     known_ids = set(context.evidence_ids)
+    synthetic_rag_ids = set()
     if context.planning_knowledge:
         known_ids.update(item.evidence_id for item in context.planning_knowledge.evidence if item.evidence_id)
+        synthetic_rag_ids.update(item.evidence_id for item in context.planning_knowledge.evidence
+                                 if item.is_synthetic and item.evidence_id)
     used_ids: list[str] = []
     evidence_uses: list[ImageEvidenceUse] = []
     excluded: list[ImageEvidenceExclusion] = []
@@ -127,6 +130,11 @@ def build_image_generation_request(
     def use_ids(ids, *, source: str, source_ref: str, supports: str) -> tuple[str, ...]:
         accepted = []
         for evidence_id in dict.fromkeys(ids):
+            if evidence_id in synthetic_rag_ids:
+                excluded.append(ImageEvidenceExclusion(
+                    str(evidence_id), source, "합성 RAG Evidence는 신제품 이미지 provider 입력에 사용하지 않음",
+                ))
+                continue
             if evidence_id in known_ids:
                 accepted.append(evidence_id)
                 used_ids.append(evidence_id)
@@ -271,25 +279,27 @@ def build_image_generation_request(
         collect_sales_ids(context.sales_market_result)
     exclude_ids(sales_ids, source="sales_market_result", reason="opaque handoff 계약으로 신제품 이미지 사용 불가")
 
-    planning_references: dict[str, str] = {}
+    planning_reference_ids: set[str] = set()
     knowledge = context.planning_knowledge
     if knowledge:
         for result in knowledge.by_purpose:
-            if result.purpose not in {"planning_reference", "taxonomy"} or result.status not in {"ok", "partial"}:
+            if result.status not in {"ok", "partial"}:
                 continue
             for item in result.evidence:
-                if (not item.quote or not item.evidence_id or not item.source_id
-                        or not item.verified or item.permission_status != "authorized"
-                        or "product_planning" not in item.permitted_uses):
-                    continue
-                planning_references.setdefault(
-                    item.evidence_id,
-                    f"- 허가된 기획 참고자료: {item.source_name or item.source_id}; {item.quote} [Evidence: {item.evidence_id}]",
-                )
-                use_ids((item.evidence_id,), source="authorized_planning_reference",
-                        source_ref=item.locator or item.source_id, supports=item.quote)
-    if planning_references:
-        evidence_lines.extend(planning_references.values())
+                if item.evidence_id:
+                    planning_reference_ids.add(item.evidence_id)
+    exclude_ids(
+        planning_reference_ids,
+        source="planning_knowledge",
+        reason="RAG 근거는 초안·텍스트 기획 보드에만 사용하며 이미지 provider prompt에는 전달하지 않음",
+    )
+
+    for name, claim in (("opportunity", draft.opportunity), ("product_definition", draft.product_definition)):
+        if claim.kind == "proposal" and claim.value:
+            proposal_lines.append(f"- 초안 시각화 제안 ({name}): {claim.value}")
+    for attribute in draft.attributes:
+        if attribute.kind == "proposal" and attribute.value is not None and design_name(attribute.name):
+            proposal_lines.append(f"- 초안 시각화 제안: {attribute.name}={attribute.value}")
 
     # Retain stable, unique exclusions while preserving multiple source-specific reasons.
     excluded = list(dict.fromkeys(excluded))
@@ -298,7 +308,7 @@ def build_image_generation_request(
         limitations.append("근거 ID가 없는 트렌드명 또는 속성은 신제품 이미지 사실로 사용하지 않았습니다: "
                            + ", ".join(dict.fromkeys(unverified_trends)))
     if not evidence_lines:
-        limitations.append("이미지 입력에 원문 출처가 검증된 트렌드·참고 관찰이 없습니다.")
+        limitations.append("이미지 입력에 원문 출처가 검증된 요청·트렌드 관찰이 없습니다.")
     if context.sales_market_result:
         limitations.append("판매·시장 상세 결과는 opaque handoff이므로 신제품 이미지 입력에서 제외했습니다.")
     if any(not claim.evidence_ids for claim in context.request.requested_attributes if claim.value is not None):
