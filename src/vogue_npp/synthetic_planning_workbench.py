@@ -18,13 +18,20 @@ def load_dataset(path: Path = DEFAULT_DATASET) -> tuple[dict[str, Any], str]:
     data = json.loads(raw)
     if not isinstance(data, dict) or data.get("data_nature") != "synthetic_only":
         raise ValueError("This workbench accepts datasets marked data_nature=synthetic_only only.")
-    if not str(data.get("dataset_id", "")).startswith("SYNTHETIC-"):
+    if not str(data.get("dataset_id", "")).startswith("SYNTHETIC-") or data.get("is_synthetic") is not True:
         raise ValueError("Dataset ID must use the SYNTHETIC- prefix.")
-    record_lists = ("taxonomy", "products", "inventory_snapshots", "documents", "evidence", "planning_inputs", "sales_market_handoffs")
+    record_lists = ("taxonomy", "products", "inventory_snapshots", "documents", "evidence", "planning_inputs", "sales_market_handoffs", "assortment_relations")
     for collection in record_lists:
         rows = data.get(collection)
         if not isinstance(rows, list) or any(not isinstance(row, dict) or row.get("data_nature") != "synthetic_test" for row in rows):
             raise ValueError(f"Every {collection} record must be explicitly marked data_nature=synthetic_test.")
+    metadata_collections = ("taxonomy", "products", "documents", "evidence", "assortment_relations")
+    for collection in metadata_collections:
+        for row in data[collection]:
+            if row.get("dataset_id") != data["dataset_id"] or row.get("is_synthetic") is not True:
+                raise ValueError(f"Every {collection} row must carry the matching synthetic dataset marker.")
+            if not row.get("synthetic_notice") or not row.get("generator_version") or row.get("seed") != data.get("seed"):
+                raise ValueError(f"Every {collection} row must carry synthetic provenance metadata.")
     return data, hashlib.sha256(raw).hexdigest()
 
 
@@ -37,6 +44,9 @@ def _envelope(dataset: dict, snapshot: str, command: str, filters: dict, result:
     return {
         "run_id": _run_id(snapshot, command, filters),
         "dataset_id": dataset["dataset_id"],
+        "generator_version": dataset["generator_version"],
+        "seed": dataset["seed"],
+        "synthetic_notice": dataset["notice"],
         "snapshot_sha256": snapshot,
         "command": command,
         "filters": filters,
@@ -79,6 +89,14 @@ def _matches_filters(item: dict, args) -> bool:
 
 def document_eligibility(dataset: dict, doc: dict) -> tuple[bool, list[str]]:
     reasons = []
+    if doc.get("is_synthetic") is not True or doc.get("dataset_id") != dataset.get("dataset_id"):
+        reasons.append("synthetic_dataset_marker_missing_or_mismatched")
+    if doc.get("permission_status") != "synthetic_only":
+        reasons.append("permission_status_not_synthetic_only")
+    if "product_planning" not in doc.get("permitted_uses", []):
+        reasons.append("product_planning_not_permitted")
+    if not doc.get("source_locator") or not doc.get("content_hash"):
+        reasons.append("source_locator_or_content_hash_missing")
     if doc.get("lifecycle_status") != "approved_example":
         reasons.append(f"lifecycle_status={doc.get('lifecycle_status')}")
     snapshot_date = dataset.get("snapshot_date")
@@ -105,9 +123,10 @@ def _visible_documents(dataset: dict, *, include_inactive: bool) -> list[dict]:
 def list_dataset(dataset: dict) -> dict:
     return {
         "notice": dataset["notice"],
+        "dataset_id": dataset["dataset_id"],
         "generator_version": dataset["generator_version"],
         "seed": dataset["seed"],
-        "counts": {key: len(dataset.get(key, [])) for key in ("products", "inventory_snapshots", "documents", "evidence", "planning_inputs", "sales_market_handoffs")},
+        "counts": {key: len(dataset.get(key, [])) for key in ("products", "inventory_snapshots", "documents", "evidence", "planning_inputs", "sales_market_handoffs", "assortment_relations")},
         "document_types": dict(sorted({kind: sum(doc.get("document_type") == kind for doc in dataset.get("documents", [])) for kind in {doc.get("document_type", "unknown") for doc in dataset.get("documents", [])}}.items())),
         "document_lifecycle_states": dict(sorted({state: sum(doc.get("lifecycle_status") == state for doc in dataset.get("documents", [])) for state in {doc.get("lifecycle_status", "unknown") for doc in dataset.get("documents", [])}}.items())),
         "available_statuses": sorted({row.get("status") for row in dataset.get("inventory_snapshots", []) if row.get("status")} | {row.get("status") for row in dataset.get("sales_market_handoffs", []) if row.get("status")}),
@@ -117,14 +136,15 @@ def list_dataset(dataset: dict) -> dict:
 
 def schema_summary(dataset: dict) -> dict:
     return {
-        "dataset_metadata": ["dataset_id", "schema_version", "generator_version", "seed", "snapshot_date", "data_nature", "notice"],
+        "dataset_metadata": ["dataset_id", "is_synthetic", "synthetic_notice", "schema_version", "generator_version", "seed", "snapshot_date", "data_nature", "notice"],
         "entities": {
-            "products": ["style_id", "brand_id", "line_id", "season", "market", "channels", "category_id", "product_role", "attributes", "skus", "evidence_ids"],
+            "products": ["style_id", "brand_id", "line_id", "season", "market", "channels", "category_id", "product_role", "attributes", "attribute_evidence_ids", "skus", "evidence_ids", "source_locator", "content_hash"],
             "inventory_snapshots": ["style_id", "quantity", "unit", "as_of", "definition", "status", "evidence_ids"],
-            "documents": ["document_id", "source_id", "document_type", "version", "lifecycle_status", "effective_from", "effective_to", "scope", "body", "evidence_ids"],
-            "evidence": ["evidence_id", "source_id", "document_id", "locator", "supports", "permission_status", "permitted_uses", "verified"],
+            "documents": ["document_id", "source_id", "document_type", "version", "lifecycle_status", "effective_from", "effective_to", "scope", "body", "evidence_ids", "permission_status", "permitted_uses", "source_locator", "content_hash"],
+            "evidence": ["evidence_id", "source_id", "document_id", "locator", "supports", "permission_status", "permitted_uses", "verified", "content_hash"],
             "planning_inputs": ["request_id", "payload.planning_request", "payload.trend_result", "payload.inventory_product_result", "payload.sales_market_result"],
             "sales_market_handoffs": ["handoff_id", "producer_id", "status", "request_id", "scope", "findings", "limitations", "errors"],
+            "assortment_relations": ["relation_id", "from_category_id", "from_product_role", "to_category_id", "to_product_role", "relation_type", "evidence_ids"],
         },
         "relationships": [
             "products.style_id -> inventory_snapshots.style_id",
@@ -134,7 +154,7 @@ def schema_summary(dataset: dict) -> dict:
             "planning_inputs.request_id -> every upstream payload request_id",
             "sales_market_handoffs.request_id -> planning_inputs.request_id",
         ],
-        "invariants": ["all data_nature values identify synthetic test material", "Project_07 findings are opaque handoffs and are not recalculated by Project_06", "only approved_example documents are returned by search by default"],
+        "invariants": ["all records carry a synthetic marker and dataset metadata", "attribute claims resolve their own Evidence IDs", "Project_07 findings are opaque handoffs and are not recalculated by Project_06", "only lifecycle-, date-, permission- and Evidence-eligible documents are returned by default"],
     }
 
 
@@ -147,14 +167,14 @@ def search_dataset(dataset: dict, args) -> dict:
         searchable = " ".join((doc.get("title", ""), doc.get("body", ""), doc.get("document_id", ""), doc.get("document_type", ""))).casefold()
         if query in searchable:
             eligible, reasons = document_eligibility(dataset, doc)
-            docs_found.append({**{key: doc.get(key) for key in ("document_id", "source_id", "document_type", "title", "version", "lifecycle_status", "season", "category_id", "channel", "effective_from", "effective_to", "evidence_ids", "body")}, "eligible_for_default_planning_search": eligible, "eligibility_reasons": reasons})
+            docs_found.append({**{key: doc.get(key) for key in ("document_id", "source_id", "document_type", "title", "version", "lifecycle_status", "season", "category_id", "product_role", "channel", "effective_from", "effective_to", "evidence_ids", "body", "permission_status", "permitted_uses", "source_locator", "content_hash", "dataset_id", "is_synthetic", "synthetic_notice")}, "eligible_for_default_planning_search": eligible, "eligibility_reasons": reasons})
     products = []
     for item in dataset.get("products", []):
         if not _matches_filters(item, args):
             continue
         searchable = json.dumps(item, ensure_ascii=False, sort_keys=True).casefold()
         if query in searchable:
-            products.append({key: item.get(key) for key in ("style_id", "season", "category_id", "product_role", "attributes", "lifecycle_status", "evidence_ids")})
+            products.append({key: item.get(key) for key in ("style_id", "season", "category_id", "product_role", "attributes", "attribute_evidence_ids", "lifecycle_status", "evidence_ids", "source_locator", "content_hash", "dataset_id", "is_synthetic", "synthetic_notice")})
     return {"query": args.query, "documents": docs_found, "products": products, "inactive_documents_excluded": not args.include_inactive}
 
 
@@ -221,6 +241,12 @@ def quality_report(dataset: dict) -> dict:
         for sku in product.get("skus", []):
             sku_locations.setdefault(sku.get("sku_id", ""), []).append(product["style_id"])
     issues = []
+    for collection_name in ("taxonomy", "products", "documents", "evidence", "assortment_relations"):
+        for row in dataset.get(collection_name, []):
+            if row.get("is_synthetic") is not True or row.get("dataset_id") != dataset.get("dataset_id"):
+                issues.append({"code": "SYNTHETIC_DATASET_MARKER_INVALID", "collection": collection_name, "id": row.get("document_id", row.get("style_id", row.get("evidence_id", row.get("relation_id")))), "severity": "error"})
+            if not row.get("synthetic_notice") or not row.get("generator_version") or row.get("seed") != dataset.get("seed"):
+                issues.append({"code": "SYNTHETIC_PROVENANCE_METADATA_MISSING", "collection": collection_name, "severity": "error"})
     for sku, owners in sku_locations.items():
         if sku and len(owners) > 1:
             issues.append({"code": "DUPLICATE_SKU_ID", "id": sku, "styles": owners, "severity": "error"})
@@ -231,16 +257,35 @@ def quality_report(dataset: dict) -> dict:
         for evidence_id in product.get("evidence_ids", []):
             if evidence_id not in evidence_ids:
                 issues.append({"code": "UNKNOWN_PRODUCT_EVIDENCE", "style_id": product["style_id"], "evidence_id": evidence_id, "severity": "error"})
+        for attribute_name, attribute_ids in product.get("attribute_evidence_ids", {}).items():
+            if product.get("attributes", {}).get(attribute_name) is None or not attribute_ids:
+                issues.append({"code": "ATTRIBUTE_EVIDENCE_LINK_MISSING", "style_id": product["style_id"], "attribute": attribute_name, "severity": "warning"})
+            for evidence_id in attribute_ids:
+                evidence_item = next((item for item in dataset.get("evidence", []) if item.get("evidence_id") == evidence_id), None)
+                if evidence_item is None or f"product.attributes.{attribute_name}" not in evidence_item.get("supports", []):
+                    issues.append({"code": "ATTRIBUTE_EVIDENCE_LINK_INVALID", "style_id": product["style_id"], "attribute": attribute_name, "evidence_id": evidence_id, "severity": "error"})
     for evidence_item in dataset.get("evidence", []):
         source_doc = documents_by_id.get(evidence_item.get("document_id"))
         if source_doc is None or source_doc.get("source_id") != evidence_item.get("source_id"):
             issues.append({"code": "EVIDENCE_SOURCE_DOCUMENT_MISMATCH", "evidence_id": evidence_item.get("evidence_id"), "document_id": evidence_item.get("document_id"), "severity": "error"})
+        material = "\n".join((evidence_item.get("source_id", ""), evidence_item.get("locator", ""), json.dumps(evidence_item.get("supports", []), ensure_ascii=False, sort_keys=True)))
+        if evidence_item.get("content_hash") != hashlib.sha256(material.encode("utf-8")).hexdigest():
+            issues.append({"code": "EVIDENCE_CONTENT_HASH_MISMATCH", "evidence_id": evidence_item.get("evidence_id"), "severity": "error"})
     for doc in dataset.get("documents", []):
         for evidence_id in doc.get("evidence_ids", []):
             if evidence_id not in evidence_ids:
                 issues.append({"code": "UNKNOWN_DOCUMENT_EVIDENCE", "document_id": doc["document_id"], "evidence_id": evidence_id, "severity": "error"})
         if doc.get("document_type") == "guideline" and doc.get("lifecycle_status") != "approved_example":
             issues.append({"code": "GUIDELINE_NOT_ACTIVE", "document_id": doc["document_id"], "lifecycle_status": doc.get("lifecycle_status"), "severity": "warning"})
+        expected_hash = hashlib.sha256(doc.get("body", "").encode("utf-8")).hexdigest()
+        if doc.get("content_hash") != expected_hash:
+            issues.append({"code": "DOCUMENT_CONTENT_HASH_MISMATCH", "document_id": doc.get("document_id"), "severity": "error"})
+        if not doc.get("source_locator"):
+            issues.append({"code": "DOCUMENT_LOCATOR_MISSING", "document_id": doc.get("document_id"), "severity": "error"})
+    for relation in dataset.get("assortment_relations", []):
+        for evidence_id in relation.get("evidence_ids", []):
+            if evidence_id not in evidence_ids:
+                issues.append({"code": "UNKNOWN_ASSORTMENT_RELATION_EVIDENCE", "relation_id": relation.get("relation_id"), "evidence_id": evidence_id, "severity": "error"})
     for snapshot in dataset.get("inventory_snapshots", []):
         if snapshot.get("status") in {"ok", "partial"}:
             if snapshot.get("quantity") is not None and not snapshot.get("unit"):

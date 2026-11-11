@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 from pathlib import Path
@@ -11,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "data/fixtures/synthetic_planning_workbench/dataset.json"
-GENERATOR_VERSION = "synthetic-planning-workbench-v1"
+GENERATOR_VERSION = "synthetic-planning-workbench-v2"
 
 
 def build_dataset(seed: int) -> dict:
@@ -35,6 +36,11 @@ def build_dataset(seed: int) -> dict:
     products = []
     evidence = []
     documents = []
+    taxonomy = [
+        {"category_id": "outerwear", "aliases": ["아우터", "겉옷"], "product_role": "upper_body", "data_nature": "synthetic_test"},
+        {"category_id": "bottoms", "aliases": ["하의", "팬츠"], "product_role": "lower_body", "data_nature": "synthetic_test"},
+        {"category_id": "accessories", "aliases": ["액세서리", "잡화"], "product_role": "accessory", "data_nature": "synthetic_test"},
+    ]
     for index, (style_id, category, role, concept, color, fit) in enumerate(product_specs):
         season = seasons[index % len(seasons)]
         product_eid = f"SYN-EV-CAT-{index + 1:03d}"
@@ -53,6 +59,21 @@ def build_dataset(seed: int) -> dict:
         }
         if style_id != "SYN-STYLE-OUT-003":
             attributes["detail"] = ["concealed_pocket", "adjustable_cuff", "zip_guard"][index % 3]
+        attribute_evidence_ids = {}
+        for attribute_name, attribute_value in attributes.items():
+            attribute_eid = f"SYN-EV-ATTR-{index + 1:03d}-{attribute_name.upper()}"
+            attribute_evidence_ids[attribute_name] = [attribute_eid]
+            evidence.append({
+                "evidence_id": attribute_eid,
+                "source_id": f"SYN-SRC-CATALOG-{index + 1:03d}",
+                "document_id": f"SYN-DOC-CAT-{index + 1:03d}",
+                "locator": f"catalog/attributes/{attribute_name}",
+                "supports": [f"product.attributes.{attribute_name}"],
+                "permission_status": "synthetic_only",
+                "permitted_uses": ["product_planning", "retrieval_evaluation"],
+                "verified": True,
+                "data_nature": "synthetic_test",
+            })
         product = {
             "style_id": style_id,
             "brand_id": "SYNTHETIC-BRAND-01",
@@ -64,11 +85,12 @@ def build_dataset(seed: int) -> dict:
             "product_role": role,
             "concept_code": concept,
             "attributes": attributes,
+            "attribute_evidence_ids": attribute_evidence_ids,
             "lifecycle_status": "active_example" if season == "27SS" else "archive_example",
             "launch_date": f"{2027 if season == '27SS' else 2026}-02-15",
             "end_date": None if season == "27SS" else "2026-08-31",
             "skus": skus,
-            "evidence_ids": [product_eid, spec_eid],
+            "evidence_ids": [product_eid, spec_eid, *(eid for ids in attribute_evidence_ids.values() for eid in ids)],
             "data_nature": "synthetic_test",
         }
         products.append(product)
@@ -77,7 +99,7 @@ def build_dataset(seed: int) -> dict:
             {"evidence_id": spec_eid, "source_id": f"SYN-SRC-SPEC-{index + 1:03d}", "document_id": f"SYN-DOC-SPEC-{index + 1:03d}", "locator": "specification/materials-and-measurements", "supports": ["example development specification"], "permission_status": "synthetic_only", "permitted_uses": ["product_planning"], "verified": True, "data_nature": "synthetic_test"},
         ])
         documents.extend([
-            {"document_id": f"SYN-DOC-CAT-{index + 1:03d}", "source_id": f"SYN-SRC-CATALOG-{index + 1:03d}", "document_type": "catalog_record", "title": f"가상 상품 카탈로그 {style_id}", "version": "1.0", "lifecycle_status": "approved_example", "effective_from": "2026-01-01", "effective_to": None, "season": season, "category_id": category, "channel": "all_synthetic", "body": f"{style_id}: {category}, {role}, {concept}; color={color}; fit={fit}; material={attributes['material']}; detail={attributes.get('detail', '미기재')}.", "evidence_ids": [product_eid], "data_nature": "synthetic_test"},
+            {"document_id": f"SYN-DOC-CAT-{index + 1:03d}", "source_id": f"SYN-SRC-CATALOG-{index + 1:03d}", "document_type": "catalog_record", "title": f"가상 상품 카탈로그 {style_id}", "version": "1.0", "lifecycle_status": "approved_example", "effective_from": "2026-01-01", "effective_to": None, "season": season, "category_id": category, "product_role": role, "brand_line": "SYNTHETIC-LINE-UTILITY", "channel": "all_synthetic", "body": f"{style_id}: {category}, {role}, {concept}; color={color}; fit={fit}; material={attributes['material']}; detail={attributes.get('detail', '미기재')}.", "evidence_ids": [product_eid, *(eid for ids in attribute_evidence_ids.values() for eid in ids)], "data_nature": "synthetic_test"},
             {"document_id": f"SYN-DOC-SPEC-{index + 1:03d}", "source_id": f"SYN-SRC-SPEC-{index + 1:03d}", "document_type": "product_specification", "title": f"가상 상품 명세서 {style_id}", "version": "1.0", "lifecycle_status": "approved_example", "effective_from": "2026-01-01", "effective_to": None, "season": season, "category_id": category, "channel": "all_synthetic", "body": f"개발 예시 {style_id}: 소재 {attributes['material']}; 색상 {color}; 핏 {fit}; 치수표와 봉제 수치는 의도적으로 미제공이며 담당 역할 검토가 필요함.", "evidence_ids": [spec_eid], "data_nature": "synthetic_test"},
         ])
 
@@ -93,6 +115,19 @@ def build_dataset(seed: int) -> dict:
         {"document_id": "SYN-DOC-BRIEF-001", "source_id": "SYN-SRC-BRIEF-001", "document_type": "season_brief", "title": "가상 27SS 라인 기획 브리프 예시", "version": "1.0", "lifecycle_status": "approved_example", "effective_from": "2026-01-01", "effective_to": "2027-12-31", "season": "27SS", "category_id": "outerwear", "channel": "online_synthetic", "body": "가상 브리프: 가벼운 레이어링용 아우터 방향을 검토한다. SKU 수, 가격, 수요, 발주 결정은 다루지 않으며, 이는 합성 테스트 지시다.", "evidence_ids": ["SYN-EV-BRIEF-001"], "data_nature": "synthetic_test"},
         {"document_id": "SYN-DOC-TAX-001", "source_id": "SYN-SRC-TAX-001", "document_type": "taxonomy", "title": "가상 taxonomy 정의 예시", "version": "1.0", "lifecycle_status": "approved_example", "effective_from": "2026-01-01", "effective_to": None, "season": "all_synthetic", "category_id": "all_synthetic", "channel": "all_synthetic", "body": "outerwear=upper_body 예시 분류; bottoms=lower_body 예시 분류; accessories=accessory 예시 분류. 실재 회사 taxonomy가 아님.", "evidence_ids": ["SYN-EV-TAX-001"], "data_nature": "synthetic_test"},
         {"document_id": "SYN-DOC-SPEC-CONFLICT-001", "source_id": "SYN-SRC-SPEC-CONFLICT-001", "document_type": "product_specification", "title": "가상 명세 충돌 사례: SYN-STYLE-OUT-001", "version": "0.9-draft", "lifecycle_status": "draft_example", "effective_from": None, "effective_to": None, "season": "27SS", "category_id": "outerwear", "channel": "all_synthetic", "body": "SYN-STYLE-OUT-001 draft conflict: color=brick_red, material=synthetic_cotton_mix. 승인 예시 카탈로그의 sage 색상 및 명세와 충돌하는 의도적 fixture.", "evidence_ids": ["SYN-EV-SPEC-CONFLICT-001"], "data_nature": "synthetic_test"},
+    ])
+
+    # Fictional review precedents and assortment relations add retrieval cases
+    # without changing the existing 12-style product baseline.
+    documents.extend([
+        {"document_id": "SYN-DOC-PRECEDENT-001", "source_id": "SYN-SRC-PRECEDENT-001", "document_type": "precedent", "title": "가상 아우터 기획 검토 사례", "version": "1.0", "lifecycle_status": "approved_example", "effective_from": "2026-01-01", "effective_to": None, "season": "27SS", "category_id": "outerwear", "product_role": "upper_body", "brand_line": "SYNTHETIC-LINE-UTILITY", "channel": "all_synthetic", "body": "합성 선례: 기존 utility shell의 수납 디테일은 유지하되, 신규 기획은 여름용 통기성과 경량 구조를 별도 검증 항목으로 분리했다. 이는 과거 가상 검토 사례이며 회사 승인이나 고객 반응 사실이 아니다.", "evidence_ids": ["SYN-EV-PRECEDENT-001"], "data_nature": "synthetic_test"},
+        {"document_id": "SYN-DOC-PRECEDENT-002", "source_id": "SYN-SRC-PRECEDENT-002", "document_type": "precedent", "title": "가상 하의 기획 수정 사례", "version": "1.0", "lifecycle_status": "approved_example", "effective_from": "2026-01-01", "effective_to": None, "season": "27SS", "category_id": "bottoms", "product_role": "lower_body", "brand_line": "SYNTHETIC-LINE-UTILITY", "channel": "all_synthetic", "body": "합성 선례: 스트레이트 핏과 조절 허리 디테일을 검토했으나 사이즈 범위와 착용 샘플 확인이 남아 있었다. 가상 사례이며 판매 성과나 선호 증거가 아니다.", "evidence_ids": ["SYN-EV-PRECEDENT-002"], "data_nature": "synthetic_test"},
+        {"document_id": "SYN-DOC-ASSORTMENT-001", "source_id": "SYN-SRC-ASSORTMENT-001", "document_type": "assortment_relation", "title": "가상 역할·assortment 관계 예시", "version": "1.0", "lifecycle_status": "approved_example", "effective_from": "2026-01-01", "effective_to": None, "season": "all_synthetic", "category_id": "outerwear", "product_role": "upper_body", "brand_line": "SYNTHETIC-LINE-UTILITY", "channel": "all_synthetic", "body": "합성 역할 관계: upper_body outerwear는 lower_body bottoms와 별도 코디 후보로 연결할 수 있다. 역할 호환은 코디 구조 예시일 뿐 수요, 재고 소진 또는 매출 효과를 입증하지 않는다.", "evidence_ids": ["SYN-EV-ASSORTMENT-001"], "data_nature": "synthetic_test"},
+    ])
+    evidence.extend([
+        {"evidence_id": "SYN-EV-PRECEDENT-001", "source_id": "SYN-SRC-PRECEDENT-001", "document_id": "SYN-DOC-PRECEDENT-001", "locator": "review/decision-and-validation", "supports": ["fictional planning precedent"], "permission_status": "synthetic_only", "permitted_uses": ["product_planning", "retrieval_evaluation"], "verified": True, "data_nature": "synthetic_test"},
+        {"evidence_id": "SYN-EV-PRECEDENT-002", "source_id": "SYN-SRC-PRECEDENT-002", "document_id": "SYN-DOC-PRECEDENT-002", "locator": "review/revision-and-open-items", "supports": ["fictional planning precedent"], "permission_status": "synthetic_only", "permitted_uses": ["product_planning", "retrieval_evaluation"], "verified": True, "data_nature": "synthetic_test"},
+        {"evidence_id": "SYN-EV-ASSORTMENT-001", "source_id": "SYN-SRC-ASSORTMENT-001", "document_id": "SYN-DOC-ASSORTMENT-001", "locator": "assortment/role-complement", "supports": ["fictional role relationship"], "permission_status": "synthetic_only", "permitted_uses": ["product_planning", "retrieval_evaluation"], "verified": True, "data_nature": "synthetic_test"},
     ])
     evidence.extend([
         {"evidence_id": "SYN-EV-GUIDE-001", "source_id": "SYN-SRC-GUIDE-001", "document_id": "SYN-DOC-GUIDE-001", "locator": "section/material-claims", "supports": ["claim wording boundary"], "permission_status": "synthetic_only", "permitted_uses": ["product_planning"], "verified": True, "data_nature": "synthetic_test"},
@@ -142,18 +177,49 @@ def build_dataset(seed: int) -> dict:
     evidence.append({"evidence_id": "SYN-EV-MARKET-001", "source_id": "SYN-SRC-P07-001", "document_id": "SYN-DOC-P07-001", "locator": "handoff/finding-001", "supports": ["synthetic Project_07 finding example"], "permission_status": "synthetic_only", "permitted_uses": ["testing_only"], "verified": False, "data_nature": "synthetic_test"})
     documents.append({"document_id": "SYN-DOC-P07-001", "source_id": "SYN-SRC-P07-001", "document_type": "sales_market_handoff_fixture", "title": "가상 Project_07 handoff 예시", "version": "1.0", "lifecycle_status": "fixture_only", "effective_from": None, "effective_to": None, "season": "27SS", "category_id": "outerwear", "channel": "online_synthetic", "body": "합성 Project_07 handoff 예시. Project_06에서는 원본 상태·범위·제한을 보존하고 계산하지 않음.", "evidence_ids": ["SYN-EV-MARKET-001"], "data_nature": "synthetic_test"})
 
-    return {
-        "dataset_id": f"SYNTHETIC-PLANNING-WORKBENCH-SEED-{seed}",
-        "schema_version": "1.0",
+    dataset_id = f"SYNTHETIC-PLANNING-WORKBENCH-SEED-{seed}"
+    synthetic_notice = "합성 데이터이며 실제 회사 정책·상품·고객·시장·성과를 나타내지 않습니다."
+    snapshot_date = "2026-11-11"
+    common_metadata = {
+        "dataset_id": dataset_id,
+        "is_synthetic": True,
+        "synthetic_notice": synthetic_notice,
         "generator_version": GENERATOR_VERSION,
         "seed": seed,
-        "snapshot_date": "2026-11-10",
+        "snapshot_date": snapshot_date,
+    }
+    for collection in (taxonomy, products, inventory, documents, evidence, sales_market_handoffs):
+        for item in collection:
+            item.update(common_metadata)
+    for doc in documents:
+        source_evidence = [item for item in evidence if item.get("evidence_id") in {eid for group in doc.get("evidence_ids", []) for eid in (group if isinstance(group, list) else [group])}]
+        doc["source_locator"] = f"document/{doc['document_id']}"
+        doc["permission_status"] = "synthetic_only"
+        doc["permitted_uses"] = sorted({use for item in source_evidence for use in item.get("permitted_uses", [])}) or ["testing_only"]
+        doc["content_hash"] = hashlib.sha256(doc.get("body", "").encode("utf-8")).hexdigest()
+    for product in products:
+        product["source_locator"] = f"catalog/{product['style_id']}"
+        product["content_hash"] = hashlib.sha256(json.dumps(product.get("attributes", {}), sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    for item in evidence:
+        material = "\n".join((item.get("source_id", ""), item.get("locator", ""), json.dumps(item.get("supports", []), ensure_ascii=False, sort_keys=True)))
+        item["content_hash"] = hashlib.sha256(material.encode("utf-8")).hexdigest()
+    assortment_relations = [
+        {"relation_id": "SYN-REL-OUTERWEAR-BOTTOMS-001", "from_category_id": "outerwear", "from_product_role": "upper_body", "to_category_id": "bottoms", "to_product_role": "lower_body", "relation_type": "outfit_complement", "evidence_ids": ["SYN-EV-ASSORTMENT-001"], "data_nature": "synthetic_test", **common_metadata},
+    ]
+    return {
+        "dataset_id": dataset_id,
+        "schema_version": "2.0",
+        "generator_version": GENERATOR_VERSION,
+        "seed": seed,
+        "snapshot_date": snapshot_date,
         "data_nature": "synthetic_only",
-        "notice": "All brands, products, people, documents, dates, quantities and findings are fictional test data. They do not represent any company, policy, customer, demand, market, or business result.",
+        "notice": synthetic_notice,
+        "is_synthetic": True,
         "brand": {"brand_id": "SYNTHETIC-BRAND-01", "name": "가상 브랜드 SYNTHETIC-BRAND-01", "line_id": "SYNTHETIC-LINE-UTILITY", "data_nature": "synthetic_test"},
-        "taxonomy": [{"category_id": "outerwear", "product_role": "upper_body", "data_nature": "synthetic_test"}, {"category_id": "bottoms", "product_role": "lower_body", "data_nature": "synthetic_test"}, {"category_id": "accessories", "product_role": "accessory", "data_nature": "synthetic_test"}],
+        "taxonomy": taxonomy,
         "products": products,
         "inventory_snapshots": inventory,
+        "assortment_relations": assortment_relations,
         "documents": documents,
         "evidence": evidence,
         "planning_inputs": [{"request_id": request_id, "payload": planning_inputs, "data_nature": "synthetic_test"}],

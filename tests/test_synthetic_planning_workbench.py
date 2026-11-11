@@ -28,6 +28,20 @@ class SyntheticPlanningWorkbenchTests(unittest.TestCase):
     def test_generated_dataset_is_reproducible_from_seed(self):
         self.assertEqual(build_dataset(20261110), build_dataset(20261110))
         self.assertNotEqual(build_dataset(20261110), build_dataset(20261111))
+        generated = build_dataset(20261110)
+        self.assertEqual(generated["generator_version"], "synthetic-planning-workbench-v2")
+        self.assertEqual(len(generated["products"]), 12)
+        self.assertTrue(all(item["is_synthetic"] for item in generated["products"] + generated["documents"] + generated["evidence"]))
+        self.assertTrue(all(item.get("attribute_evidence_ids") for item in generated["products"]))
+
+    def test_loader_rejects_unmarked_corpus_rows(self):
+        data = json.loads(json.dumps(self.dataset))
+        data["documents"][0]["is_synthetic"] = False
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "unmarked.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "synthetic dataset marker"):
+                load_dataset(path)
 
     def test_loader_rejects_non_synthetic_dataset(self):
         data = dict(self.dataset)
@@ -59,6 +73,9 @@ class SyntheticPlanningWorkbenchTests(unittest.TestCase):
             "INVENTORY_UNIT_MISSING", "INVENTORY_AS_OF_MISSING",
             "OBSERVED_ZERO_DISTINCT_FROM_NO_RESULTS",
         } <= codes)
+        self.assertNotIn("ATTRIBUTE_EVIDENCE_LINK_INVALID", codes)
+        self.assertNotIn("DOCUMENT_CONTENT_HASH_MISMATCH", codes)
+        self.assertNotIn("EVIDENCE_CONTENT_HASH_MISMATCH", codes)
 
     def test_zero_quantity_and_no_results_are_separate_records(self):
         statuses = {row["status"] for row in self.dataset["inventory_snapshots"]}
