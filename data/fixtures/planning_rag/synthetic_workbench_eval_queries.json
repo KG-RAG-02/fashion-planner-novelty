@@ -1,0 +1,101 @@
+{
+  "evaluation_set_id": "SYNTHETIC-PLANNING-RAG-EVAL-001",
+  "is_synthetic": true,
+  "notice": "합성 검색 회귀 평가이며 실제 회사 효용이나 운영 성능을 입증하지 않습니다.",
+  "top_k": 10,
+  "queries": [
+    {
+      "query_id": "catalog_sage_attribute",
+      "purpose": "catalog_comparison",
+      "season": "27SS",
+      "category_ids": ["outerwear"],
+      "product_roles": ["upper_body"],
+      "attribute_terms": ["sage"],
+      "exact_terms": ["sage"],
+      "allowed_source_types": ["catalog_record", "product_specification"],
+      "expected_evidence_ids": ["SYN-EV-ATTR-001-COLOR"],
+      "expect_no_results": false
+    },
+    {
+      "query_id": "guideline_material",
+      "purpose": "planning_reference",
+      "season": "27SS",
+      "category_ids": ["outerwear"],
+      "attribute_terms": ["소재"],
+      "exact_terms": ["outerwear"],
+      "allowed_source_types": ["guideline", "season_brief"],
+      "expected_evidence_ids": ["SYN-EV-GUIDE-001"],
+      "expect_no_results": false
+    },
+    {
+      "query_id": "precedent_breathability",
+      "purpose": "precedent",
+      "season": "27SS",
+      "category_ids": ["outerwear"],
+      "product_roles": ["upper_body"],
+      "attribute_terms": ["통기성"],
+      "exact_terms": ["통기성"],
+      "allowed_source_types": ["precedent"],
+      "expected_evidence_ids": ["SYN-EV-PRECEDENT-001"],
+      "expect_no_results": false
+    },
+    {
+      "query_id": "taxonomy_outerwear",
+      "purpose": "taxonomy",
+      "season": "27SS",
+      "category_ids": ["outerwear"],
+      "attribute_terms": [],
+      "exact_terms": ["outerwear"],
+      "allowed_source_types": ["taxonomy"],
+      "expected_evidence_ids": ["SYN-EV-TAX-001"],
+      "expect_no_results": false
+    },
+    {
+      "query_id": "assortment_upper_to_lower",
+      "purpose": "assortment_relation",
+      "season": "27SS",
+      "category_ids": ["outerwear"],
+      "product_roles": ["upper_body"],
+      "attribute_terms": [],
+      "exact_terms": ["outerwear"],
+      "allowed_source_types": ["assortment_relation"],
+      "expected_evidence_ids": ["SYN-EV-ASSORTMENT-001"],
+      "expect_no_results": false
+    },
+    {
+      "query_id": "exact_evidence_id",
+      "purpose": "evidence_lookup",
+      "season": "27SS",
+      "category_ids": ["outerwear"],
+      "attribute_terms": [],
+      "exact_terms": [],
+      "evidence_ids": ["SYN-EV-ATTR-001-COLOR"],
+      "allowed_source_types": ["catalog_record"],
+      "expected_evidence_ids": ["SYN-EV-ATTR-001-COLOR"],
+      "expect_no_results": false
+    },
+    {
+      "query_id": "expired_guideline_excluded",
+      "purpose": "planning_reference",
+      "season": "26FW",
+      "category_ids": ["outerwear"],
+      "attribute_terms": ["핏"],
+      "exact_terms": ["핏"],
+      "allowed_source_types": ["guideline"],
+      "expected_evidence_ids": [],
+      "expect_no_results": true
+    },
+    {
+      "query_id": "out_of_scope_no_results",
+      "purpose": "catalog_comparison",
+      "season": "28FW",
+      "category_ids": ["footwear"],
+      "product_roles": ["footwear"],
+      "attribute_terms": ["sage"],
+      "exact_terms": ["footwear", "sage"],
+      "allowed_source_types": ["catalog_record", "product_specification"],
+      "expected_evidence_ids": [],
+      "expect_no_results": true
+    }
+  ]
+}

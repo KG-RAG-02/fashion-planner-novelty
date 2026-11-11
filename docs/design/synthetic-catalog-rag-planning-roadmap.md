@@ -1,6 +1,6 @@
 # 합성 사내 카탈로그·가이드 RAG 기반 신상품 기획 작업 계획
 
-- 상태: 구현 전 작업 계획
+- 상태: 합성 RAG 기준선 구현 완료 · 실제 회사 자료원 미연결
 - 대상: Project_06 새상품 기획 에이전트
 - 전제: 실제 회사 내부 카탈로그·가이드·과거 상품 데이터는 접근할 수 없음
 - 현재 합성 기준선: [합성 상품기획 workbench](synthetic-planning-workbench.md)
@@ -211,3 +211,13 @@ flowchart TD
 7. baseline과 평가 리포트를 기준으로 dense retrieval, KG 확장, 실제 자료 연결의 다음 우선순위를 결정한다.
 
 기존 합성 workbench가 이미 있으므로 1~3단계에서 중복 데이터 모델이나 별도 RAG demo를 새로 만들지 말고, 해당 기준선을 기획 workflow에 안전하게 연결하는 것을 첫 구현 목표로 둔다.
+
+## 11. 구현 기록 (2026-11-11)
+
+- **Phase 0–1 완료:** Kaggle H&M 사진은 기본 generator·검색 corpus·상품 이미지 생성 입력에서 분리했다. 데이터 카드에 출처 및 제한을 기록하고, 합성 fixture를 schema v2로 확장했다. 고정 seed `20261110`에서 상품 12개, 문서 36개, Evidence 96개, assortment 관계 1개를 생성하며, 속성별 Evidence·공통 합성 provenance·locator·content hash를 유지한다. 의도적으로 넣은 품질 anomaly 2건(중복 SKU와 orphan Evidence)은 quality checker가 계속 표시한다. Kaggle 이용 조건에 대한 조직 차원의 허가 확인은 이 구현에서 수행하지 않았다.
+- **Phase 2 완료:** 별도 synthetic dataset namespace의 deterministic lexical retriever를 추가했다. catalog comparison, planning reference, precedent, taxonomy, assortment relation, exact Evidence lookup을 목적별로 분리하고, allowlist·역할·카테고리·시즌·lifecycle·유효기간·권한·Evidence 조건을 적용한다. vector/graph index나 외부 자료원은 연결하지 않았다.
+- **Phase 3 완료:** `VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED` 기본값은 `false`다. 명시적으로 켠 경우에만 workbench를 초안 전 검색에 사용한다. 검색 상태·query trace·snapshot·Evidence 연결을 응답에 보존하고, synthetic observation·design proposal·미확정 질문을 다른 필드로 출력한다. Project_07은 opaque 경계에 그대로 남는다.
+- **Phase 4 완료:** 검색 문서 본문과 합성 사진은 신제품 이미지 provider 입력에서 제외한다. planning board는 synthetic context를 표시하고 출처 Evidence를 연결한다. Kaggle H&M article ID가 식별되는 재고 사진은 기본적으로 image provider 전송을 막고, 별도의 `VOGUE_HM_KAGGLE_IMAGE_ALLOW_PROVIDER_UPLOAD` 명시 설정을 요구한다. 기존 `VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD=true` 기본 설정은 다른 R2 재고 이미지 흐름에 유지된다.
+- **Phase 5 완료:** 고정 평가 세트 8개 질의, no-RAG baseline, deterministic retriever 지표를 추가했다. snapshot `6e9bb74f…`에서 RAG baseline은 Recall@10 1.00, 평균 Precision@10 0.83, source/locator/hash 완전성 1.00, 권한 위반 0건, stale 유입 0건, no-result 정확도 1.00을 기록했다. no-RAG Recall@10은 0.00이다. 이 평가는 합성 fixture 회귀 결과일 뿐 실제 현업 효용을 입증하지 않는다. MD 품질의 사람 점수는 아직 기록하지 않았으며 평가 rubric만 제공한다.
+
+재현 명령: `PYTHONPATH=src python3 scripts/evaluate_synthetic_planning_rag.py --output docs/evaluation/synthetic-planning-rag-baseline.json`. 기준 질의 세트는 `data/fixtures/planning_rag/synthetic_workbench_eval_queries.json`, 검토 rubric은 `docs/evaluation/synthetic-planning-rag-rubric.md`에 둔다. 다음 확장 전에는 합성 평가의 품질 기준을 검토하고, 실제 회사 자료·H&M 사진의 새 사용은 별도 권한 및 데이터 계약 검토 대상으로 유지한다.
