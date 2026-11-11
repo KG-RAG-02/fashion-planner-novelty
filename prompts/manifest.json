@@ -1,8 +1,8 @@
 {
   "text_planning": {
-    "version": "v2",
-    "version_id": "new-product-planner-v2-synthetic-rag",
-    "directory": "text_planning/v2"
+    "version": "v3",
+    "version_id": "new-product-planner-v3-evidence-grounded",
+    "directory": "text_planning/v3"
   },
   "concept_image": {
     "version": "v2",

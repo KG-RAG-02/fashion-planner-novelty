@@ -4,7 +4,7 @@ Prompt sources are versioned assets. Runtime code loads these files through `vog
 
 | Component | Current version | Stable prompt ID | Purpose |
 |---|---|---|---|
-| `text_planning` | `v2` | `new-product-planner-v2-synthetic-rag` | Structured text planning draft provider seam with synthetic-source labeling |
+| `text_planning` | `v3` | `new-product-planner-v3-evidence-grounded` | Evidence-scoped product planning prompt used by the Responses API adapter |
 | `concept_image` | `v2` | `product-concept-image-prompt-v2-designer` | Optional review-only concept image |
 
 Each version directory has a `system_template.md`, `user_template.md`, and generated `rendered_system.md`. The user template contains a named placeholder for untrusted JSON input. Application code serializes and bounds that data before substitution. Do not insert data into the system template.
@@ -17,4 +17,4 @@ Each version directory has a `system_template.md`, `user_template.md`, and gener
 4. Run prompt registry, planning, and image prompt tests. Review the rendered system prompt in the diff.
 5. Keep the old version directory and ID so prior outputs remain attributable.
 
-Prompt text changes can alter model behavior. They require review and synthetic evaluation; a new version ID alone is not evidence of improved planning quality. Current version prompts do not mean a text LLM provider is connected.
+Prompt text changes can alter model behavior. They require review and synthetic evaluation; a new version ID alone is not evidence of improved planning quality. The versioned text prompt is connected to the OpenAI Responses API only when `VOGUE_TEXT_GENERATION_ENABLED=true` and an API key is configured.

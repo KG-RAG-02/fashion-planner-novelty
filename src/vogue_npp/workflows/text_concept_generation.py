@@ -1,7 +1,7 @@
 """Prompted concept generation with strict local validation and rule fallback.
 
-No concrete LLM provider is configured here. A provider can be injected for
-offline tests or after model/data-transfer approval.
+The HTTP layer can inject the opt-in OpenAI Responses adapter. Offline tests
+use fake providers; disabled or failed model calls retain the rule baseline.
 """
 
 from __future__ import annotations
@@ -28,6 +28,14 @@ PROMPT_VERSION = prompt_version_id("text_planning")
 MAX_MODEL_OUTPUT_CHARS = 64_000
 CLAIM_KINDS = {"user_requested", "evidence_observation", "proposal", "hypothesis", "unknown"}
 PLANNING_SYSTEM_PROMPT = load_prompt("text_planning", "system")
+
+
+class ConceptOutputValidationError(ValueError):
+    """Safe validation failure carrying only a stable issue code."""
+
+    def __init__(self, issue_code: str):
+        super().__init__("structured concept output failed local validation")
+        self.code = f"TEXT_OUTPUT_VALIDATION_{issue_code}"
 
 
 class StructuredTextProvider(Protocol):
@@ -346,7 +354,7 @@ def parse_concept_output(
     )
     issues = validate_concept_draft(context, draft)
     if issues:
-        raise ValueError("invalid output")
+        raise ConceptOutputValidationError(issues[0].code)
     return draft
 
 
@@ -358,6 +366,7 @@ class PromptedConceptGenerator:
     enabled: bool = False
     fallback: ConceptGenerator | None = None
     generation_status: str = field(default="not_requested", init=False)
+    generation_error_code: str | None = field(default=None, init=False)
 
     @property
     def generation_metadata(self) -> dict[str, str | None]:
@@ -367,15 +376,18 @@ class PromptedConceptGenerator:
             "status": self.generation_status,
             "prompt_version": PROMPT_VERSION if attempted else None,
             "model": getattr(self.provider, "model_name", None) if attempted else None,
+            "error_code": self.generation_error_code,
         }
 
     def generate(self, context: ProductPlanningContext) -> tuple[ProductConceptDraft, tuple[ValidationIssue, ...]]:
         fallback = self.fallback or RuleBasedConceptGenerator()
         if not self.enabled:
             self.generation_status = "disabled"
+            self.generation_error_code = None
             return fallback.generate(context)
         if self.provider is None:
             self.generation_status = "unavailable"
+            self.generation_error_code = "TEXT_API_NOT_CONFIGURED"
             safe_draft, base_issues = fallback.generate(context)
             safe_draft = replace(
                 safe_draft,
@@ -398,9 +410,11 @@ class PromptedConceptGenerator:
             )
             draft = parse_concept_output(raw, context, prompt.allowed_evidence_ids)
             self.generation_status = "generated"
+            self.generation_error_code = None
             return draft, ()
-        except Exception:
+        except Exception as exc:
             self.generation_status = "fallback"
+            self.generation_error_code = getattr(exc, "code", "TEXT_OUTPUT_INVALID")
             safe_draft, base_issues = fallback.generate(context)
             safe_draft = replace(
                 safe_draft,

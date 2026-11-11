@@ -36,7 +36,9 @@ Docker Compose는 `service` 모드로 TLS와 Bearer 인증을 사용합니다. �
 
 착장 생성은 선택된 재고 상품의 `article_id` 또는 숫자형 `sku_ids[]`에서 ID를 확인하고, Project_06의 읽기 전용 R2 adapter가 `R2_IMAGE_PREFIX/<앞 3자리>/<article_id>.jpg` 한 장씩 가져올 수 있습니다. stock-agent와 같은 bucket/read-only credential을 `R2_ACCOUNT_ID`, `R2_ENDPOINT`, `R2_BUCKET`, `R2_IMAGE_PREFIX`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` 환경변수로 설정합니다. 로컬 파일 캐시는 `VOGUE_R2_IMAGE_CACHE_DIR`(기본 `data/local/r2_product_images`)에 선택한 이미지만 둡니다. 신제품 단독 이미지 생성에는 재고 이미지가 전달되지 않고 착장 합성 단계에서만 참조됩니다. `VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD`는 기본 `true`이며 `false`로 설정하면 R2 이미지를 외부 이미지 provider에 전송하지 않습니다. Kaggle 데이터 이용 조건상 허용된 환경에서만 켜세요. 기존 허용 host를 통한 `products[].image.url` 입력도 지원합니다. handoff field와 사용 경계는 [`contracts/http-handoff-v0.2.md`](contracts/http-handoff-v0.2.md)에 기록되어 있습니다.
 
-구조화 텍스트 기획 프롬프트는 `VOGUE_TEXT_GENERATION_ENABLED`로 요청할 수 있지만 현재 승인된 텍스트 모델 제공자가 연결되지 않았습니다. 이 설정만 켜면 외부 호출 없이 규칙 기반 초안과 `TEXT_GENERATION_UNAVAILABLE` 상태를 반환합니다.
+구조화 텍스트 기획은 버전 관리된 system prompt와 OpenAI Responses API의 strict JSON Schema 출력을 사용합니다. `.env`에 `LLM_API_KEY`(또는 `OPENAI_API_KEY`)를 설정하고 `VOGUE_TEXT_GENERATION_ENABLED=true`로 켜면 `VOGUE_TEXT_GENERATION_MODEL`(기본 `gpt-6-astra`)로 호출합니다. API 요청은 도구를 비활성화하고 응답 저장을 끄며, 반환 JSON은 로컬에서 요청 ID·Evidence ID·draft 규칙으로 다시 검증합니다. API 호출이나 검증이 실패하면 규칙 기반 초안으로 fallback합니다. 텍스트 생성은 `.env.example`에서 기본 비활성화되어 있습니다.
+
+프롬프트 설계, 외부 API 데이터 경계, 실제 합성 입력 smoke 결과는 [텍스트 기획 Responses API 연결 설계](docs/design/text-planning-openai-integration.md)를 참고하세요.
 
 ## 테스트
 

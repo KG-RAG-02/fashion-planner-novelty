@@ -768,9 +768,21 @@ def _build_planning_draft_response(
         draft_data_limitations = visual_references["limitations"]
     else:
         draft_data_limitations = []
-    generator = concept_generator or PromptedConceptGenerator(
-        enabled=settings.text_generation_enabled,
-    )
+    if concept_generator is None:
+        text_provider = None
+        text_api_key = getattr(settings, "llm_api_key", None) or getattr(settings, "image_generation_api_key", None)
+        if settings.text_generation_enabled and text_api_key:
+            from ..sources.openai_text_provider import OpenAIResponsesTextProvider
+            text_provider = OpenAIResponsesTextProvider(
+                text_api_key,
+                model=os.getenv("VOGUE_TEXT_GENERATION_MODEL", "gpt-6-astra"),
+            )
+        generator = PromptedConceptGenerator(
+            provider=text_provider,
+            enabled=settings.text_generation_enabled,
+        )
+    else:
+        generator = concept_generator
     draft, issues = generator.generate(context)
     generation_metadata = getattr(generator, "generation_metadata", {
         "engine": "rule_based", "status": "generated", "prompt_version": None, "model": None,

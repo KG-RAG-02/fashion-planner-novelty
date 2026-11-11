@@ -88,4 +88,4 @@
 
 모델이 응답에 적은 출처나 Evidence ID 자체는 근거로 인정하지 않습니다. 각 출력 claim의 ID는 입력 Evidence allowlist와 대조하고, 근거가 실제 주장을 지지하는지 평가합니다. 모델 호출 전 자료 전송 권한을 확인하며, API key 및 민감한 원문은 로그나 Git에 남기지 않습니다.
 
-현재 구현된 구조화 프롬프트 버전은 `new-product-planner-v1`입니다. 응답의 `generation_metadata`에는 engine/status/prompt version/model 식별자가 포함되며 프롬프트나 모델 원문은 포함되지 않습니다. 현재 로컬 평가 저장소는 텍스트 모델 실행 기록을 저장하지 않습니다. 합성 mock 테스트는 파싱·요청 격리·Evidence allowlist·fallback을 검증하지만, 실제 제공자 품질이나 프롬프트 인젝션 저항성을 입증하지 않습니다. 운영 API는 기본적으로 규칙 기반 generator를 사용합니다.
+현재 구현된 구조화 프롬프트 버전은 `new-product-planner-v3-evidence-grounded`입니다. 응답의 `generation_metadata`에는 engine/status/prompt version/model 식별자가 포함되며 프롬프트나 모델 원문은 포함되지 않습니다. 실행 기록을 별도 저장하지 않습니다. 합성 mock 테스트는 파싱·요청 격리·Evidence allowlist·fallback을 검증합니다. OpenAI Responses API 어댑터는 도구를 비활성화하고 `store=false`를 지정하며, 기능은 기본 비활성화 상태입니다. 실 API 호출 1회의 성공은 프롬프트 품질이나 프롬프트 인젝션 저항성을 입증하지 않으며, 계속적인 합성 평가와 MD 검토가 필요합니다.
