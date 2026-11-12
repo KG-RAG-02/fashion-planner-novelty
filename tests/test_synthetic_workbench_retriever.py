@@ -7,12 +7,13 @@ from unittest.mock import patch
 from vogue_npp.domain.retrieval import RetrievalQuery
 from vogue_npp.prototype.server import _build_planning_draft_response
 from vogue_npp.sources.synthetic_workbench_retriever import SyntheticWorkbenchRetriever
+from scripts.generate_synthetic_planning_workbench import build_dataset
 
 
 class SyntheticWorkbenchRetrieverTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.retriever = SyntheticWorkbenchRetriever()
+        cls.retriever = SyntheticWorkbenchRetriever(dataset=build_dataset(20261110))
 
     def query(self, **kwargs):
         values = {
@@ -82,7 +83,7 @@ class SyntheticWorkbenchRetrieverTests(unittest.TestCase):
         ))
         self.assertEqual([item.evidence_id for item in result.evidence], ["SYN-EV-ATTR-001-COLOR"])
 
-    def test_api_uses_workbench_only_when_explicitly_enabled_and_marks_result(self):
+    def test_api_rejects_local_workbench_runtime_source(self):
         payload = {
             "request_id": "synthetic-api-test",
             "planning_request": {
@@ -101,16 +102,8 @@ class SyntheticWorkbenchRetrieverTests(unittest.TestCase):
             "VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE": "local",
         }, clear=True):
             enabled = _build_planning_draft_response(payload)
-        self.assertTrue(enabled["planning_knowledge"]["synthetic"])
-        self.assertEqual(enabled["planning_knowledge"]["synthetic_dataset_ids"], [self.retriever.dataset_id])
-        self.assertTrue(all(item["is_synthetic"] for item in enabled["draft"]["planning_references"]))
-        self.assertTrue(all(item["permission_status"] == "synthetic_only" for item in enabled["draft"]["planning_references"]))
-        self.assertTrue(any(item["claim_type"] == "synthetic_observation" for item in enabled["planning_analysis"]["observations"]))
-        self.assertTrue(all(item["evidence_ids"] for item in enabled["planning_analysis"]["observations"]))
-        catalog_trace = next(item["query_trace"] for item in enabled["planning_knowledge"]["by_purpose"]
-                             if item["purpose"] == "catalog_comparison")
-        self.assertTrue(catalog_trace["allow_synthetic"])
-        self.assertEqual(catalog_trace["dataset_id"], self.retriever.dataset_id)
+        self.assertFalse(enabled["planning_knowledge"]["synthetic"])
+        self.assertEqual(enabled["planning_knowledge_source"]["status"], "unavailable")
 
     def test_r2_unavailable_keeps_draft_and_reports_source_error(self):
         from unittest.mock import patch

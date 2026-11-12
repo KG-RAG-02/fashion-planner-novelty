@@ -137,7 +137,7 @@ RetrievalResult
 
 ## 9. 평가와 출시 단계
 
-1. **계약·fixture:** `data/fixtures/planning_rag/synthetic_corpus.json`의 합성 문서로 검색 결과와 Evidence 연결을 검증한다. 명시적으로 호출하는 `SyntheticCorpusRetriever`는 정확 Evidence ID 조회, 목적별 타입 제한, source·시즌·카테고리·시장·채널 필터, 합성 문서 내 결정적 키워드 정렬을 제공한다. 기본 초안 경로에는 연결하지 않으며 이 자료는 실제 회사 문서, 승인된 정책 또는 시장 사실이 아니다.
+1. **계약·fixture:** R2 companion archive에 보관된 합성 문서(개발 테스트는 임시 생성본)로 검색 결과와 Evidence 연결을 검증한다. 명시적으로 호출하는 `SyntheticCorpusRetriever`는 정확 Evidence ID 조회, 목적별 타입 제한, source·시즌·카테고리·시장·채널 필터, 합성 문서 내 결정적 키워드 정렬을 제공한다. 기본 초안 경로에는 연결하지 않으며 이 자료는 실제 회사 문서, 승인된 정책 또는 시장 사실이 아니다.
 2. **내부 가이드 adapter:** 브랜드 가이드·taxonomy의 소유자와 허용 범위가 정해진 뒤 읽기 전용 검색을 연결한다.
 3. **기획 사례 adapter:** 재사용 가능한 과거 기획 문서와 승인 상태, 민감도, 보존 기간을 합의한 뒤 연결한다.
 4. **선택 Evidence resolver:** Trend/Stock/Project_07 각 소유자가 안정된 Evidence lookup을 제공할 때만 연결한다. Project_07 경로는 별도 계약 승인 전 비활성 상태로 둔다.

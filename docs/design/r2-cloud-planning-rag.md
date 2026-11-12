@@ -2,7 +2,7 @@
 
 ## 현재 연결
 
-기획 RAG가 활성화된 경우 `VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE=r2`를 기본으로 사용한다. `R2_DB_KEY` 또는 선택 설정 `VOGUE_SYNTHETIC_PLANNING_R2_DB_KEY`가 가리키는 병합 DuckDB를 `HeadObject`로 확인하고, ETag/version별 로컬 캐시에 한 번 내려받아 DuckDB read-only 모드로 연다. 전체 DB는 R2에서 원격 range query 하지 않는다. 캐시 경로는 `data/local/r2_planning_db`이며 Git에서 제외된다. 현재 병합 DB는 DuckDB 파일 버전 69로 생성되었으므로 런타임은 `duckdb>=2.0,<3.0`을 사용한다.
+기획 RAG는 기본 활성화되며 런타임은 `VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE=r2`만 지원한다. 합성 workbench/corpus/evaluation/demo 원본은 R2 companion archive에 보관하며 로컬 `data/fixtures`에 상시 복제하지 않는다. 테스트는 생성기 기반 임시 데이터만 사용하고 API 분석 경로는 R2를 사용한다. `VOGUE_SYNTHETIC_PLANNING_R2_DB_KEY`가 가리키는 Project_06 병합 DuckDB를 `HeadObject`로 확인하고, ETag/version별 로컬 캐시에 한 번 내려받아 DuckDB read-only 모드로 연다. 전체 DB는 R2에서 원격 range query 하지 않는다. 캐시 경로는 `data/local/r2_planning_db`이며 Git에서 제외된다. 현재 병합 DB는 DuckDB 파일 버전 69로 생성되었으므로 런타임은 `duckdb>=2.0,<3.0`을 사용한다.
 
 ```mermaid
 flowchart LR
@@ -42,13 +42,16 @@ R2 연결 실패 시 초안 생성은 계속하고 검색 결과는 사용하지
 VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED=true
 VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE=r2
 R2_DB_KEY=stock-synthetic-workbench-20261111-7ec096205749.duckdb
+VOGUE_SYNTHETIC_PLANNING_R2_DB_KEY=project06-synthetic-planning-33903203c48c41a3.duckdb
 VOGUE_HM_KAGGLE_IMAGE_ALLOW_PROVIDER_UPLOAD=true
 VOGUE_HM_IMAGE_ANALYSIS_ENABLED=true
 VOGUE_HM_IMAGE_ANALYSIS_MODEL=gpt-6-astra
 VOGUE_HM_IMAGE_REFERENCE_LIMIT=3
 ```
 
-`VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE=local`은 개발·fixture 비교용 fallback이다. R2 인증은 읽기 요청만 수행한다. 쓰기 권한은 DB 게시에만 쓰며 runtime에 필요하지 않다. `R2_DB_KEY` 새 객체를 Project_06 및 stock-agent가 함께 쓰도록 로컬 설정을 변경했다. 배포 secret/config를 쓰는 실행 환경에는 별도 반영이 필요하다.
+`VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE=local` 설정은 런타임에서 거부되며 로컬 fixture 파일은 저장소에서 제거했으며 테스트는 임시 생성 데이터만 사용한다. R2 인증은 읽기 요청만 수행한다. 쓰기 권한은 DB 게시에만 쓰며 runtime에 필요하지 않다. `R2_DB_KEY`는 stock-agent가 사용하는 기존 병합본을 유지하고, Project_06만 `VOGUE_SYNTHETIC_PLANNING_R2_DB_KEY`로 corpus가 추가된 버전을 사용한다. 배포 secret/config를 쓰는 실행 환경에는 별도 반영이 필요하다.
+
+R2 companion archive를 원본으로 재게시하려면 `PYTHONPATH=src .venv/bin/python scripts/publish_synthetic_planning_rag_to_r2.py`로 dry-run하고, 확인 후 `--upload`를 붙인다. 스크립트는 `VOGUE_SYNTHETIC_PLANNING_SOURCE_ARCHIVE_KEY`(기본값은 현재 게시된 archive key)에서 원본을 임시 디렉터리로 받아 병합 후 versioned 결과를 게시한다. 기존 R2 object는 덮어쓰지 않는다. 원본 합성 fixture, data card, demo 입력과 초안은 `project06-synthetic-planning-assets-7c1a4715e3df571e-source-fixtures.tar.gz`에 보관한다.
 
 ### 새 환경 필수 설정 및 최소 권한
 
@@ -68,11 +71,11 @@ VOGUE_HM_IMAGE_REFERENCE_LIMIT=3
 | `VOGUE_HM_IMAGE_ANALYSIS_ENABLED=true` | H&M 이미지 분석 활성화 | 선택 |
 | `VOGUE_HM_KAGGLE_IMAGE_ALLOW_PROVIDER_UPLOAD=true` 및 `VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD=true` | 해당 사진의 외부 분석 전송 허용 | provider 분석 시 필수 |
 
-Project_06 runtime token은 해당 버킷에 한정한 **Object Read Only** 권한을 사용한다. 정확한 object key 조회에는 객체 읽기 및 metadata 확인(HEAD) 권한이 필요하다. `PutObject`, `DeleteObject`, 버킷 쓰기 권한은 runtime에 필요하지 않으며, 가능하면 객체 목록 권한도 주지 않는다. DB 게시용 쓰기 키와 서비스 runtime 읽기 키를 분리한다. stock-agent와 Project_06은 같은 `R2_DB_KEY` 값을 가리켜야 한다.
+Project_06 runtime token은 해당 버킷에 한정한 **Object Read Only** 권한을 사용한다. 정확한 object key 조회에는 객체 읽기 및 metadata 확인(HEAD) 권한이 필요하다. `PutObject`, `DeleteObject`, 버킷 쓰기 권한은 runtime에 필요하지 않으며, 가능하면 객체 목록 권한도 주지 않는다. DB 게시용 쓰기 키와 서비스 runtime 읽기 키를 분리한다. stock-agent는 기존 `R2_DB_KEY`, Project_06은 전용 `VOGUE_SYNTHETIC_PLANNING_R2_DB_KEY`를 사용한다.
 
 ### 새 환경/캐시 초기화 확인
 
-현재 병합 DB object key는 `stock-synthetic-workbench-20261111-7ec096205749.duckdb`이며, 실제 다운로드 크기는 812,134,400 bytes (약 774.7 MiB)였다. 첫 요청 때 DB 전체를 다운로드하므로 약 0.8 GB 이상의 여유 공간, R2 네트워크 접근, `boto3`와 DuckDB 2.x가 필요하다. 최대 3장 이미지는 각각 8 MB 제한이며 필요할 때만 따로 다운로드한다. 기본 캐시는 `data/local/r2_planning_db`, 이미지 캐시는 `data/local/r2_product_images`, 분석 캐시는 `data/local/hm_visual_analysis`이다.
+Project_06 runtime object key는 `project06-synthetic-planning-33903203c48c41a3.duckdb`이며 source fixture archive key는 `project06-synthetic-planning-assets-7c1a4715e3df571e-source-fixtures.tar.gz`이다. DB에는 workbench 294 documents와 corpus 9 documents, Evidence 1,118건이 있다. 기존 stock-agent object `stock-synthetic-workbench-20261111-7ec096205749.duckdb`의 다운로드 크기는 812,134,400 bytes (약 774.7 MiB)였다. 첫 요청 때 DB 전체를 다운로드하므로 약 0.8 GB 이상의 여유 공간, R2 네트워크 접근, `boto3`와 DuckDB 2.x가 필요하다. 최대 3장 이미지는 각각 8 MB 제한이며 필요할 때만 따로 다운로드한다. 기본 캐시는 `data/local/r2_planning_db`, 이미지 캐시는 `data/local/r2_product_images`, 분석 캐시는 `data/local/hm_visual_analysis`이다.
 
 기존 사용자 캐시를 삭제하지 않고 빈 임시 경로로 cold start를 재현하려면 다음처럼 실행한다. `.env` 또는 secret store에는 위의 R2 설정을 먼저 둔다.
 

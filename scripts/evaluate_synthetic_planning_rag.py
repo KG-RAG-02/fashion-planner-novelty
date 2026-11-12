@@ -8,11 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from vogue_npp.sources.synthetic_workbench_retriever import SyntheticWorkbenchRetriever
-from vogue_npp.synthetic_planning_workbench import DEFAULT_DATASET
 from vogue_npp.domain.retrieval import RetrievalQuery
 
-ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_QUERIES = ROOT / "data/fixtures/planning_rag/synthetic_workbench_eval_queries.json"
 
 
 def _load_queries(path: Path) -> dict[str, Any]:
@@ -41,7 +38,7 @@ def _query(row: dict[str, Any], retriever: SyntheticWorkbenchRetriever, limit: i
     )
 
 
-def evaluate(*, dataset_path: Path = DEFAULT_DATASET, queries_path: Path = DEFAULT_QUERIES) -> dict[str, Any]:
+def evaluate(*, dataset_path: Path, queries_path: Path) -> dict[str, Any]:
     retriever = SyntheticWorkbenchRetriever(dataset_path)
     evaluation = _load_queries(queries_path)
     documents = {row["document_id"]: row for row in retriever.dataset["documents"]}
@@ -140,8 +137,8 @@ def evaluate(*, dataset_path: Path = DEFAULT_DATASET, queries_path: Path = DEFAU
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
-    parser.add_argument("--queries", type=Path, default=DEFAULT_QUERIES)
+    parser.add_argument("--dataset", type=Path, required=True, help="dataset JSON extracted from the R2 source archive")
+    parser.add_argument("--queries", type=Path, required=True, help="evaluation queries JSON extracted from the R2 source archive")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     report = evaluate(dataset_path=args.dataset, queries_path=args.queries)

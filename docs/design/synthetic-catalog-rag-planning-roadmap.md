@@ -22,7 +22,7 @@ RAG 검색 결과를 분석 맥락으로 삼아 기획자가 검토할 새 상�
 
 ## 3. 목표 데이터셋
 
-현재 `data/fixtures/synthetic_planning_workbench/dataset.json`을 기준으로 아래 레코드와 관계를 보강한다. 기존 `scripts/generate_synthetic_planning_workbench.py`를 확장해 seed와 generator version으로 재현 가능하게 만든다.
+게시된 합성 workbench는 R2 versioned DuckDB를 기준으로 사용한다. 개발용 재생성은 `scripts/generate_synthetic_planning_workbench.py`의 seed와 generator version을 사용하며, 저장소에는 데이터 원본을 상시 보관하지 않는다.
 
 | 데이터 유형 | 합성 레코드 예시 | 검색·분석에서의 역할 |
 |---|---|---|
@@ -220,4 +220,4 @@ flowchart TD
 - **Phase 4 완료:** 검색 문서 본문과 합성 사진은 신제품 이미지 provider 입력에서 제외한다. planning board는 synthetic context를 표시하고 출처 Evidence를 연결한다. H&M Kaggle 사진은 category-scoped 시각 참고로 최대 3장을 R2에서 가져와 별도 `hm_visual_references` output에 관찰·locator·article ID를 연결한다. 이는 신제품 생성 reference가 아니며, Kaggle 이용조건·provider 전송 권한을 기술 설정만으로 승인하지 않는다. provider 전송 gate는 `VOGUE_HM_KAGGLE_IMAGE_ALLOW_PROVIDER_UPLOAD`와 `VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD`를 따른다.
 - **Phase 5 완료:** 고정 평가 세트 8개 질의, no-RAG baseline, deterministic retriever 지표를 추가했다. 확장 snapshot `1da0fd5d…`에서 Recall@10, Precision@10, 출처·locator·hash 완전성, no-results 정확도는 1.00이고, 권한 위반·stale 유입·Evidence 없는 관찰은 0건이다. no-RAG Recall@10은 0.00이다. 이 평가는 합성 fixture 회귀 결과일 뿐 실제 현업 효용을 입증하지 않는다. MD 품질의 사람 점수는 아직 기록하지 않았으며 평가 rubric만 제공한다.
 
-재현 명령: `PYTHONPATH=src python3 scripts/evaluate_synthetic_planning_rag.py --output docs/evaluation/synthetic-planning-rag-baseline.json`. 기준 질의 세트는 `data/fixtures/planning_rag/synthetic_workbench_eval_queries.json`, 검토 rubric은 `docs/evaluation/synthetic-planning-rag-rubric.md`에 둔다. 다음 확장 전에는 합성 평가의 품질 기준을 검토하고, 실제 회사 자료·H&M 사진의 새 사용은 별도 권한 및 데이터 계약 검토 대상으로 유지한다.
+평가 데이터와 질의 세트는 R2 companion archive에서 임시 디렉터리로 추출해 `scripts/evaluate_synthetic_planning_rag.py --dataset <dataset.json> --queries <synthetic_workbench_eval_queries.json> --output docs/evaluation/synthetic-planning-rag-baseline.json`으로 실행한다. 기준 질의 원본은 저장소에 두지 않으며 검토 rubric은 `docs/evaluation/synthetic-planning-rag-rubric.md`에 둔다. 다음 확장 전에는 합성 평가의 품질 기준을 검토하고, 실제 회사 자료·H&M 사진의 새 사용은 별도 권한 및 데이터 계약 검토 대상으로 유지한다.

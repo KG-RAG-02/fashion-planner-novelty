@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ..domain.retrieval import EvidenceRef, RetrievalQuery, RetrievalResult
-from ..synthetic_planning_workbench import DEFAULT_DATASET, document_eligibility, load_dataset, validate_dataset
+from ..synthetic_planning_workbench import document_eligibility, load_dataset, validate_dataset
 
 
 PURPOSE_DOCUMENT_TYPES = {
@@ -36,13 +36,15 @@ class SyntheticWorkbenchRetriever:
 
     def __init__(
         self,
-        dataset_path: str | Path = DEFAULT_DATASET,
+        dataset_path: str | Path | None = None,
         *,
         dataset: dict[str, Any] | None = None,
         snapshot_sha256: str | None = None,
         index_version: str | None = None,
     ):
         if dataset is None:
+            if dataset_path is None:
+                raise ValueError("A dataset or explicit local dataset_path is required; runtime retrieval uses R2.")
             self.dataset, file_hash = load_dataset(Path(dataset_path))
             self.snapshot_sha256 = snapshot_sha256 or file_hash
         else:

@@ -7,7 +7,6 @@ from argparse import Namespace
 from pathlib import Path
 
 from vogue_npp.synthetic_planning_workbench import (
-    DEFAULT_DATASET,
     compare_products,
     document_eligibility,
     inspect_entity,
@@ -23,7 +22,11 @@ from scripts.generate_synthetic_planning_workbench import build_dataset
 class SyntheticPlanningWorkbenchTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.dataset, cls.snapshot = load_dataset(DEFAULT_DATASET)
+        cls.dataset = build_dataset(20261110)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "dataset.json"
+            path.write_text(json.dumps(cls.dataset), encoding="utf-8")
+            _, cls.snapshot = load_dataset(path)
 
     def test_generated_dataset_is_reproducible_from_seed(self):
         self.assertEqual(build_dataset(20261110), build_dataset(20261110))

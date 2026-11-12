@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
+import json
+import tempfile
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 from vogue_npp.domain.retrieval import (
@@ -15,13 +17,28 @@ from vogue_npp.prototype.server import _build_planning_draft_response
 from vogue_npp.sources.synthetic_corpus_retriever import SyntheticCorpusRetriever
 
 
-FIXTURE_PATH = Path(__file__).parents[1] / "data" / "fixtures" / "planning_rag" / "synthetic_corpus.json"
+_DOCS = [
+    {"document_id":"SYN-DOC-TREND-001","evidence_id":"SYN-INPUT-EV-TREND-001","source_id":"SYN-TREND-INPUT-SNAPSHOT","source_type":"supplied_input_evidence","permission_status":"authorized","permitted_uses":["product_planning"],"verified":True,"synthetic":True,"season":"27SS","category_id":"outerwear","title":"trend olive","text":"올리브 트렌드 관찰","locator":"trend/1"},
+    {"document_id":"SYN-DOC-BRAND-001","evidence_id":"SYN-EV-BRAND-GUIDE-001","source_id":"SYN-BRAND-GUIDE","source_type":"approved_brand_guideline","permission_status":"authorized","permitted_uses":["product_planning"],"verified":True,"synthetic":True,"season":"27SS","category_id":"outerwear","title":"브랜드 가이드","text":"올리브 색상과 기능성 소재 지침","locator":"guide/1"},
+    {"document_id":"SYN-DOC-PRECEDENT-001","evidence_id":"SYN-EV-PRECEDENT-001","source_id":"SYN-APPROVED-PRECEDENTS","source_type":"approved_precedent","permission_status":"authorized","permitted_uses":["product_planning"],"verified":True,"synthetic":True,"season":"27SS","category_id":"outerwear","title":"선행 상품","text":"올리브 경량 아우터 사례","locator":"precedent/1"},
+    {"document_id":"SYN-DOC-TAXONOMY-001","evidence_id":"SYN-EV-TAXONOMY-001","source_id":"SYN-PRODUCT-TAXONOMY","source_type":"approved_taxonomy","permission_status":"authorized","permitted_uses":["product_planning"],"verified":True,"synthetic":True,"season":"27SS","category_id":"outerwear","title":"아우터 분류","text":"outerwear taxonomy","locator":"taxonomy/1"},
+    {"document_id":"SYN-DOC-UNKNOWN-001","evidence_id":"SYN-EV-UNKNOWN-PERMISSION-001","source_id":"SYN-OTHER","source_type":"approved_precedent","permission_status":"unknown","permitted_uses":["product_planning"],"verified":True,"synthetic":True,"title":"unknown","text":"올리브","locator":"x"},
+    {"document_id":"SYN-DOC-DENIED-001","evidence_id":"SYN-EV-DENIED-001","source_id":"SYN-OTHER","source_type":"approved_precedent","permission_status":"denied","permitted_uses":["product_planning"],"verified":True,"synthetic":True,"title":"denied","text":"올리브","locator":"x"},
+    {"document_id":"SYN-DOC-OTHER-USE-001","evidence_id":"SYN-EV-OTHER-USE-001","source_id":"SYN-OTHER","source_type":"approved_precedent","permission_status":"authorized","permitted_uses":["other"],"verified":True,"synthetic":True,"title":"other use","text":"올리브","locator":"x"},
+]
+
+
+def corpus_path(test_case):
+    if not hasattr(test_case, "_corpus_tmp"):
+        test_case._corpus_tmp = tempfile.TemporaryDirectory()
+        test_case.addCleanup(test_case._corpus_tmp.cleanup)
+        path = Path(test_case._corpus_tmp.name) / "corpus.json"
+        path.write_text(json.dumps({"synthetic": True, "index_version": "synthetic-fixture-v1", "documents": _DOCS}, ensure_ascii=False), encoding="utf-8")
+        test_case._corpus_path = path
+    return test_case._corpus_path
 
 
 def fixture_and_policy():
-    retriever = SyntheticCorpusRetriever(FIXTURE_PATH)
-    data = {"synthetic": True, "documents": retriever.documents}
-    assert data["synthetic"] is True
     allowed = {
         "evidence_lookup": ("SYN-TREND-INPUT-SNAPSHOT",),
         "planning_reference": ("SYN-BRAND-GUIDE",),
@@ -38,7 +55,7 @@ def fixture_and_policy():
         source_ids_by_purpose=allowed,
         source_types_by_purpose=types,
     )
-    return data, policy
+    return policy
 
 
 class SyntheticPlanningRagFixtureTests(unittest.TestCase):
@@ -48,7 +65,8 @@ class SyntheticPlanningRagFixtureTests(unittest.TestCase):
         self.addCleanup(self._rag_env.stop)
 
     def test_fixture_is_entirely_marked_synthetic_and_has_expected_document_types(self):
-        data, _ = fixture_and_policy()
+        retriever = SyntheticCorpusRetriever(corpus_path(self))
+        data = {"synthetic": True, "documents": retriever.documents}
         self.assertTrue(data["synthetic"])
         self.assertTrue(all(item["synthetic"] for item in data["documents"]))
         self.assertEqual(
@@ -60,7 +78,7 @@ class SyntheticPlanningRagFixtureTests(unittest.TestCase):
         self.assertIn("denied", {item["permission_status"] for item in data["documents"]})
 
     def test_adapter_ranks_lexical_matches_and_returns_traceable_content_hash(self):
-        retriever = SyntheticCorpusRetriever(FIXTURE_PATH)
+        retriever = SyntheticCorpusRetriever(corpus_path(self))
         result = retriever.retrieve(RetrievalQuery(
             purpose="precedent", request_id="retriever-test-1", season="27SS",
             category_ids=("outerwear",), attribute_terms=("올리브",),
@@ -74,7 +92,7 @@ class SyntheticPlanningRagFixtureTests(unittest.TestCase):
         self.assertEqual(result.index_version, "synthetic-fixture-v1")
 
     def test_adapter_uses_exact_evidence_lookup_and_enforces_every_allowlist(self):
-        retriever = SyntheticCorpusRetriever(FIXTURE_PATH)
+        retriever = SyntheticCorpusRetriever(corpus_path(self))
         base = dict(
             purpose="evidence_lookup", request_id="retriever-test-2",
             evidence_ids=("SYN-INPUT-EV-TREND-001",),
@@ -90,8 +108,8 @@ class SyntheticPlanningRagFixtureTests(unittest.TestCase):
         self.assertEqual(disallowed.status, "no_results")
 
     def test_all_four_retrieval_purposes_apply_source_and_scope_filters(self):
-        data, policy = fixture_and_policy()
-        retriever = SyntheticCorpusRetriever(FIXTURE_PATH)
+        policy = fixture_and_policy()
+        retriever = SyntheticCorpusRetriever(corpus_path(self))
         sales_payload = {
             "request_id": "synthetic-rag-1", "agent_id": "sales-market-agent",
             "status": "partial", "findings": [{"evidence_ids": ["MARKET-SYN-1"]}],
@@ -144,8 +162,8 @@ class SyntheticPlanningRagFixtureTests(unittest.TestCase):
         self.assertEqual(response["input_evidence"]["inventory_product_result"]["payload"], input_payloads["inventory_product_result"])
 
     def test_missing_scope_matches_return_no_results_without_claiming_absence(self):
-        data, policy = fixture_and_policy()
-        retriever = SyntheticCorpusRetriever(FIXTURE_PATH)
+        policy = fixture_and_policy()
+        retriever = SyntheticCorpusRetriever(corpus_path(self))
         response = _build_planning_draft_response(
             {
                 "request_id": "synthetic-rag-2",
