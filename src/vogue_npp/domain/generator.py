@@ -178,38 +178,6 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
     return tuple(attributes)
 
 
-def _planning_reference_records(context: ProductPlanningContext) -> tuple[dict[str, object], ...]:
-    """Expose approved retrieval results separately from product assertions."""
-    if context.planning_knowledge is None:
-        return ()
-    records: dict[str, dict[str, object]] = {}
-    for result in context.planning_knowledge.by_purpose:
-        if result.purpose == "evidence_lookup":
-            continue
-        for item in result.evidence:
-            records.setdefault(item.evidence_id, {
-                "purpose": result.purpose,
-                "evidence_id": item.evidence_id,
-                "source_id": item.source_id,
-                "source_type": item.source_type,
-                "source_name": item.source_name,
-                "locator": item.locator,
-                "quote": item.quote,
-                "source_date": item.source_date.isoformat() if item.source_date else None,
-                "permission_status": item.permission_status,
-                "permitted_uses": item.permitted_uses,
-                "content_hash": item.content_hash,
-                "matched_by": item.matched_by,
-                "dataset_id": item.dataset_id,
-                "is_synthetic": item.is_synthetic,
-                "synthetic_notice": item.synthetic_notice,
-                "generator_version": item.generator_version,
-                "seed": item.seed,
-                "supports": item.supports,
-            })
-    return tuple(records.values())
-
-
 def _inventory_relationships(context: ProductPlanningContext) -> tuple[SourcedClaim, ...]:
     relationships: list[SourcedClaim] = []
     products = (
@@ -378,9 +346,6 @@ def _validation_questions(
 ) -> tuple[str, ...]:
     questions = [*context.questions_for_validation, *analysis_questions]
     for input_name, status in context.input_statuses.items():
-        if input_name == "sales_market_result" and status == "not_provided":
-            questions.append("Project_07 판매·시장 결과가 제공되지 않아 판매·시장 주장은 초안에 반영하지 않았습니다.")
-            continue
         if status in {"error", "no_results"}:
             questions.append(
                 f"{input_name} 상태가 '{status}'이므로 해당 입력을 사용하지 않았습니다. 재조회 또는 조건 확인이 필요합니다."
@@ -540,8 +505,6 @@ def generate_concept_draft(
             for limitation in tuple(dict.fromkeys((*context.limitations, *analysis.limitations)))
         ),
         questions_for_validation=_validation_questions(context, analysis.questions),
-        sales_market_result=context.sales_market_result,
-        planning_references=_planning_reference_records(context),
     )
     return draft, validate_concept_draft(context, draft)
 

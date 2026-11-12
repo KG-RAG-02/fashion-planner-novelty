@@ -50,9 +50,6 @@ class PlanningBoard:
     sections: tuple[BoardSection, ...]
     evidence_ids: tuple[str, ...]
     limitations: tuple[str, ...]
-    synthetic_context: bool = False
-    synthetic_dataset_ids: tuple[str, ...] = ()
-    synthetic_notice: str | None = None
 
 
 def _state(status: str, *, has_claims: bool = False, has_unverified: bool = False) -> BoardState:
@@ -163,72 +160,6 @@ def build_planning_board(context: ProductPlanningContext, draft: ProductConceptD
             source="Project_06 role pairing rule", source_ref=relation.rule_version,
         ))
 
-    sales_status = context.input_statuses.get("sales_market_result", "not_provided")
-    sales_payload = context.sales_market_result or {}
-    sales_id_values: list[str] = []
-    def collect_sales_ids(value) -> None:
-        if isinstance(value, dict):
-            for key, child in value.items():
-                if key == "evidence_id" and isinstance(child, str):
-                    sales_id_values.append(child)
-                elif key in {"evidence_ids", "input_evidence_ids"}:
-                    if isinstance(child, str):
-                        sales_id_values.append(child)
-                    elif isinstance(child, (list, tuple)):
-                        sales_id_values.extend(str(item) for item in child if isinstance(item, str))
-                else:
-                    collect_sales_ids(child)
-        elif isinstance(value, (list, tuple)):
-            for child in value:
-                collect_sales_ids(child)
-    collect_sales_ids(sales_payload)
-    sales_ids = tuple(dict.fromkeys(sales_id_values))
-    sales_claims = []
-    if sales_status == "not_provided":
-        sales_state: BoardState = "not_provided"
-        sales_notes = ("판매·시장 입력 미제공",)
-    elif sales_status == "no_results":
-        sales_state = "no_results"
-        sales_notes = ("판매·시장 조회 결과 없음",)
-    elif sales_status == "error":
-        sales_state = "failed"
-        sales_notes = ("판매·시장 입력 오류",)
-    else:
-        sales_state = _state(sales_status, has_claims=bool(sales_payload))
-        sales_notes = ("판매·시장 에이전트가 전달한 분석 결과를 기획 맥락으로 사용했습니다. 원자료 재집계는 하지 않았습니다.",)
-        def sales_findings(value, path="sales_market_result"):
-            if isinstance(value, dict):
-                for key, child in value.items():
-                    if key in {"summary", "text", "finding", "observation", "interpretation", "label", "value"}:
-                        if isinstance(child, (str, int, float)) and str(child).strip():
-                            evidence_ids = value.get("evidence_ids", value.get("input_evidence_ids", ()))
-                            if isinstance(evidence_ids, str):
-                                evidence_ids = (evidence_ids,)
-                            sales_claims.append(_claim(str(child), "producer_finding", evidence_ids,
-                                source="sales-market-agent", source_ref=f"{path}.{key}"))
-                    elif key not in {"evidence", "evidence_id", "evidence_ids", "input_evidence_ids"}:
-                        sales_findings(child, f"{path}.{key}")
-            elif isinstance(value, (list, tuple)):
-                for index, child in enumerate(value[:50]):
-                    sales_findings(child, f"{path}[{index}]")
-        sales_findings(sales_payload)
-        if sales_ids and not sales_claims:
-            sales_claims.append(_claim("전달된 Evidence ID", "to_validate", sales_ids,
-                                       source="sales-market-agent", source_ref="sales_market_result"))
-
-    reference_claims = []
-    knowledge = context.planning_knowledge
-    if knowledge:
-        for result in knowledge.by_purpose:
-            if result.purpose not in {"planning_reference", "precedent", "taxonomy", "catalog_comparison", "assortment_relation"}:
-                continue
-            for ref in result.evidence:
-                reference_claims.append(_claim(
-                    f"{'[합성 데이터 관찰] ' if ref.is_synthetic else ''}{ref.source_name or ref.source_id}: {ref.quote or ref.locator or '인용 미제공'}",
-                    "observation", (ref.evidence_id,), source=ref.source_name or ref.source_id,
-                    source_ref=ref.locator,
-                ))
-
     spec_claims = [
         _claim(f"{item.name}={item.value}", item.kind, item.evidence_ids,
                source="ProductConceptDraft", source_ref=f"attributes.{item.name}")
@@ -255,27 +186,18 @@ def build_planning_board(context: ProductPlanningContext, draft: ProductConceptD
         BoardSection("inventory", "재고 분석 / Inventory", context.inventory.result.agent_id, inventory_status,
                      context.inventory.result.schema_version, _state(inventory_status, has_claims=bool(inventory_claims), has_unverified=unverified_inventory),
                      tuple(inventory_claims), context.inventory.result.limitations),
-        BoardSection("sales_market", "판매·시장 / Sales & Market", "sales-market-agent", sales_status,
-                     sales_payload.get("schema_version") if sales_payload else None, sales_state,
-                     tuple(sales_claims), sales_notes),
         BoardSection("insight", "기획 결론 / Insight → Proposal", "Project_06", "ok", None,
                      _state("ok", has_claims=bool(proposal_claims), has_unverified=any(not c.evidence_ids for c in proposal_claims)),
                      tuple(proposal_claims), draft.questions_for_validation),
         BoardSection("specifications", "분석 기반 상품 사양", "Project_06", "ok", None,
                      _state("ok", has_claims=bool(spec_claims), has_unverified=any(not c.evidence_ids for c in spec_claims)),
                      tuple(spec_claims), ("Evidence 없는 속성은 제안 또는 검증 필요로 표시",)),
-        BoardSection("references", "참고자료", "authorized retrieval", "ok" if reference_claims else "no_results", None,
-                     "available" if reference_claims else "no_results", tuple(reference_claims),
-                     () if reference_claims else ("허가된 참고자료 검색 결과 없음",)),
         BoardSection("finance", "원가·판매 추정", "Project_06", "not_provided", None,
                      "not_provided", (), ("원가 입력 또는 승인된 산식 미제공",)),
     )
     evidence_ids = tuple(dict.fromkeys(
         evidence_id for section in sections for claim in section.claims for evidence_id in claim.evidence_ids
     ))
-    synthetic_refs = tuple(item for item in knowledge.evidence if item.is_synthetic) if knowledge else ()
-    synthetic_dataset_ids = tuple(sorted({item.dataset_id for item in synthetic_refs if item.dataset_id}))
-    synthetic_notice = next((item.synthetic_notice for item in synthetic_refs if item.synthetic_notice), None)
     return PlanningBoard(
         title=f"{context.request.season or '시즌 미정'} {context.request.category or '카테고리 미정'} 신상품 기획안",
         season=context.request.season or "시즌 미정",
@@ -284,9 +206,6 @@ def build_planning_board(context: ProductPlanningContext, draft: ProductConceptD
         process=("ISSUE", "INSIGHT", "PROPOSAL"), sections=sections,
         evidence_ids=evidence_ids,
         limitations=tuple(dict.fromkeys((*context.limitations, *draft.limitations))),
-        synthetic_context=bool(synthetic_refs),
-        synthetic_dataset_ids=synthetic_dataset_ids,
-        synthetic_notice=synthetic_notice,
     )
 
 
@@ -327,21 +246,18 @@ def render_planning_board_svg(board: PlanningBoard, product_image_path: Path) ->
         '<text x="1320" y="52" fill="#102c21" font-size="13" font-weight="700" font-family="sans-serif">MD REVIEW DRAFT</text>',
         '<text x="1300" y="84" fill="#dce5db" font-size="11" font-family="sans-serif">'
         + html.escape(board.review_label) + '</text>',
-        *([f'<rect x="1010" y="58" width="225" height="22" rx="4" fill="#fff0bd"/>',
-           f'<text x="1021" y="73" fill="#684b18" font-size="11" font-weight="700" font-family="sans-serif">합성 데이터 참고</text>']
-          if board.synthetic_context else []),
         '<rect x="28" y="105" width="1544" height="42" rx="7" fill="#dce2d8"/>',
     ]
     step_text = "   →   ".join(board.process)
     parts.append(f'<text x="58" y="132" fill="#123328" font-size="17" font-weight="700" font-family="sans-serif">{html.escape(step_text)}</text>')
 
-    columns = {"concept": 28, "trend": 28, "inventory": 28, "sales_market": 28,
-               "insight": 540, "specifications": 540, "references": 540, "finance": 540}
-    row_y = {"concept": 164, "trend": 360, "inventory": 635, "sales_market": 835,
-             "insight": 164, "specifications": 420, "references": 700, "finance": 900}
+    columns = {"concept": 28, "trend": 28, "inventory": 28,
+               "insight": 540, "specifications": 540, "finance": 540}
+    row_y = {"concept": 164, "trend": 360, "inventory": 635,
+             "insight": 164, "specifications": 420, "finance": 700}
     card_w, image_x, image_w = 490, 1052, 520
-    card_h = {"concept": 180, "trend": 260, "inventory": 185, "sales_market": 230,
-              "insight": 240, "specifications": 260, "references": 185, "finance": 120}
+    card_h = {"concept": 180, "trend": 260, "inventory": 400,
+              "insight": 240, "specifications": 260, "finance": 150}
     state_labels = {"available": "근거 확인", "partial": "일부 근거/입력 확인 필요", "no_results": "조회 결과 없음",
                     "not_provided": "입력 미제공", "unverified": "근거 미확인", "blocked": "상세 해석 보류", "failed": "처리 실패"}
     for section in board.sections:

@@ -1,9 +1,7 @@
 # Project_06 local data boundary
 
-Project_06 owns new-product planning and does not process sales datasets. H&M/Kaggle sales ingestion, analysis code, and the local historical dataset have been transferred to Project_07. In this workspace the raw archive is under `../../project_07/data/raw/hm-personalized-fashion-recommendations/` and processed outputs are under `../../project_07/data/processed/hm-personalized-fashion-recommendations/`.
+Runtime-generated drafts, images, caches, and the local prototype database belong under `data/local/` and are ignored by Git. Do not commit credentials, source databases, or customer records.
 
-These files are local and ignored by Git. Their presence does not establish Kaggle license permission for a particular use. Do not place sales datasets, source credentials, `.env`, or local databases back into Project_06. Project_06 may receive Project_07's evidence-backed result through its planning handoff.
+The synthetic product catalog and internal-guideline planning datasets and their local copies have been removed. Project_06 planning uses the user request, trend-agent result, and inventory-agent result. Optional H&M visual references are read from the separately configured R2 catalog and image objects.
 
-`data/fixtures/planning_rag/synthetic_corpus.json` is a separate, fully synthetic corpus for exercising the local planning retriever. It is not company reference material and must not be treated as an operational source or approved business evidence.
-
-`data/fixtures/synthetic_planning_workbench/dataset.json` is a deterministic synthetic-only product planning dataset used by the local CLI in `vogue_npp.synthetic_planning_workbench`. Regenerate it with `python3 scripts/generate_synthetic_planning_workbench.py --seed 20261110`. The dataset contains fictional catalog, SKU, specification, planning-document, guideline, Evidence, inventory, planning-request, and standalone Project_07 handoff records plus intentional quality anomalies. It does not contain real company/customer records and is not connected to the default API or RAG index. See [`docs/design/synthetic-planning-workbench.md`](../docs/design/synthetic-planning-workbench.md).
+H&M/Kaggle historical sales processing and analysis are owned by Project_07. This repository does not process those sales datasets.

@@ -17,11 +17,6 @@ from vogue_npp.prototype.server import (
 
 
 class PlanningDraftApiTests(unittest.TestCase):
-    def setUp(self):
-        self._rag_env = patch.dict("os.environ", {"VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED": "false"})
-        self._rag_env.start()
-        self.addCleanup(self._rag_env.stop)
-
     def test_stock_article_id_comes_from_stock_product_or_numeric_sku(self):
         self.assertEqual(_stock_article_id({"article_id": "0999991001", "sku_ids": []}), "0999991001")
         self.assertEqual(_stock_article_id({"sku_ids": ["0999991001"]}), "0999991001")
@@ -134,28 +129,22 @@ class PlanningDraftApiTests(unittest.TestCase):
                     "evidence_ids": ["inventory-1"],
                 }],
             },
-            "sales_market_result": {
-                "request_id": "draft-1", "agent_id": "sales-market-agent",
-                "status": "partial", "findings": [{"evidence_ids": ["market-1"]}],
-                "limitations": ["limited coverage"],
-            },
         }
 
         response = _build_planning_draft_response(payload)
 
         self.assertEqual(response["status"], "partial")
         self.assertEqual(response["input_statuses"]["inventory_product_result"], "partial")
-        self.assertEqual(response["input_statuses"]["sales_market_result"], "partial")
-        self.assertEqual(response["draft"]["sales_market_result"], payload["sales_market_result"])
+        self.assertNotIn("sales_market_result", response["input_statuses"])
+        self.assertNotIn("sales_market_result", response["draft"])
         self.assertIn("trend-1", response["evidence_ids"])
-        self.assertIn("market-1", response["evidence_ids"])
         self.assertIn("0 pieces", str(response["draft"]["relation_to_own_products"]))
         self.assertEqual(response["input_evidence"]["planning_request"]["payload"], payload["planning_request"])
         self.assertEqual(response["input_evidence"]["trend_result"]["evidence_ids"], ["trend-1"])
         self.assertEqual(response["input_evidence"]["inventory_product_result"]["evidence_ids"], ["inventory-1"])
-        self.assertEqual(response["input_evidence"]["sales_market_result"]["evidence_ids"], ["market-1"])
+        self.assertNotIn("sales_market_result", response["input_evidence"])
 
-    def test_missing_sales_result_is_not_provided_not_zero(self):
+    def test_sales_market_is_not_returned_as_a_planning_input(self):
         response = _build_planning_draft_response({
             "request_id": "draft-2",
             "planning_request": {},
@@ -163,11 +152,11 @@ class PlanningDraftApiTests(unittest.TestCase):
             "inventory_product_result": {"request_id": "draft-2", "status": "error"},
         })
 
-        self.assertEqual(response["input_statuses"]["sales_market_result"], "not_provided")
-        self.assertIsNone(response["draft"]["sales_market_result"])
-        self.assertIsNone(response["input_evidence"]["sales_market_result"]["payload"])
+        self.assertNotIn("sales_market_result", response["input_statuses"])
+        self.assertNotIn("sales_market_result", response["draft"])
+        self.assertNotIn("sales_market_result", response["input_evidence"])
 
-    def test_accepts_notions_v1_nested_inputs_and_preserves_market_handoff(self):
+    def test_accepts_notions_v1_nested_request_trend_and_inventory_inputs(self):
         payload = {
             "planning_request": {
                 "schema_version": "1.0", "request_id": "notion-1", "query": "27SS 아우터",
@@ -194,14 +183,10 @@ class PlanningDraftApiTests(unittest.TestCase):
                     "inventory": {"quantity": 0, "unit": "pieces", "as_of": "2026-11-01", "definition": "on_hand"},
                     "evidence_ids": ["stock-E1"]}],
             },
-            "sales_market_result": {"schema_version": "1.1-proposal", "request_id": "notion-1",
-                "agent_id": "sales-market-agent", "status": "no_results", "summary": "none",
-                "findings": [], "evidence": [], "limitations": ["no approved source"], "errors": [],
-                "sales_data": {"status": "no_results", "observations": [], "limitations": [], "errors": []}},
         }
         response = _build_planning_draft_response(payload)
         self.assertEqual(response["input_statuses"]["trend_result"], "partial")
-        self.assertEqual(response["draft"]["sales_market_result"], payload["sales_market_result"])
+        self.assertNotIn("sales_market_result", response["draft"])
         self.assertIn("trend-E1", response["evidence_ids"])
         self.assertIn("stock-E1", response["evidence_ids"])
         self.assertIn("0 pieces", str(response["draft"]["relation_to_own_products"]))
@@ -333,7 +318,7 @@ class PlanningDraftApiTests(unittest.TestCase):
         self.assertTrue(any("Evidence가 없습니다" in item for item in response["limitations"]))
         self.assertFalse(any("일치하지 않습니다" in item for item in response["limitations"]))
 
-    def test_project07_payload_is_preserved_and_available_to_planner_not_board_prompt(self):
+    def test_legacy_project07_payload_is_ignored_by_planning_and_board_prompt(self):
         payload = {
             "planning_request": {"request_id": "opaque-1", "season": "27SS", "category": "쇼츠"},
             "trend_result": {"request_id": "opaque-1", "status": "no_results", "trends": []},
@@ -345,19 +330,17 @@ class PlanningDraftApiTests(unittest.TestCase):
             },
         }
         response = _build_planning_draft_response(payload)
-        self.assertEqual(response["draft"]["sales_market_result"], payload["sales_market_result"])
-        self.assertEqual(response["input_evidence"]["sales_market_result"]["payload"], payload["sales_market_result"])
+        self.assertNotIn("sales_market_result", response["draft"])
+        self.assertNotIn("sales_market_result", response["input_evidence"])
         from vogue_npp.domain.context import (
             AgentResult, InventoryProductResult, PlanningInputs, PlanningRequest, TrendResult,
             build_planning_context,
         )
-        # The board prompt receives producer findings as display data, without
-        # changing them into image-generation design instructions.
+        # The board prompt does not receive a Project_07 payload.
         context = build_planning_context(PlanningInputs(
             request=PlanningRequest(AgentResult("user-request", "opaque-1", "1.0", "ok"), season="27SS", category="쇼츠"),
             trend=TrendResult(AgentResult("trend-analysis-agent", "opaque-1", "1.0", "no_results")),
             inventory=InventoryProductResult(AgentResult("stock-agent", "opaque-1", "1.0", "no_results")),
-            sales_market_result=payload["sales_market_result"],
         ))
         prompt = _build_planning_board_prompt(context, type("Draft", (), {
             "attributes": (), "relation_to_own_products": (),
@@ -365,10 +348,9 @@ class PlanningDraftApiTests(unittest.TestCase):
         data_marker = "UNTRUSTED_PLANNING_DATA_JSON:\n"
         self.assertIn(data_marker, prompt)
         prompt_data = json.loads(prompt.split(data_marker, 1)[1])
-        self.assertEqual(prompt_data["sales_market_input_status"], "partial")
-        self.assertFalse(response["draft"]["sales_market_result"] is None)
-        self.assertIn("OPAQUE_PRIVATE_FINDING", prompt)
-        self.assertIn("OPAQUE_PRIVATE_SUMMARY", prompt)
+        self.assertNotIn("sales_market", prompt_data)
+        self.assertNotIn("OPAQUE_PRIVATE_FINDING", prompt)
+        self.assertNotIn("OPAQUE_PRIVATE_SUMMARY", prompt)
         self.assertNotIn("OPAQUE_PRIVATE_LIMITATION", prompt)
 
     def test_injection_text_is_preserved_as_data_without_changing_agent_metadata(self):

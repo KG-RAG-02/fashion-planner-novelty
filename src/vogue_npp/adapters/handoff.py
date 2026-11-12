@@ -9,21 +9,19 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 
-CONTRACT_VERSION = "vogue-handoff/0.2"
-ADAPTER_VERSION = "project06-input-normalizer/1.1"
+CONTRACT_VERSION = "vogue-handoff/0.3"
+ADAPTER_VERSION = "project06-input-normalizer/1.3"
 INPUT_KEYS = frozenset({
-    "planning_request", "trend_result", "inventory_product_result", "sales_market_result",
+    "planning_request", "trend_result", "inventory_product_result",
 })
 SUPPORTED_VERSIONS = {
     "planning_request": frozenset({"1.0"}),
     "trend_result": frozenset({"1.1"}),
     "inventory_product_result": frozenset({"1.0"}),
-    "sales_market_result": frozenset({"1.0"}),
 }
 EXPECTED_PRODUCERS = {
     "trend_result": frozenset({"trend-analysis-agent", None}),
     "inventory_product_result": frozenset({"stock-agent"}),
-    "sales_market_result": frozenset({"sales-market-agent"}),
 }
 DOMAIN_STATUSES = frozenset({"ok", "partial", "no_results", "error"})
 
@@ -61,7 +59,7 @@ def normalize_handoff_inputs(request_id: str, inputs: Mapping[str, Any]) -> Norm
     if not isinstance(request_id, str) or not request_id.strip():
         raise AdapterCompatibilityError("INVALID_REQUEST_ID", "request_id는 비어 있지 않은 문자열이어야 합니다.")
     if not isinstance(inputs, Mapping) or set(inputs) != INPUT_KEYS:
-        raise AdapterCompatibilityError("INVALID_INPUT", "input에는 합의된 네 producer 입력 필드가 모두 필요합니다.")
+        raise AdapterCompatibilityError("INVALID_INPUT", "input에는 planning_request, trend_result, inventory_product_result만 포함해야 합니다.")
 
     try:
         source_inputs = copy.deepcopy(dict(inputs))

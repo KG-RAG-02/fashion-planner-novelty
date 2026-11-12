@@ -6,9 +6,9 @@ The shared repository layout is `src/`, `tests/`, `docs/`, `data/`, `examples/`,
 
 ## Ownership and HTTP boundary
 
-Project_06 owns planning-draft generation, its local persistence, and the `new-product-agent` producer result. Its canonical agent route is `POST /v1/agents/new-product-agent/runs` using `vogue-handoff/0.2`. Both canonical and legacy draft routes require the `sales_market_result` JSON object; use status `no_results` when the producer ran but found no analysis. The request ID is carried by the outer envelope; the `input` object contains `planning_request`, `trend_result`, `inventory_product_result`, and `sales_market_result`. The P06-specific accepted versions and result behavior are defined in [`contracts/http-handoff-v0.2.md`](../contracts/http-handoff-v0.2.md).
+Project_06 owns planning-draft generation, its local persistence, and the `new-product-agent` producer result. Its canonical agent route is `POST /v1/agents/new-product-agent/runs` using `vogue-handoff/0.3`. The input contains only `planning_request`, `trend_result`, and `inventory_product_result`; sales/market output is not part of planning or image generation. The P06-specific accepted versions and result behavior are defined in [`contracts/http-handoff-v0.3.md`](../contracts/http-handoff-v0.3.md).
 
-Project_06 consumes upstream results and does not call Project_07 or Project_08. Project_08 owns sequencing and makes the HTTP calls. Project_06 does not import sibling repositories.
+Project_06 consumes upstream results and does not import sibling repositories. Its existing planning and product-variant routes remain available. A separate `POST /v1/agents/new-product-agent/sales-market-reviews` adapter receives the actual P06 PlanningDraft, maps only reviewable product fields to Project_07's `/reviews` input, and returns the opaque review envelope. Project_08 calls it after P06 completes and combines the two producer results for the UI.
 
 ## Independent local operation
 

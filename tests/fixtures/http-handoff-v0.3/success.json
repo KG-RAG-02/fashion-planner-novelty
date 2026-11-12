@@ -1,5 +1,5 @@
 {
-  "contract_version": "vogue-handoff/0.2",
+  "contract_version": "vogue-handoff/0.3",
   "request_id": "synthetic-handoff-001",
   "input": {
     "planning_request": {
@@ -23,15 +23,6 @@
       "status": "no_results",
       "products": [],
       "evidence": [],
-      "errors": []
-    },
-    "sales_market_result": {
-      "schema_version": "1.0",
-      "request_id": "synthetic-handoff-001",
-      "agent_id": "sales-market-agent",
-      "status": "no_results",
-      "evidence": [],
-      "limitations": ["합성 Project_07 자료 없음"],
       "errors": []
     }
   }

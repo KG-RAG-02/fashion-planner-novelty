@@ -141,27 +141,13 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         self.assertIn("근거 ID가 없는 트렌드명", " ".join(result.image.request.limitations))
         self.assertNotIn("소재=", result.image.request.prompt)
 
-    def test_sales_market_payload_and_evidence_are_not_sent_raw_to_product_image(self) -> None:
+    def test_product_image_uses_request_and_trend_but_excludes_stock_facts(self) -> None:
         context = make_context()
-        context = replace(context, sales_market_result={
-            "agent_id": "sales-market-agent", "status": "partial",
-            "summary": "PRIVATE_MARKET_SUMMARY", "analysis_scope": "PRIVATE_SCOPE",
-            "findings": [{"text": "PRIVATE_FINDING", "evidence_ids": ["market:E-1"]}],
-            "evidence": [{"evidence_id": "market:E-2"}],
-        }, input_statuses={**context.input_statuses, "sales_market_result": "partial"},
-           evidence_ids=(*context.evidence_ids, "market:E-1", "market:E-2"))
         draft, _ = RuleBasedConceptGenerator().generate(context)
         request = build_image_generation_request(context, draft)
-        for private_value in ("PRIVATE_MARKET_SUMMARY", "PRIVATE_SCOPE", "PRIVATE_FINDING", "market:E-1", "market:E-2"):
-            self.assertNotIn(private_value, request.prompt)
-            self.assertNotIn(private_value, request.evidence_ids)
-        planner_draft = replace(draft, product_definition=replace(
-            draft.product_definition, value="기획자 제안 통합 상품 실루엣",
-        ))
-        planner_request = build_image_generation_request(context, planner_draft)
-        self.assertIn("기획자 제안 통합 상품 실루엣", planner_request.prompt)
-        self.assertEqual({item.evidence_id for item in request.excluded_evidence if item.source == "sales_market_result"},
-                         {"market:E-1", "market:E-2"})
+        self.assertIn("요청 범위와 일치", request.prompt)
+        self.assertNotIn("STOCK-E1", request.evidence_ids)
+        self.assertTrue(any(item.source == "inventory_product_result" for item in request.excluded_evidence))
 
     def test_only_claim_linked_request_and_compatible_trend_evidence_are_used(self) -> None:
         context = make_context()

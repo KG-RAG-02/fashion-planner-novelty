@@ -112,11 +112,6 @@ def build_image_generation_request(
 ) -> ImageGenerationRequest:
     """Build a product-only prompt and an auditable Evidence allowlist."""
     known_ids = set(context.evidence_ids)
-    synthetic_rag_ids = set()
-    if context.planning_knowledge:
-        known_ids.update(item.evidence_id for item in context.planning_knowledge.evidence if item.evidence_id)
-        synthetic_rag_ids.update(item.evidence_id for item in context.planning_knowledge.evidence
-                                 if item.is_synthetic and item.evidence_id)
     used_ids: list[str] = []
     evidence_uses: list[ImageEvidenceUse] = []
     excluded: list[ImageEvidenceExclusion] = []
@@ -130,11 +125,6 @@ def build_image_generation_request(
     def use_ids(ids, *, source: str, source_ref: str, supports: str) -> tuple[str, ...]:
         accepted = []
         for evidence_id in dict.fromkeys(ids):
-            if evidence_id in synthetic_rag_ids:
-                excluded.append(ImageEvidenceExclusion(
-                    str(evidence_id), source, "합성 RAG Evidence는 신제품 이미지 provider 입력에 사용하지 않음",
-                ))
-                continue
             if evidence_id in known_ids:
                 accepted.append(evidence_id)
                 used_ids.append(evidence_id)
@@ -259,41 +249,6 @@ def build_image_generation_request(
         for signal in product.attributes:
             inventory_ids.update(signal.evidence_ids)
     exclude_ids(inventory_ids, source="inventory_product_result", reason="재고 근거는 착장 단계 전용")
-    sales_ids: set[str] = set()
-    def collect_sales_ids(value) -> None:
-        if isinstance(value, dict):
-            for key, child in value.items():
-                if key == "evidence_id" and isinstance(child, str):
-                    sales_ids.add(child)
-                elif key in {"evidence_ids", "input_evidence_ids"}:
-                    if isinstance(child, str):
-                        sales_ids.add(child)
-                    elif isinstance(child, (list, tuple)):
-                        sales_ids.update(str(item) for item in child if isinstance(item, str))
-                else:
-                    collect_sales_ids(child)
-        elif isinstance(value, (list, tuple)):
-            for child in value:
-                collect_sales_ids(child)
-    if context.sales_market_result:
-        collect_sales_ids(context.sales_market_result)
-    exclude_ids(sales_ids, source="sales_market_result", reason="판매·시장 결과는 기획자 분석 입력이며 이미지 API에는 원문을 직접 전달하지 않음")
-
-    planning_reference_ids: set[str] = set()
-    knowledge = context.planning_knowledge
-    if knowledge:
-        for result in knowledge.by_purpose:
-            if result.status not in {"ok", "partial"}:
-                continue
-            for item in result.evidence:
-                if item.evidence_id:
-                    planning_reference_ids.add(item.evidence_id)
-    exclude_ids(
-        planning_reference_ids,
-        source="planning_knowledge",
-        reason="RAG 근거는 초안·텍스트 기획 보드에만 사용하며 이미지 provider prompt에는 전달하지 않음",
-    )
-
     for name, claim in (("opportunity", draft.opportunity), ("product_definition", draft.product_definition)):
         if claim.kind == "proposal" and claim.value:
             proposal_lines.append(f"- 초안 시각화 제안 ({name}): {claim.value}")
@@ -309,8 +264,6 @@ def build_image_generation_request(
                            + ", ".join(dict.fromkeys(unverified_trends)))
     if not evidence_lines:
         limitations.append("이미지 입력에 원문 출처가 검증된 요청·트렌드 관찰이 없습니다.")
-    if context.sales_market_result:
-        limitations.append("판매·시장 결과 원문은 이미지 API에 직접 전달하지 않고, 기획자가 만든 시각 제안만 반영했습니다.")
     if any(not claim.evidence_ids for claim in context.request.requested_attributes if claim.value is not None):
         limitations.append("사용자 지정 디자인 속성 중 일부에는 속성별 Evidence ID가 연결되지 않았습니다.")
     if not proposal_lines:
