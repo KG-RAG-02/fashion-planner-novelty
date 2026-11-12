@@ -1,17 +1,17 @@
 # 합성 상품기획 데이터와 R2 workbench
 
-- 상태: 로컬 fixture + R2 versioned DuckDB 읽기 adapter · 실제 회사 내부 자료 연결 없음
+- 상태: R2 versioned DuckDB runtime · 테스트는 임시 생성 데이터 사용; 게시 원본은 R2 archive · 실제 회사 내부 자료 연결 없음
 - 데이터셋: `SYNTHETIC-PLANNING-WORKBENCH-SEED-20261110`
 - Snapshot date: `2026-11-11`
-- 데이터카드: [Synthetic planning workbench data card](../../data/fixtures/synthetic_planning_workbench/DATA_CARD.md)
+- 데이터카드와 원본 합성 자료는 R2 companion archive에 보관
 
 ## 목적과 경계
 
 이 fixture와 CLI는 카탈로그, 명세서, 브리프, 가이드 문서, Evidence 관계 및 입력 상태를 개발·테스트하기 위한 가상 예시입니다. 가상 브랜드·상품·SKU·날짜·수치·문장은 실제 회사·정책·고객·시장·사업 결과를 나타내지 않습니다. 문서의 `approved_example`은 **합성 데이터셋 안에서 검색 규칙을 시험하기 위한 상태 이름**일 뿐 회사 승인 상태가 아닙니다.
 
-Project_06 초안은 기존 `/api/planning-draft` 경로와 규칙 기반 생성기를 사용합니다. `VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED=true`이면 기본 source `r2`에서 versioned 병합 DuckDB를 내려받아 read-only 모드로 열고, `synthetic_*` 테이블을 검색합니다. `VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE=local`은 fixture 검증용 선택지입니다. 병합 DB의 R2 경로, ETag cache, 검색 adapter, H&M 사진 참고/시각 분석 흐름은 [R2 cloud planning RAG design](r2-cloud-planning-rag.md)에 기록했습니다. 판매·시장 handoff는 여전히 Project_07의 opaque 경계를 유지하며 Project_06은 판매 지표를 계산하거나 재집계하지 않습니다.
+Project_06은 기본적으로 R2 versioned DuckDB를 내려받아 read-only로 열고 `synthetic_*` 테이블을 검색합니다. API runtime은 R2 source만 허용하며 로컬 fixture retriever는 오프라인 테스트 전용입니다. 병합 DB에는 workbench 294개 문서와 planning corpus 9개 문서가 있어 총 303개 문서, 1,118개 Evidence를 검색합니다. 원본 fixture, evaluation query, data card, 합성 demo 입력·초안은 별도 versioned R2 tarball에 보관하며 로컬 복사본은 제거했습니다. 게시 스크립트와 R2 경로, ETag cache, H&M 사진 참고/시각 분석 흐름은 [R2 cloud planning RAG design](r2-cloud-planning-rag.md)에 기록했습니다.
 
-실제 회사 자료 connector나 실제 회사 내부 지식 인덱스 연결은 없습니다. R2 image/catalog 데이터는 H&M Kaggle 공개 자료에 기반한 외부 참고로 별도 취급합니다. 합성 workbench는 별도 dataset namespace를 가진 명시적 opt-in 경로로 검색됩니다. `.env.example` 기본값은 `VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED=false`이며, 활성화한 경우 source 기본값은 `r2`입니다. 일반 `authorized` 소스 정책과 섞이지 않고 `allow_synthetic`와 일치하는 dataset ID가 query 및 Evidence에 있어야 합니다. R2의 H&M 이미지 분석은 합성 회사 문서 근거로 변환되지 않습니다.
+실제 회사 자료 connector나 실제 회사 내부 지식 인덱스 연결은 없습니다. R2 image/catalog 데이터는 H&M Kaggle 공개 자료에 기반한 외부 참고로 별도 취급합니다. 합성 workbench는 별도 dataset namespace를 가지며 `allow_synthetic`와 일치하는 dataset ID를 가진 query만 검색합니다. R2의 H&M 이미지 분석은 합성 회사 문서 근거로 변환되지 않습니다.
 
 ## 데이터 구성
 

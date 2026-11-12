@@ -109,17 +109,15 @@ class _UnavailableSyntheticRetriever:
 
 
 def _configure_synthetic_retrieval():
-    """Select the configured R2 default or an explicitly requested local fixture."""
+    """Select the configured R2 snapshot; runtime local fixture search is disabled."""
     if not _synthetic_planning_rag_enabled():
         return None, None, {"source": "disabled", "status": "not_configured"}
     source = os.getenv("VOGUE_SYNTHETIC_PLANNING_RAG_SOURCE", "r2").strip().casefold()
-    from ..sources.synthetic_workbench_retriever import PURPOSE_DOCUMENT_TYPES, SyntheticWorkbenchRetriever
+    from ..sources.synthetic_workbench_retriever import PURPOSE_DOCUMENT_TYPES
     from ..sources.r2_synthetic_workbench import R2SyntheticWorkbenchRetriever, WORKBENCH_DOCUMENT_TYPES
 
     try:
-        if source == "local":
-            retriever = SyntheticWorkbenchRetriever()
-        elif source == "r2":
+        if source == "r2":
             retriever = R2SyntheticWorkbenchRetriever()
         else:
             raise ValueError("unsupported source")
@@ -752,8 +750,7 @@ def _build_planning_draft_response(
         planning_knowledge=planning_knowledge,
         limitations=tuple(dict.fromkeys((*context.limitations, *planning_knowledge.limitations))),
     )
-    # Text generation is explicitly disabled by default. No concrete provider
-    # is registered; until approval, enabling only returns a safe rule fallback.
+    # Text generation remains separately controlled; R2 retrieval is configured above.
     visual_references = None
     if (planning_knowledge_source.get("source") == "r2" and knowledge_retriever is not None
             and hasattr(knowledge_retriever, "find_hm_catalog_candidates")):
@@ -1015,8 +1012,8 @@ def _build_planning_draft_response(
 
 
 def _synthetic_planning_rag_enabled() -> bool:
-    """Synthetic workbench retrieval is opt-in and reads its configured snapshot source."""
-    return os.getenv("VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED", "false").strip().casefold() == "true"
+    """Planning knowledge retrieval is enabled by default and uses the R2 snapshot."""
+    return os.getenv("VOGUE_SYNTHETIC_PLANNING_RAG_ENABLED", "true").strip().casefold() == "true"
 
 
 def _planning_knowledge_payload(knowledge) -> dict:
