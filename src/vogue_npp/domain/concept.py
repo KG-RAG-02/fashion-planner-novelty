@@ -81,12 +81,6 @@ class ProductConceptDraft:
     differentiation: tuple[SourcedClaim, ...] = ()
     risks: tuple[SourcedClaim, ...] = ()
     questions_for_validation: tuple[str, ...] = ()
-    # Optional Project 07 handoff payload, retained verbatim until the shared
-    # result schema is agreed. It is deliberately an internal compatibility
-    # field and must not be serialized as an approved wire contract.
-    sales_market_result: Mapping[str, Any] | None = None
-    # Authorized planning sources are retained as references, not product claims.
-    planning_references: tuple[Mapping[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -175,15 +169,6 @@ def validate_concept_draft(
             )
         )
 
-    if draft.sales_market_result != context.sales_market_result:
-        issues.append(
-            ValidationIssue(
-                path="sales_market_result",
-                code="SALES_MARKET_RESULT_NOT_PRESERVED",
-                message="The Project 07 result and its provenance must be retained unchanged in the draft.",
-            )
-        )
-
     for field_name, origin in draft.field_origins.items():
         if origin not in {"user", "inferred", "unknown"}:
             issues.append(
@@ -195,8 +180,6 @@ def validate_concept_draft(
             )
 
     known_evidence_ids = set(context.evidence_ids)
-    if context.planning_knowledge is not None:
-        known_evidence_ids.update(item.evidence_id for item in context.planning_knowledge.evidence)
     for path, claim in (
         ("opportunity", draft.opportunity),
         ("target_customer", draft.target_customer),
@@ -320,32 +303,6 @@ def validate_concept_draft(
                         message=f"Evidence ID '{evidence_id}' is not present in the inputs.",
                     )
                 )
-
-    for index, reference in enumerate(draft.planning_references):
-        evidence_id = reference.get("evidence_id")
-        if evidence_id not in known_evidence_ids:
-            issues.append(ValidationIssue(
-                path=f"planning_references[{index}].evidence_id",
-                code="UNKNOWN_RETRIEVED_EVIDENCE_ID",
-                message="A planning reference must cite an authorized Evidence ID returned by retrieval.",
-            ))
-        allowed_synthetic = (
-            reference.get("permission_status") == "synthetic_only"
-            and reference.get("is_synthetic") is True
-            and bool(reference.get("dataset_id"))
-        )
-        if reference.get("permission_status") != "authorized" and not allowed_synthetic:
-            issues.append(ValidationIssue(
-                path=f"planning_references[{index}].permission_status",
-                code="UNAUTHORIZED_PLANNING_REFERENCE",
-                message="Only explicitly authorized planning references may appear in the draft.",
-            ))
-        if "product_planning" not in reference.get("permitted_uses", ()):
-            issues.append(ValidationIssue(
-                path=f"planning_references[{index}].permitted_uses",
-                code="PLANNING_USE_NOT_PERMITTED",
-                message="A planning reference must permit product_planning use.",
-            ))
 
     for index, question in enumerate(draft.questions_for_validation):
         if not question.strip():

@@ -3,8 +3,7 @@
 These types are internal domain models, not the shared wire contract. A transport
 adapter should map the agreed PlanningRequest, TrendResult, and
 InventoryProductResult schemas into these models after those schemas are
-available and synchronized across repositories. Project_07 results are
-consumed as producer-authored findings; Project_06 does not recalculate them.
+available and synchronized across repositories. These models receive only the planning request, trend result, and inventory result.
 """
 
 from __future__ import annotations
@@ -13,7 +12,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Mapping, Sequence
 
 if TYPE_CHECKING:
-    from .retrieval import PlanningKnowledgeContext
     from .styling import StylingRelationship
 
 
@@ -151,12 +149,11 @@ class InventoryProductResult:
 
 @dataclass(frozen=True)
 class PlanningInputs:
-    """Planning inputs, including the producer-authored Project_07 result."""
+    """Only the planning request, trend result, and inventory result."""
 
     request: PlanningRequest
     trend: TrendResult
     inventory: InventoryProductResult
-    sales_market_result: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -185,58 +182,12 @@ class ProductPlanningContext:
     evidence_ids: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
     questions_for_validation: tuple[str, ...] = ()
-    sales_market_result: Mapping[str, Any] | None = None
-    planning_knowledge: PlanningKnowledgeContext | None = None
     hm_visual_references: Mapping[str, Any] | None = None
 
 
 def _unique(values: Sequence[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(value for value in values if value))
 
-
-
-def _project07_evidence_ids(payload: Any) -> tuple[str, ...]:
-    """Collect evidence references recursively without interpreting results."""
-    found: list[str] = []
-
-    def visit(value: Any) -> None:
-        if isinstance(value, Mapping):
-            for key, item in value.items():
-                if key == "evidence_id" and isinstance(item, str):
-                    found.append(item)
-                elif key in {"evidence_ids", "input_evidence_ids"} and isinstance(item, Sequence) and not isinstance(item, (str, bytes)):
-                    found.extend(str(entry) for entry in item if isinstance(entry, str))
-                visit(item)
-        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            for item in value:
-                visit(item)
-
-    visit(payload)
-    return _unique(found)
-
-
-def _project07_limitations(payload: Any) -> tuple[str, ...]:
-    """Retain block-level limitations, errors and missing-data notes."""
-    found: list[str] = []
-
-    def visit(value: Any, parent: str = "") -> None:
-        if isinstance(value, Mapping):
-            for key, item in value.items():
-                if key in {"limitations", "errors", "missing_data", "data_limitations"} and isinstance(item, Sequence) and not isinstance(item, (str, bytes)):
-                    for entry in item:
-                        if isinstance(entry, Mapping):
-                            code = entry.get("code") or entry.get("reason")
-                            message = entry.get("message")
-                            found.append(f"Project_07 {key} ({code}): {message}" if code and message else f"Project_07 {key}: {dict(entry)}")
-                        else:
-                            found.append(f"Project_07 {key}: {entry}" if key == "errors" else str(entry))
-                visit(item, key)
-        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            for item in value:
-                visit(item, parent)
-
-    visit(payload)
-    return _unique(found)
 
 
 def _comparable_context(
@@ -413,20 +364,6 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         if not result.agent_id:
             raise InputConsistencyError("Each upstream result must include an agent_id.")
         statuses[input_name] = result.status
-    upstream_sales_market = inputs.sales_market_result
-    if upstream_sales_market is not None:
-        if not isinstance(upstream_sales_market, Mapping):
-            raise InputConsistencyError("Project_07 result must be a mapping payload.")
-        if upstream_sales_market.get("request_id") != next(iter(request_ids)):
-            raise InputConsistencyError("Project_07 result must match the planning request_id.")
-        if upstream_sales_market.get("agent_id") != "sales-market-agent":
-            raise InputConsistencyError("Project_07 handoff must identify sales-market-agent.")
-        upstream_status = upstream_sales_market.get("status")
-        if upstream_status not in {"ok", "partial", "no_results", "error"}:
-            raise InputConsistencyError("Project_07 result has an unsupported status.")
-        statuses["sales_market_result"] = upstream_status
-    else:
-        statuses["sales_market_result"] = "not_provided"
     evidence_ids = _unique(
         [
             *inputs.request.result.evidence_ids,
@@ -439,24 +376,6 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
             *(evidence_id for ids in inputs.request.field_evidence_ids.values() for evidence_id in ids),
             *(evidence_id for candidate in inputs.trend.candidates for attr in candidate.attributes for evidence_id in attr.evidence_ids),
             *(evidence_id for product in inputs.inventory.products for attr in product.attributes for evidence_id in attr.evidence_ids),
-            *(
-                str(item.get("evidence_id"))
-                for item in (upstream_sales_market or {}).get("evidence", ())
-                if isinstance(item, Mapping) and item.get("evidence_id")
-            ),
-            *(
-                str(evidence_id)
-                for finding in (upstream_sales_market or {}).get("findings", ())
-                if isinstance(finding, Mapping)
-                for evidence_id in finding.get("evidence_ids", ())
-            ),
-            *(
-                str(evidence_id)
-                for observation in ((upstream_sales_market or {}).get("sales_data") or {}).get("observations", ())
-                if isinstance(observation, Mapping)
-                for evidence_id in observation.get("evidence_ids", ())
-            ),
-            *_project07_evidence_ids(upstream_sales_market),
         ]
     )
 
@@ -464,11 +383,6 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         [
             *inputs.request.result.limitations,
             *inputs.trend.result.limitations,
-            *(str(item) for item in (upstream_sales_market or {}).get("limitations", ())),
-            *(str(item) for item in (((upstream_sales_market or {}).get("sales_data") or {}).get("limitations", ()))),
-            *(f"Project_07 error {item.get('code')}: {item.get('message')}" for item in (upstream_sales_market or {}).get("errors", ()) if isinstance(item, Mapping)),
-            *(str(item) for item in (((upstream_sales_market or {}).get("sales_data") or {}).get("errors", ()))),
-            *_project07_limitations(upstream_sales_market),
             *inputs.inventory.result.limitations,
             *inputs.inventory.mapping_issues,
             *(
@@ -502,13 +416,8 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         ]
     )
     questions = _unique(
-        [
-            f"Confirm missing planning input: {field_name}."
-            for field_name in inputs.request.missing_fields
-        ] + [
-            str(item)
-            for item in (((upstream_sales_market or {}).get("sales_data") or {}).get("follow_up_questions", ()))
-        ]
+        f"Confirm missing planning input: {field_name}."
+        for field_name in inputs.request.missing_fields
     )
     from .styling import build_styling_relationships
 
@@ -547,5 +456,4 @@ def build_planning_context(inputs: PlanningInputs) -> ProductPlanningContext:
         evidence_ids=evidence_ids,
         limitations=limitations,
         questions_for_validation=questions,
-        sales_market_result=upstream_sales_market,
     )

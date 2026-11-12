@@ -1,10 +1,12 @@
+> Superseded by [HTTP handoff v0.3](http-handoff-v0.3.md). This version retained the sales-market input and is kept for migration history only.
+
 # VOGUE HTTP handoff v0.2 in Project_06
 
 ## Implemented contract
 
-Project_06 exposes `POST /v1/agents/new-product-agent/runs`. Both this route and the legacy `POST /api/planning-draft` require a `sales_market_result` JSON object. The canonical route is a thin adapter over the planning draft workflow.
+Project_06 exposes `POST /v1/agents/new-product-agent/runs`. The canonical route creates the PlanningDraft before post-planning Sales Market review. The legacy `POST /api/planning-draft` retains its requirement for a `sales_market_result` JSON object.
 
-Request top-level fields are exactly `contract_version`, `request_id`, and `input`. The contract version is `vogue-handoff/0.2`; `input` contains exactly `planning_request`, `trend_result`, `inventory_product_result`, and `sales_market_result`. All four producer results must be JSON objects. `sales_market_result` is required; use `status: "no_results"` with empty result collections when the producer ran but found no analysis, and never use `null` or omission to represent absence.
+Request top-level fields are exactly `contract_version`, `request_id`, and `input`. The contract version is `vogue-handoff/0.2`; `input` contains exactly `planning_request`, `trend_result`, `inventory_product_result`, and `sales_market_result`. The first three input fields must be JSON objects. `sales_market_result` is present as a field but may be `null` to mean the post-planning review has not yet run; P06 records that input as `not_provided`. If a Sales Market producer result is supplied by a compatible caller, it must be a JSON object.
 
 ```json
 {
@@ -23,7 +25,7 @@ Successful domain responses use HTTP 200, including `partial`, `no_results`, and
 
 ## Version compatibility boundary
 
-Version 0.2 makes `sales_market_result` a required non-null producer result. Clients using v0.1 must migrate to this envelope before using the required-input route. A producer response with `status: "error"` is still a supplied result and produces a limited draft; omission or `null` is a request validation error. The Project_07 payload remains opaque: requiring its envelope does not authorize Project_06 to interpret undocumented fields as analysis findings or image instructions.
+Version 0.2 retains the four input keys and allows a null `sales_market_result` for the contract sequence where P06 creates PlanningDraft before the review. A producer response with `status: "error"` is still a supplied result and produces a limited draft; `null` is reserved for review not yet provided, not query failure or zero results. The Project_07 payload remains opaque: requiring its envelope does not authorize Project_06 to interpret undocumented fields as analysis findings or image instructions.
 
 | Input producer payload | Supported source version | Internal handling |
 | --- | --- | --- |
@@ -71,3 +73,6 @@ TLS termination may also be provided by an approved ingress, but then the servic
 ## Verification
 
 `tests/test_http_handoff.py` uses synthetic inputs only and covers domain status passthrough, Trend 1.1 compatibility trace, required Project_07 input, malformed JSON, media type, request ID and schema failures, and unknown path behavior. It does not call Trend, Stock, Project_07, or external data sources.
+
+
+After `/runs` returns, P08 may call `POST /v1/agents/new-product-agent/sales-market-reviews` with the P06 result as `input.planning_draft`. P06 projects only supported product fields into P07 review schema 1.0 and preserves the P07 response envelope. This review request is a separate post-planning operation and does not replace the P06 producer result.

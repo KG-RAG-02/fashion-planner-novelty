@@ -14,9 +14,9 @@ src/vogue_npp/
 
 - TrendBatch, Trend × Category fit, existing/new product concepts and MD review support belong here.
 - Product and inventory data are consumed from the upstream agent; Project_06 does not connect to operational product/inventory databases.
-- Sales and market results are received as a Project_07 handoff. Sales aggregation, market research, H&M historical processing, sales fixtures and their source adapters belong to Project_07.
+- Sales and market result objects are not inputs to Project_06 planning. Sales aggregation, market research, H&M historical processing, sales fixtures and their source adapters belong to Project_07.
 - `data/` holds local planning drafts and generated review images only; sales data and source adapters remain in Project_07. Local data files are ignored and should not be committed.
-- Planning-only retrieval scope and the Project_07 Evidence boundary are documented in [the KG/RAG design](planning-rag-design.md).
+- The current three-input and optional H&M visual-reference boundaries are documented in [the runtime handoff contract](../../contracts/http-handoff-v0.3.md) and [R2 visual-reference note](r2-cloud-planning-rag.md).
 
 ## Run
 

@@ -1,8 +1,8 @@
 {
   "text_planning": {
-    "version": "v4",
-    "version_id": "new-product-planner-v4-integrated-planner",
-    "directory": "text_planning/v4"
+    "version": "v5",
+    "version_id": "new-product-planner-v5-request-trend-stock",
+    "directory": "text_planning/v5"
   },
   "concept_image": {
     "version": "v2",

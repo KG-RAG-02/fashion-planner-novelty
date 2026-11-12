@@ -115,13 +115,12 @@ class TrendNameInputTests(unittest.TestCase):
             any("trend_result 상태가 'error'" in question for question in draft.questions_for_validation)
         )
 
-    def test_sales_market_handoff_is_optional_and_not_fabricated(self) -> None:
+    def test_sales_market_is_not_a_planning_input(self) -> None:
         context = self._context()
         draft, issues = generate_concept_draft(context)
-        self.assertEqual(context.input_statuses["sales_market_result"], "not_provided")
-        self.assertIsNone(draft.sales_market_result)
+        self.assertEqual(set(context.input_statuses), {"planning_request", "trend_result", "inventory_product_result"})
+        self.assertFalse(hasattr(draft, "sales_market_result"))
         self.assertFalse(issues)
-        self.assertTrue(any("Project_07 판매·시장 결과가 제공되지 않아" in question for question in draft.questions_for_validation))
 
 
 if __name__ == "__main__":

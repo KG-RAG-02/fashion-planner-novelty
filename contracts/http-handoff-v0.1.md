@@ -1,3 +1,5 @@
+> Legacy contract. The current input contract is [HTTP handoff v0.3](http-handoff-v0.3.md), which contains no sales-market input.
+
 # VOGUE HTTP handoff v0.1 in Project_06
 
 ## Implemented contract

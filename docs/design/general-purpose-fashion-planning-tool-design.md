@@ -4,7 +4,7 @@
 - 상태: 저장소 기반 설계 초안 · 현업 MD 검증 전 · 데이터/운영 계약 미완료
 - 목적: 패션 회사 고객에게 설명 가능한 지원 범위와 검증 로드맵을 정의
 - 변경 범위: Project_06 설계 문서만. Project_07/08, Trend, Stock 저장소와 실제 고객 데이터는 변경·사용하지 않음
-- 관련 기준: [MD 업무 적합성 검토](md-planning-workflow-fit-review.md), [데이터·Evidence 경계](data-source-and-evidence-plan.md), [RAG 고도화안](planning-rag-evolution-plan.md), [생성기 평가 계획](generator-evaluation-plan.md), [HTTP handoff v0.2](../../contracts/http-handoff-v0.2.md)
+- 관련 기준: [MD 업무 적합성 검토](md-planning-workflow-fit-review.md), [데이터·Evidence 경계](data-source-and-evidence-plan.md), [HTTP handoff v0.3](../../contracts/http-handoff-v0.3.md)
 
 ## 1. 요약과 제품 주장 경계
 

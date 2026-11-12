@@ -59,40 +59,6 @@ def _usable(context: ProductPlanningContext, slot: str) -> bool:
     return context.input_statuses.get(slot) in {"ok", "partial"}
 
 
-def _allowed_references(context: ProductPlanningContext) -> list[dict[str, object]]:
-    allowed: list[dict[str, object]] = []
-    if context.planning_knowledge is None:
-        return allowed
-    for result in context.planning_knowledge.by_purpose:
-        if result.purpose not in {"planning_reference", "precedent", "taxonomy", "catalog_comparison", "assortment_relation"}:
-            continue
-        for item in result.evidence:
-            if not item.verified:
-                continue
-            if item.permission_status == "authorized":
-                pass
-            elif not (item.is_synthetic and item.permission_status == "synthetic_only" and item.dataset_id):
-                continue
-            if "product_planning" not in item.permitted_uses:
-                continue
-            allowed.append({
-                "purpose": result.purpose,
-                "evidence_id": item.evidence_id,
-                "source_id": item.source_id,
-                "source_name": item.source_name,
-                "quote": item.quote,
-                "locator": item.locator,
-                "source_date": item.source_date.isoformat() if item.source_date else None,
-                "permission_status": item.permission_status,
-                "permitted_uses": list(item.permitted_uses),
-                "supports": list(item.supports),
-                "dataset_id": item.dataset_id,
-                "is_synthetic": item.is_synthetic,
-                "synthetic_notice": item.synthetic_notice,
-            })
-    return allowed
-
-
 def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
     """Build separate trusted instructions and bounded JSON data for one request."""
     request_usable = _usable(context, "planning_request")
@@ -135,9 +101,6 @@ def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
             ],
         } for item in context.inventory.products]
 
-    references = _allowed_references(context)
-    sales_status = context.input_statuses.get("sales_market_result", "not_provided")
-    sales_result = context.sales_market_result if sales_status in {"ok", "partial"} else None
     visual_references = None
     if context.hm_visual_references:
         # Keep only visual observations. Never send catalog metadata, URLs, or image bytes.
@@ -179,9 +142,7 @@ def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
         "trend_limitations": list(context.trends.result.limitations) if trend_usable else [],
         "inventory_products": products,
         "inventory_limitations": list(context.inventory.result.limitations) if inventory_usable else [],
-        "sales_market_result": sales_result,
         "hm_visual_reference_analysis": visual_references,
-        "retrieved_planning_references": references,
         "conflicts": [{"field": item.field, "values": dict(item.values), "message": item.message}
                       for item in context.conflicts],
         "limitations": list(context.limitations),
@@ -324,22 +285,6 @@ def parse_concept_output(
             raise ValueError("invalid output")
         return tuple(dict.fromkeys(values))
 
-    planning_references = tuple(
-        {
-            "evidence_id": item["evidence_id"],
-            "source_id": item["source_id"],
-            "source_name": item["source_name"],
-            "locator": item["locator"],
-            "quote": item["quote"],
-            "permission_status": item["permission_status"],
-            "permitted_uses": tuple(item["permitted_uses"]),
-            "supports": tuple(item["supports"]),
-            "dataset_id": item["dataset_id"],
-            "is_synthetic": item["is_synthetic"],
-            "synthetic_notice": item["synthetic_notice"],
-        }
-        for item in _allowed_references(context)
-    )
     request = context.request
     planning_usable = _usable(context, "planning_request")
     draft = ProductConceptDraft(
@@ -365,8 +310,6 @@ def parse_concept_output(
             *context.questions_for_validation,
             *text_list("questions_for_validation"),
         ))),
-        sales_market_result=context.sales_market_result,
-        planning_references=planning_references,
     )
     issues = validate_concept_draft(context, draft)
     if issues:

@@ -6,7 +6,7 @@ from pathlib import Path
 from vogue_npp.adapters.handoff import AdapterCompatibilityError, normalize_handoff_inputs
 
 
-FIXTURE = Path(__file__).parent / "fixtures/http-handoff-v0.2/success.json"
+FIXTURE = Path(__file__).parent / "fixtures/http-handoff-v0.3/success.json"
 
 
 class HandoffAdapterRegistryTests(unittest.TestCase):
@@ -37,12 +37,12 @@ class HandoffAdapterRegistryTests(unittest.TestCase):
             normalize_handoff_inputs(self.envelope["request_id"], bad)
         self.assertEqual(caught.exception.code, "INVALID_INPUT")
 
-    def test_project07_null_is_rejected_as_missing_required_result(self):
+    def test_sales_market_object_is_not_a_supported_handoff_input(self):
         inputs = copy.deepcopy(self.envelope["input"])
-        inputs["sales_market_result"] = None
+        inputs["sales_market_result"] = {"request_id": self.envelope["request_id"]}
         with self.assertRaises(AdapterCompatibilityError) as caught:
             normalize_handoff_inputs(self.envelope["request_id"], inputs)
-        self.assertEqual(caught.exception.code, "INVALID_PRODUCER_PAYLOAD")
+        self.assertEqual(caught.exception.code, "INVALID_INPUT")
 
 
 if __name__ == "__main__":
