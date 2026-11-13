@@ -20,7 +20,7 @@ The envelope fields are exactly `contract_version`, `request_id`, and `input`. `
 }
 ```
 
-An extra `sales_market_result` input is rejected. The separate `POST /v1/agents/new-product-agent/sales-market-reviews` route remains an optional post-draft review bridge; it is not called by the planning or image-generation flow.
+An extra `sales_market_result` input is rejected. P08 calls the separate `POST /v1/agents/new-product-agent/sales-market-reviews` route after draft generation; it is a post-draft review bridge and is not part of the planning or image-generation inputs.
 
 Project_06 does not retrieve synthetic catalog, guideline, precedent, or taxonomy records from R2. H&M product photos may remain enabled as external visual references, clearly separated from company facts and from the new-product image prompt. The new-product image uses the planning request and eligible trend observations; stock products/images are reserved for the separate outfit image stage.
 
