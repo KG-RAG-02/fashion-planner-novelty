@@ -30,7 +30,7 @@ VOGUE_HTTP_MODE=local PYTHONPATH=src python3 -m vogue_npp.prototype.server
 
 Project_06은 planning draft API를 제공합니다. UI는 Project_08 소유이며, 이 저장소에서는 브라우저 화면을 제공하지 않습니다. 로컬 실행은 명시적으로 `VOGUE_HTTP_MODE=local`을 지정하고 기본 주소 `http://127.0.0.1:8767`을 사용합니다. 기본 포트는 Project_08 UI(8765), Project_07 HTTP(8766)와 겹치지 않습니다. 현재 handoff 계약은 [`contracts/http-handoff-v0.3.md`](contracts/http-handoff-v0.3.md)입니다. 입력은 PlanningRequest, Trend, Stock 세 가지입니다. 별도 Sales Market review proxy endpoint는 선택적인 사후 검토 기능이며 신제품 이미지 생성 경로와 분리되어 있습니다.
 
-P06은 planning 초안과 신제품 이미지를 생성하는 API(`/api/planning-draft`, `/v1/agents/new-product-agent/runs`) 및 별도 P07 review bridge(`/v1/agents/new-product-agent/sales-market-reviews`)만 제공합니다. 기존 자체 brief/variant/evaluation 작업대는 제거했습니다. P07 bridge는 전체 P06 응답에서 확인된 `category`, `product_type`, `gender`, `season`, `material`만 보내고 P07 응답 envelope를 보존합니다. `proposed_price`, `currency`, `costing`, 이미지 데이터와 Evidence 내부 메타데이터는 전달하지 않습니다. 기본 P07 URL은 `http://127.0.0.1:8766`이며 `VOGUE_SALES_MARKET_AGENT_URL`로 바꿀 수 있습니다. `VOGUE_SALES_MARKET_AGENT_BEARER_TOKEN`이 지정되면 P07 전달에 사용하고, 없으면 기존 공통 service token을 사용합니다.
+P06은 planning 초안과 신제품 이미지를 생성하는 API(`/api/planning-draft`, `/v1/agents/new-product-agent/runs`) 및 별도 P07 review bridge(`/v1/agents/new-product-agent/sales-market-reviews`)만 제공합니다. 기존 자체 brief/variant/evaluation 작업대는 제거했습니다. P07 bridge는 전체 P06 응답을 검증해 확인된 `category`, `product_type`, `gender`, `season`, `material`만 담은 P07 0.2 요청 payload를 반환합니다. P06은 P07을 직접 호출하지 않습니다. P08이 이 payload로 P07을 호출하고 결과를 통합합니다. `proposed_price`, `currency`, `costing`, 이미지 데이터와 Evidence 내부 메타데이터는 payload에 포함하지 않습니다.
 
 Docker Compose는 `service` 모드로 TLS와 Bearer 인증을 사용합니다. 실행 전에 `VOGUE_TLS_CERT_HOST_PATH`, `VOGUE_TLS_KEY_HOST_PATH`, `VOGUE_TLS_CA_HOST_PATH`, `VOGUE_AGENT_SERVICE_BEARER_TOKEN`을 shell 환경에 설정한 뒤 `docker compose up --build`를 실행하세요. 인증서·키·token은 저장소에 넣지 않습니다. Compose 포트는 host loopback의 `127.0.0.1:8767`에만 공개됩니다.
 
@@ -68,7 +68,7 @@ H&M 사진 참고 분석은 선택 기능이며 외부 시각 참고로 구분�
 
 Trend/stock 호환 adapter는 원본 JSON 전체를 응답의 `input_evidence.*.payload`에 그대로 보존합니다. trend-analysis-agent 출력에 없는 producer ID/schema version은 adapter 추정/fallback으로 표시하고, 실제 입력에 있는 메타데이터와 혼동하지 않습니다. stock-agent의 `trend_results[].product_index`는 원래 `products[]` 인덱스 공간에서 해석하며 null 슬롯도 유지합니다. Per-trend Evidence, 제한사항, 오류, 누락 데이터와 매핑 상태를 응답에 표시합니다. 계약 테스트용 합성 upstream fixture는 `tests/fixtures/upstream/stock-agent-multi-result.synthetic.json`에 있습니다.
 
-Project_07 판매·시장 결과 객체는 현재 PlanningDraft 입력 계약에 포함하지 않습니다. 별도의 review bridge는 초안 생성이 끝난 뒤 P07에 검토를 요청합니다.
+Project_07 판매·시장 결과 객체는 현재 PlanningDraft 입력 계약에 포함하지 않습니다. 별도의 review bridge는 초안 생성 뒤 검증된 P07 요청 payload를 P08에 반환합니다. P07 review 호출은 P08이 수행합니다.
 
 
 

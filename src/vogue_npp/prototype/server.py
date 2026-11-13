@@ -50,11 +50,10 @@ COMPARISON_IMAGE_MODELS = (
 )
 P06_REVIEW_BRIDGE_CONTRACT_VERSION = "vogue-sales-market-review/0.1-proposal"
 P07_SALES_REVIEW_CONTRACT_VERSION = "vogue-sales-market-review/0.2-proposal"
-SALES_REVIEW_PATH = "/v1/agents/sales-market-agent/reviews"
 
 
-def _request_sales_market_review(payload: dict) -> dict:
-    """Map the P06 draft to the supported P07 review input and preserve its response."""
+def _build_sales_market_review_payload(payload: dict) -> dict:
+    """Validate the P06 draft and build the P07 request for Project_08 to call."""
     if set(payload) != {"contract_version", "request_id", "input"}:
         raise ValueError("review envelope fields are invalid")
     request_id = payload.get("request_id")
@@ -105,44 +104,11 @@ def _request_sales_market_review(payload: dict) -> dict:
             raise ValueError("PlanningDraft product_profile gender is invalid")
         if value:
             product[field] = value
-    base_url = os.getenv("VOGUE_SALES_MARKET_AGENT_URL", "http://127.0.0.1:8766").rstrip("/")
-    token = (os.getenv("VOGUE_SALES_MARKET_AGENT_BEARER_TOKEN", "")
-             or os.getenv("VOGUE_AGENT_SERVICE_BEARER_TOKEN", "")
-             or os.getenv("VOGUE_SERVICE_BEARER_TOKEN", ""))
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    review_payload = {
+    return {
         "contract_version": P07_SALES_REVIEW_CONTRACT_VERSION,
         "request_id": request_id,
         "input": {"request_id": request_id, "product": product},
     }
-    request = urllib.request.Request(
-        base_url + SALES_REVIEW_PATH,
-        data=json.dumps(review_payload, ensure_ascii=False, allow_nan=False).encode("utf-8"),
-        headers=headers, method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            response_bytes = response.read(MAX_BODY_BYTES + 1)
-            if len(response_bytes) > MAX_BODY_BYTES:
-                raise ValueError("sales-market review response is too large")
-            result = json.loads(response_bytes)
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise OSError("sales-market review request failed") from exc
-    if not isinstance(result, dict) or result.get("request_id") != request_id:
-        raise ValueError("sales-market review response request_id mismatch")
-    producer = result.get("producer")
-    body = result.get("result")
-    if (result.get("contract_version") != P07_SALES_REVIEW_CONTRACT_VERSION
-            or not isinstance(producer, dict) or producer.get("agent_id") != "sales-market-agent"
-            or not isinstance(body, dict) or body.get("request_id") != request_id
-            or producer.get("schema_version") != body.get("schema_version")
-            or body.get("producer_id") != producer.get("agent_id")
-            or result.get("status") != body.get("status")
-            or result.get("status") not in {"ok", "partial", "no_results", "error"}):
-        raise ValueError("sales-market review response contract mismatch")
-    return result
 
 
 def _build_handoff_result(request_id: str, inputs: dict) -> dict:
@@ -309,12 +275,10 @@ class PrototypeHandler(BaseHTTPRequestHandler):
             return
         try:
             payload = self._body()
-            result = _request_sales_market_review(payload)
+            result = _build_sales_market_review_payload(payload)
             self._json(200, result)
         except (ValueError, TypeError, KeyError) as exc:
             self._handoff_error(422, "INVALID_REVIEW_REQUEST", str(exc))
-        except OSError:
-            self._handoff_error(502, "SALES_MARKET_REVIEW_UNAVAILABLE", "P07 review 요청을 처리하지 못했습니다.")
 
     def _handle_handoff(self) -> None:
         if not self._authorized_handoff():
