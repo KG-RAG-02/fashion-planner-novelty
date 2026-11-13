@@ -9,7 +9,6 @@ import os
 import re
 import ssl
 import urllib.error
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from threading import BoundedSemaphore
 from dataclasses import replace
