@@ -50,24 +50,20 @@ P06 초안의 설명문에서 상품 속성을 추측해 P07로 보내지 않는
 
 ## P07 전달 변환
 
-P07의 현재 `vogue-sales-market-review/0.1-proposal` 입력에서는 `planning_draft.product.category`가 필수다. 선택 필드는 `product_type`, `gender`, `season`, `material` 등이다. Project_06은 이 네 선택 필드를 `product_profile`에서만 가져오며, null/unknown/검증 실패 값은 생략한다. `gender`는 P07 enum에 맞는 값만 전달한다. `proposed_price`, `currency`, `costing`, 이미지, Evidence 내부 메타데이터는 이 P06→P07 payload에 넣지 않는다.
+P07의 현재 `vogue-sales-market-review/0.2-proposal` 입력은 `input: {request_id, product}` 구조다. `product`에는 필수 `category`와 선택 `product_type`, `gender`, `season`, `material`만 포함한다. Project_06은 이 네 선택 필드를 `product_profile`에서만 가져오며, null/unknown/검증 실패 값은 생략한다. `gender`는 P07 enum에 맞는 값만 전달한다. `proposed_price`, `currency`, `costing`, 이미지, Evidence 내부 메타데이터는 이 P06→P07 payload에 넣지 않는다.
 
 ```json
 {
-  "contract_version": "vogue-sales-market-review/0.1-proposal",
+  "contract_version": "vogue-sales-market-review/0.2-proposal",
   "request_id": "request-123",
   "input": {
     "request_id": "request-123",
-    "planning_draft": {
-      "schema_version": "1.0",
-      "draft_id": "request-123",
-      "product": {
-        "category": "men-shorts",
-        "product_type": "shorts",
-        "gender": "men",
-        "season": "S/S",
-        "material": "cotton blend"
-      }
+    "product": {
+      "category": "men-shorts",
+      "product_type": "shorts",
+      "gender": "men",
+      "season": "S/S",
+      "material": "cotton blend"
     }
   }
 }

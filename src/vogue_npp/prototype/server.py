@@ -48,7 +48,8 @@ COMPARISON_IMAGE_MODELS = (
     "gpt-image-2.5-flare",
     "gpt-image-2",
 )
-SALES_REVIEW_CONTRACT_VERSION = "vogue-sales-market-review/0.1-proposal"
+P06_REVIEW_BRIDGE_CONTRACT_VERSION = "vogue-sales-market-review/0.1-proposal"
+P07_SALES_REVIEW_CONTRACT_VERSION = "vogue-sales-market-review/0.2-proposal"
 SALES_REVIEW_PATH = "/v1/agents/sales-market-agent/reviews"
 
 
@@ -58,7 +59,7 @@ def _request_sales_market_review(payload: dict) -> dict:
         raise ValueError("review envelope fields are invalid")
     request_id = payload.get("request_id")
     review_input = payload.get("input")
-    if payload.get("contract_version") != SALES_REVIEW_CONTRACT_VERSION:
+    if payload.get("contract_version") != P06_REVIEW_BRIDGE_CONTRACT_VERSION:
         raise ValueError("unsupported sales-market review contract")
     if not isinstance(request_id, str) or not request_id.strip() or not isinstance(review_input, dict):
         raise ValueError("review request_id and input are required")
@@ -104,10 +105,6 @@ def _request_sales_market_review(payload: dict) -> dict:
             raise ValueError("PlanningDraft product_profile gender is invalid")
         if value:
             product[field] = value
-    p07_draft = {
-        "schema_version": "1.0", "draft_id": request_id,
-        "product": product,
-    }
     base_url = os.getenv("VOGUE_SALES_MARKET_AGENT_URL", "http://127.0.0.1:8766").rstrip("/")
     token = (os.getenv("VOGUE_SALES_MARKET_AGENT_BEARER_TOKEN", "")
              or os.getenv("VOGUE_AGENT_SERVICE_BEARER_TOKEN", "")
@@ -116,9 +113,9 @@ def _request_sales_market_review(payload: dict) -> dict:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     review_payload = {
-        "contract_version": SALES_REVIEW_CONTRACT_VERSION,
+        "contract_version": P07_SALES_REVIEW_CONTRACT_VERSION,
         "request_id": request_id,
-        "input": {"request_id": request_id, "planning_draft": p07_draft},
+        "input": {"request_id": request_id, "product": product},
     }
     request = urllib.request.Request(
         base_url + SALES_REVIEW_PATH,
@@ -137,7 +134,7 @@ def _request_sales_market_review(payload: dict) -> dict:
         raise ValueError("sales-market review response request_id mismatch")
     producer = result.get("producer")
     body = result.get("result")
-    if (result.get("contract_version") != SALES_REVIEW_CONTRACT_VERSION
+    if (result.get("contract_version") != P07_SALES_REVIEW_CONTRACT_VERSION
             or not isinstance(producer, dict) or producer.get("agent_id") != "sales-market-agent"
             or not isinstance(body, dict) or body.get("request_id") != request_id
             or producer.get("schema_version") != body.get("schema_version")

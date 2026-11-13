@@ -190,11 +190,11 @@ class HandoffHTTPTests(unittest.TestCase):
 
     def test_sales_market_review_proxy_forwards_versioned_draft_and_returns_opaque_response(self):
         response_body = {
-            "contract_version": "vogue-sales-market-review/0.1-proposal",
+            "contract_version": "vogue-sales-market-review/0.2-proposal",
             "request_id": "review-1",
-            "producer": {"agent_id": "sales-market-agent", "schema_version": "sales-market-review/0.1-internal"},
+            "producer": {"agent_id": "sales-market-agent", "schema_version": "sales-market-review/0.2-internal"},
             "status": "no_results",
-            "result": {"schema_version": "sales-market-review/0.1-internal", "request_id": "review-1",
+            "result": {"schema_version": "sales-market-review/0.2-internal", "request_id": "review-1",
                        "producer_id": "sales-market-agent", "status": "no_results"},
         }
         request = {
@@ -202,14 +202,14 @@ class HandoffHTTPTests(unittest.TestCase):
             "request_id": "review-1",
             "input": {"request_id": "review-1", "planning_draft": {
                 "schema_version": "1.0", "request_id": "review-1",
-                "evidence_ids": [],
+                "evidence_ids": ["E1"],
                 "draft": {"category": "원피스", "season": "2027SS",
                           "product_profile": {
                               "category": {"value": "원피스", "kind": "user_requested", "evidence_ids": []},
-                              "product_type": {"value": "dress", "kind": "proposal", "evidence_ids": []},
-                              "gender": {"value": None, "kind": "unknown", "evidence_ids": []},
+                              "product_type": {"value": "dress", "kind": "evidence_observation", "evidence_ids": ["E1"]},
+                              "gender": {"value": "women", "kind": "user_requested", "evidence_ids": []},
                               "season": {"value": "2027SS", "kind": "user_requested", "evidence_ids": []},
-                              "material": {"value": "cotton", "kind": "proposal", "evidence_ids": []},
+                              "material": {"value": "cotton", "kind": "evidence_observation", "evidence_ids": ["E1"]},
                           }},
             }},
         }
@@ -224,12 +224,13 @@ class HandoffHTTPTests(unittest.TestCase):
             result = _request_sales_market_review(request)
         self.assertEqual(result, response_body)
         sent = json.loads(open_request.call_args.args[0].data)
-        self.assertEqual(sent["contract_version"], request["contract_version"])
+        self.assertEqual(sent["contract_version"], "vogue-sales-market-review/0.2-proposal")
         self.assertEqual(sent["request_id"], request["request_id"])
-        self.assertEqual(sent["input"]["planning_draft"]["draft_id"], "review-1")
-        self.assertEqual(sent["input"]["planning_draft"]["product"], {
-            "category": "원피스", "season": "2027SS",
-        })
+        self.assertEqual(sent["input"], {"request_id": "review-1", "product": {
+            "category": "원피스", "product_type": "dress", "gender": "women",
+            "season": "2027SS", "material": "cotton",
+        }})
+        self.assertNotIn("planning_draft", sent["input"])
 
     def test_sales_market_review_route_requires_auth_and_returns_review_envelope(self):
         request = {
@@ -242,9 +243,9 @@ class HandoffHTTPTests(unittest.TestCase):
                 }},
             }},
         }
-        forwarded = {"contract_version": request["contract_version"], "request_id": "review-1",
-                     "producer": {"agent_id": "sales-market-agent", "schema_version": "sales-market-review/0.1-internal"},
-                     "status": "no_results", "result": {"schema_version": "sales-market-review/0.1-internal",
+        forwarded = {"contract_version": "vogue-sales-market-review/0.2-proposal", "request_id": "review-1",
+                     "producer": {"agent_id": "sales-market-agent", "schema_version": "sales-market-review/0.2-internal"},
+                     "status": "no_results", "result": {"schema_version": "sales-market-review/0.2-internal",
                      "request_id": "review-1", "producer_id": "sales-market-agent", "status": "no_results"}}
         path = "/v1/agents/new-product-agent/sales-market-reviews"
         code, body = self.invoke(request, path=path, token=None)
