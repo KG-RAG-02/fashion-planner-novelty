@@ -46,6 +46,7 @@ class HandoffHTTPTests(unittest.TestCase):
         try:
             value = fixture()
             value["input"]["trend_result"]["schema_version"] = "1.0"
+            value["input"]["planning_request"].update({"category": "Outerwear", "season": "winter"})
             planning = {"request_id": value["request_id"], **value["input"]}
             settings = type("Settings", (), {
                 "text_generation_enabled": False, "image_generation_enabled": False,
@@ -63,22 +64,35 @@ class HandoffHTTPTests(unittest.TestCase):
 
                 review_request = {
                     "contract_version": "vogue-sales-market-review/0.1-proposal",
-                    "request_id": "review-http-1",
-                    "input": {"request_id": "review-http-1", "planning_draft": {
-                        "schema_version": "1.0", "request_id": "review-http-1", "evidence_ids": [],
-                        "draft": {"category": "원피스", "product_profile": {
-                            "category": {"value": "원피스", "kind": "user_requested", "evidence_ids": []},
-                        }},
-                    }},
+                    "request_id": body["request_id"],
+                    "input": {"request_id": body["request_id"], "planning_draft": body},
                 }
-                expected = {"request_id": "review-http-1", "producer": {"agent_id": "sales-market-agent"}}
-                with patch("vogue_npp.prototype.server._request_sales_market_review", return_value=expected):
+                expected = {
+                    "contract_version": "vogue-sales-market-review/0.2-proposal",
+                    "request_id": body["request_id"],
+                    "producer": {"agent_id": "sales-market-agent", "schema_version": "sales-market-review/0.2-internal"},
+                    "status": "ok",
+                    "result": {"schema_version": "sales-market-review/0.2-internal",
+                               "request_id": body["request_id"], "producer_id": "sales-market-agent", "status": "ok"},
+                }
+
+                class FakeResponse:
+                    def __enter__(self): return self
+                    def __exit__(self, *_args): return False
+                    def read(self, _limit): return json.dumps(expected).encode()
+
+                with patch("vogue_npp.prototype.server.urllib.request.urlopen", return_value=FakeResponse()) as p07_call:
                     request = Request(base_url + "/v1/agents/new-product-agent/sales-market-reviews",
                                       data=json.dumps(review_request).encode(),
                                       headers={"Content-Type": "application/json",
                                                "Authorization": "Bearer test-token"}, method="POST")
                     with urlopen(request) as response:
                         self.assertEqual(json.loads(response.read()), expected)
+                sent = json.loads(p07_call.call_args.args[0].data)
+                self.assertEqual(sent["contract_version"], "vogue-sales-market-review/0.2-proposal")
+                self.assertEqual(sent["request_id"], body["request_id"])
+                self.assertEqual(sent["input"], {"request_id": body["request_id"],
+                                                  "product": {"category": "Outerwear", "season": "winter"}})
         finally:
             server.shutdown()
             server.server_close()
