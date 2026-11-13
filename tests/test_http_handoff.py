@@ -10,7 +10,7 @@ from email.message import Message
 from unittest.mock import patch
 from urllib.request import Request, urlopen
 
-from vogue_npp.prototype.server import PrototypeHandler, _build_handoff_result, _request_sales_market_review
+from vogue_npp.prototype.server import PrototypeHandler, _build_handoff_result, _build_sales_market_review_payload
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures/http-handoff-v0.3/success.json"
@@ -67,32 +67,20 @@ class HandoffHTTPTests(unittest.TestCase):
                     "request_id": body["request_id"],
                     "input": {"request_id": body["request_id"], "planning_draft": body},
                 }
-                expected = {
-                    "contract_version": "vogue-sales-market-review/0.2-proposal",
-                    "request_id": body["request_id"],
-                    "producer": {"agent_id": "sales-market-agent", "schema_version": "sales-market-review/0.2-internal"},
-                    "status": "ok",
-                    "result": {"schema_version": "sales-market-review/0.2-internal",
-                               "request_id": body["request_id"], "producer_id": "sales-market-agent", "status": "ok"},
-                }
-
-                class FakeResponse:
-                    def __enter__(self): return self
-                    def __exit__(self, *_args): return False
-                    def read(self, _limit): return json.dumps(expected).encode()
-
-                with patch("vogue_npp.prototype.server.urllib.request.urlopen", return_value=FakeResponse()) as p07_call:
+                with patch("vogue_npp.prototype.server.urllib.request.urlopen") as p07_call:
                     request = Request(base_url + "/v1/agents/new-product-agent/sales-market-reviews",
                                       data=json.dumps(review_request).encode(),
                                       headers={"Content-Type": "application/json",
                                                "Authorization": "Bearer test-token"}, method="POST")
                     with urlopen(request) as response:
-                        self.assertEqual(json.loads(response.read()), expected)
-                sent = json.loads(p07_call.call_args.args[0].data)
-                self.assertEqual(sent["contract_version"], "vogue-sales-market-review/0.2-proposal")
-                self.assertEqual(sent["request_id"], body["request_id"])
-                self.assertEqual(sent["input"], {"request_id": body["request_id"],
-                                                  "product": {"category": "Outerwear", "season": "winter"}})
+                        body_for_p07 = json.loads(response.read())
+                p07_call.assert_not_called()
+                self.assertEqual(body_for_p07, {
+                    "contract_version": "vogue-sales-market-review/0.2-proposal",
+                    "request_id": body["request_id"],
+                    "input": {"request_id": body["request_id"],
+                              "product": {"category": "Outerwear", "season": "winter"}},
+                })
         finally:
             server.shutdown()
             server.server_close()
@@ -202,15 +190,7 @@ class HandoffHTTPTests(unittest.TestCase):
                 self.assertEqual(code, 404)
                 self.assertEqual(body["error"], "Not found")
 
-    def test_sales_market_review_proxy_forwards_versioned_draft_and_returns_opaque_response(self):
-        response_body = {
-            "contract_version": "vogue-sales-market-review/0.2-proposal",
-            "request_id": "review-1",
-            "producer": {"agent_id": "sales-market-agent", "schema_version": "sales-market-review/0.2-internal"},
-            "status": "no_results",
-            "result": {"schema_version": "sales-market-review/0.2-internal", "request_id": "review-1",
-                       "producer_id": "sales-market-agent", "status": "no_results"},
-        }
+    def test_sales_market_review_bridge_builds_p07_payload_without_calling_p07(self):
         request = {
             "contract_version": "vogue-sales-market-review/0.1-proposal",
             "request_id": "review-1",
@@ -227,26 +207,19 @@ class HandoffHTTPTests(unittest.TestCase):
                           }},
             }},
         }
-
-        class FakeResponse:
-            def __enter__(self): return self
-            def __exit__(self, *_args): return False
-            def read(self, _limit): return json.dumps(response_body).encode()
-
         with patch.dict(os.environ, {"VOGUE_SALES_MARKET_AGENT_URL": "http://127.0.0.1:8766"}), \
-             patch("vogue_npp.prototype.server.urllib.request.urlopen", return_value=FakeResponse()) as open_request:
-            result = _request_sales_market_review(request)
-        self.assertEqual(result, response_body)
-        sent = json.loads(open_request.call_args.args[0].data)
-        self.assertEqual(sent["contract_version"], "vogue-sales-market-review/0.2-proposal")
-        self.assertEqual(sent["request_id"], request["request_id"])
-        self.assertEqual(sent["input"], {"request_id": "review-1", "product": {
+             patch("vogue_npp.prototype.server.urllib.request.urlopen") as p07_call:
+            result = _build_sales_market_review_payload(request)
+        p07_call.assert_not_called()
+        self.assertEqual(result["contract_version"], "vogue-sales-market-review/0.2-proposal")
+        self.assertEqual(result["request_id"], request["request_id"])
+        self.assertEqual(result["input"], {"request_id": "review-1", "product": {
             "category": "원피스", "product_type": "dress", "gender": "women",
             "season": "2027SS", "material": "cotton",
         }})
-        self.assertNotIn("planning_draft", sent["input"])
+        self.assertNotIn("planning_draft", result["input"])
 
-    def test_sales_market_review_route_requires_auth_and_returns_review_envelope(self):
+    def test_sales_market_review_route_returns_p07_request_payload_for_p08(self):
         request = {
             "contract_version": "vogue-sales-market-review/0.1-proposal",
             "request_id": "review-1",
@@ -258,14 +231,14 @@ class HandoffHTTPTests(unittest.TestCase):
             }},
         }
         forwarded = {"contract_version": "vogue-sales-market-review/0.2-proposal", "request_id": "review-1",
-                     "producer": {"agent_id": "sales-market-agent", "schema_version": "sales-market-review/0.2-internal"},
-                     "status": "no_results", "result": {"schema_version": "sales-market-review/0.2-internal",
-                     "request_id": "review-1", "producer_id": "sales-market-agent", "status": "no_results"}}
+                     "input": {"request_id": "review-1", "product": {"category": "원피스"}}}
         path = "/v1/agents/new-product-agent/sales-market-reviews"
         code, body = self.invoke(request, path=path, token=None)
         self.assertEqual((code, body["error"]["code"]), (401, "UNAUTHORIZED"))
-        with patch("vogue_npp.prototype.server._request_sales_market_review", return_value=forwarded):
+        with patch("vogue_npp.prototype.server._build_sales_market_review_payload", return_value=forwarded), \
+             patch("vogue_npp.prototype.server.urllib.request.urlopen") as p07_call:
             code, body = self.invoke(request, path=path)
+        p07_call.assert_not_called()
         self.assertEqual(code, 200)
         self.assertEqual(body, forwarded)
 

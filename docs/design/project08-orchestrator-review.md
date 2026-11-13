@@ -72,5 +72,5 @@ Project_08은 **합성 preview와 로컬 adapter 오케스트레이션을 구현
 
 - Project_08: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests` — 83 tests discovered; 40 passed, 43 skipped because optional query extra (`pydantic`) is not installed.
 - JavaScript syntax: `node --check web/app.js` — passed.
-- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 examples/synthetic_local_integration.py` — passed with `trend/no_results → stock/no_results → Project_07/partial → Project_06/partial`; same request ID and P07 payload preservation confirmed. It used an explicit synthetic P07 source and the actual P06 handler on an ephemeral `127.0.0.1` port.
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 examples/synthetic_local_integration.py` — passed with `trend/no_results → stock/no_results → Project_07/partial → Project_06/partial`; same request ID and P07 payload preservation confirmed. It used an explicit synthetic P07 source and the actual P06 handler on an ephemeral `127.0.0.1` port; P08 owned the P07 call using the validated request payload returned by P06.
 - External Trend/Stock services, credentials, operational sources, and deployment were not used.

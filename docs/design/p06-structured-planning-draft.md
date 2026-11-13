@@ -69,13 +69,13 @@ P07의 현재 `vogue-sales-market-review/0.2-proposal` 입력은 `input: {reques
 }
 ```
 
-P07 payload에는 전달 가능한 값만 직렬화한다. 내부 provenance는 P06 초안과 입력 Evidence에 보존하며, P07 schema가 허용하지 않는 필드를 새로 추가하지 않는다.
+P07 payload에는 전달 가능한 값만 직렬화한다. 내부 provenance는 P06 초안과 입력 Evidence에 보존하며, P07 schema가 허용하지 않는 필드를 새로 추가하지 않는다. P06 review bridge는 이 payload를 P08에 반환할 뿐 P07을 호출하지 않는다. P08은 P06 응답과 payload를 받아 P07 `/reviews`를 호출하고 결과를 통합한다.
 
 ## 버전·호환성
 
 - P06 API 응답의 기존 `draft` 필드는 유지하고 `draft.product_profile`을 추가했다. 이미지 응답에는 생성에 사용한 `product_specification`, 동일 프로필 사용 여부, 시각 일치가 자동 검증되지 않았다는 상태, `prompt_version`, `prompt_sha256`가 포함된다.
 - `schema_version`을 실제 wire contract처럼 올리기 전, Project_08 소비자와 P07 호출 경로의 version handling을 함께 확인한다. 현재 공유 계약이 확정되지 않았으므로 내부 응답 `schema_version=1.0`을 외부 합의 버전으로 해석하지 않는다.
-- 구버전 초안에 `product_profile`이 없으면 P07 adapter가 review 전달을 거부한다. 생성된 서술문이나 `attributes[]`를 자동 승격하지 않는다. Project_08은 최신 P06 응답의 `draft.product_profile`을 review proxy에 전달해야 한다.
+- 구버전 초안에 `product_profile`이 없으면 P07 adapter가 review 전달을 거부한다. 생성된 서술문이나 `attributes[]`를 자동 승격하지 않는다. Project_08은 최신 P06 응답의 `draft.product_profile`을 review bridge에 전달해야 한다. P06이 반환한 P07 요청 payload는 P08이 P07에 직접 보내야 한다.
 
 ## 구현 순서
 
