@@ -12,10 +12,12 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from ..domain.concept import (
+    ProductProfile,
     ProductConceptDraft,
     ProposedAttribute,
     SourcedClaim,
     ValidationIssue,
+    base_product_profile,
     validate_concept_draft,
 )
 from ..domain.context import ProductPlanningContext
@@ -230,7 +232,7 @@ def parse_concept_output(
     """Validate strict model JSON and map it to the existing internal draft."""
     data = _parse_json_object(value)
     required = {
-        "request_id", "opportunity", "target_customer", "product_definition", "attributes",
+        "request_id", "opportunity", "target_customer", "product_definition", "product_profile", "attributes",
         "relation_to_own_products", "differentiation", "risks", "questions_for_validation", "limitations",
     }
     if set(data) != required or data.get("request_id") != context.request_id:
@@ -238,6 +240,39 @@ def parse_concept_output(
     opportunity = _claim(data["opportunity"], path="opportunity", allowed_ids=allowed_evidence_ids)
     target_customer = _claim(data["target_customer"], path="target_customer", allowed_ids=allowed_evidence_ids)
     product_definition = _claim(data["product_definition"], path="product_definition", allowed_ids=allowed_evidence_ids)
+    profile_data = data["product_profile"]
+    profile_fields = {"category", "product_type", "gender", "season", "material", "silhouette", "color", "details"}
+    if not isinstance(profile_data, dict) or set(profile_data) != profile_fields:
+        raise ValueError("invalid product_profile")
+    parsed_profile = {
+        key: _claim(profile_data[key], path=f"product_profile.{key}", allowed_ids=allowed_evidence_ids)
+        for key in profile_fields - {"details"}
+    }
+    raw_details = profile_data["details"]
+    if not isinstance(raw_details, list) or len(raw_details) > 20:
+        raise ValueError("invalid product_profile.details")
+    details: list[ProposedAttribute] = []
+    for item in raw_details:
+        if not isinstance(item, dict) or set(item) != {"name", "value", "kind", "evidence_ids"}:
+            raise ValueError("invalid product_profile.details")
+        name, detail_value, kind, ids = item["name"], item["value"], item["kind"], item["evidence_ids"]
+        if (not isinstance(name, str) or not name.strip() or len(name) > 120
+                or (detail_value is not None and (not isinstance(detail_value, str) or len(detail_value) > 1_000))
+                or kind not in CLAIM_KINDS or not isinstance(ids, list)
+                or any(not isinstance(eid, str) or eid not in allowed_evidence_ids for eid in ids)):
+            raise ValueError("invalid product_profile.details")
+        details.append(ProposedAttribute(name.strip(), detail_value, kind, tuple(dict.fromkeys(ids))))
+    base_profile = base_product_profile(context)
+    # Request identity fields are deterministic: model output cannot rewrite them.
+    if (parsed_profile["category"].value != base_profile.category.value
+            or parsed_profile["season"].value != base_profile.season.value):
+        raise ValueError("product profile request fields mismatch")
+    parsed_profile["category"] = base_profile.category
+    parsed_profile["season"] = base_profile.season
+    # Gender is a taxonomy field, not a creative design choice. Use only an
+    # explicit request attribute until an approved category mapping exists.
+    parsed_profile["gender"] = base_profile.gender
+    product_profile = ProductProfile(**parsed_profile, details=tuple(details))
     direct_user_values = {
         value for value in (
             context.request.original_query, context.request.season, context.request.category,
@@ -248,6 +283,13 @@ def parse_concept_output(
     for claim in (opportunity, target_customer, product_definition):
         if claim.kind == "user_requested" and claim.value not in direct_user_values:
             raise ValueError("invalid output")
+    request_values = direct_user_values | {
+        str(signal.value) for signal in context.request.requested_attributes if signal.value is not None
+    }
+    for field_name in ("product_type", "gender", "material", "silhouette", "color"):
+        claim = getattr(product_profile, field_name)
+        if claim.kind == "user_requested" and claim.value not in request_values:
+            raise ValueError("invalid product profile provenance")
 
     raw_attributes = data["attributes"]
     if not isinstance(raw_attributes, list) or len(raw_attributes) > 50:
@@ -302,6 +344,7 @@ def parse_concept_output(
         opportunity=opportunity,
         target_customer=target_customer,
         product_definition=product_definition,
+        product_profile=product_profile,
         attributes=tuple(attributes),
         relation_to_own_products=claims("relation_to_own_products"),
         differentiation=claims("differentiation"),

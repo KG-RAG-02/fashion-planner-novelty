@@ -20,6 +20,8 @@
 
 실제 구현과 프로젝트 간 이관 범위는 [책임 경계·이관 기록](docs/design/agent-3-responsibility-map.md)에 정리했습니다. 상세 구현 제안은 [TrendBatch 기반 상품기획 설계](docs/design/trend-batch-kg-rag-product-planning.md)를, 모델 입력의 현재 프롬프트 인젝션 경계와 한계는 [프롬프트 인젝션 경계 문서](docs/design/prompt-injection-boundary.md)를 참고하세요.
 
+P06 초안의 상품 필드를 출처와 함께 구조화하고 Project_07 review 입력으로 변환하는 구현과 검증 규칙은 [구조화 상품 초안 설계](docs/design/p06-structured-planning-draft.md)를 참고하세요. 이 내부 구현은 공통 wire contract 승인을 의미하지 않습니다.
+
 ## 실행
 
 ```bash
@@ -28,13 +30,13 @@ VOGUE_HTTP_MODE=local PYTHONPATH=src python3 -m vogue_npp.prototype.server
 
 Project_06은 planning draft API를 제공합니다. UI는 Project_08 소유이며, 이 저장소에서는 브라우저 화면을 제공하지 않습니다. 로컬 실행은 명시적으로 `VOGUE_HTTP_MODE=local`을 지정하고 기본 주소 `http://127.0.0.1:8767`을 사용합니다. 기본 포트는 Project_08 UI(8765), Project_07 HTTP(8766)와 겹치지 않습니다. 현재 handoff 계약은 [`contracts/http-handoff-v0.3.md`](contracts/http-handoff-v0.3.md)입니다. 입력은 PlanningRequest, Trend, Stock 세 가지입니다. 별도 Sales Market review proxy endpoint는 선택적인 사후 검토 기능이며 신제품 이미지 생성 경로와 분리되어 있습니다.
 
-Project_08이 초안 생성 책임을 가져가는 동안에도 기존 제품 시안 생성(`/api/brief`, `/api/variants`)과 호환 초안 endpoint(`/api/planning-draft`, `/v1/agents/new-product-agent/runs`)는 유지합니다. 별도 `POST /v1/agents/new-product-agent/sales-market-reviews`는 canonical P06 PlanningDraft 원본을 받아 P07 `/reviews`가 요구하는 제한된 review input으로 변환하고 P07 응답 envelope를 그대로 반환합니다. 기본 P07 URL은 `http://127.0.0.1:8766`이며 `VOGUE_SALES_MARKET_AGENT_URL`로 바꿀 수 있습니다. `VOGUE_SALES_MARKET_AGENT_BEARER_TOKEN`이 지정되면 P07 전달에 사용하고, 없으면 기존 공통 service token을 사용합니다. 이 review route는 제품 생성 데이터를 저장하거나 기존 variants 흐름을 대체하지 않습니다.
+Project_08이 초안 생성 책임을 가져가는 동안에도 기존 제품 시안 생성(`/api/brief`, `/api/variants`)과 호환 초안 endpoint(`/api/planning-draft`, `/v1/agents/new-product-agent/runs`)는 유지합니다. 별도 `POST /v1/agents/new-product-agent/sales-market-reviews`는 canonical P06 PlanningDraft 원본을 받아 P07 `/reviews`가 요구하는 제한된 review input으로 변환하고 P07 응답 envelope를 그대로 반환합니다. 초안 생성 시 구조화한 `draft.product_profile`이 초안 설명과 이미지 프롬프트의 공통 상품 정의이며, 이미지 응답에는 사용된 프로필, prompt version과 hash가 포함됩니다. 같은 프로필을 공유해도 생성 이미지의 픽셀 내용은 자동 검증되지 않아 MD 검토가 필요합니다. P07 adapter도 같은 프로필에서 category 및 사용 가능한 product_type, 허용 enum gender, season, material만 전달합니다. `proposed_price`, `currency`, `costing`, 이미지 데이터는 P07에 전달하지 않습니다. 기본 P07 URL은 `http://127.0.0.1:8766`이며 `VOGUE_SALES_MARKET_AGENT_URL`로 바꿀 수 있습니다. `VOGUE_SALES_MARKET_AGENT_BEARER_TOKEN`이 지정되면 P07 전달에 사용하고, 없으면 기존 공통 service token을 사용합니다. 이 review route는 제품 생성 데이터를 저장하거나 기존 variants 흐름을 대체하지 않습니다.
 
 Docker Compose는 `service` 모드로 TLS와 Bearer 인증을 사용합니다. 실행 전에 `VOGUE_TLS_CERT_HOST_PATH`, `VOGUE_TLS_KEY_HOST_PATH`, `VOGUE_TLS_CA_HOST_PATH`, `VOGUE_AGENT_SERVICE_BEARER_TOKEN`을 shell 환경에 설정한 뒤 `docker compose up --build`를 실행하세요. 인증서·키·token은 저장소에 넣지 않습니다. Compose 포트는 host loopback의 `127.0.0.1:8767`에만 공개됩니다.
 
 이미지 생성 요청은 API가 항상 수행합니다. 실제 외부 이미지 생성을 사용하려면 `.env` 또는 실행 환경에 `VOGUE_IMAGE_GENERATION_ENABLED=true`와 `LLM_API_KEY`를 설정해야 합니다. 비밀값이 들어 있는 `.env`는 커밋하지 마세요. 서버 설정이 비활성화되어 있으면 이미지 요청 상태는 반환되지만 provider 호출은 진행하지 않습니다.
 
-모든 기획 요청에서 신제품 시안 이미지와 근거 연결 기획 보드를 요청합니다. 별도 이미지 생성 플래그는 필요하지 않습니다. 신제품 시안이 생성되면 보드는 SVG 결정적 렌더러가 텍스트와 Evidence ID를 배치해 만듭니다.
+모든 기획 요청은 구조화 상품 프로필을 기준으로 신제품 시안 이미지를 생성합니다. 기획안 보드 이미지는 P08에서 생성하며 P06 응답에는 포함하지 않습니다.
 
 착장 생성은 선택된 재고 상품의 `article_id` 또는 숫자형 `sku_ids[]`에서 ID를 확인하고, Project_06의 읽기 전용 R2 adapter가 `R2_IMAGE_PREFIX/<앞 3자리>/<article_id>.jpg` 한 장씩 가져올 수 있습니다. stock-agent와 같은 bucket/read-only credential을 `R2_ACCOUNT_ID`, `R2_ENDPOINT`, `R2_BUCKET`, `R2_IMAGE_PREFIX`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` 환경변수로 설정합니다. 로컬 파일 캐시는 `VOGUE_R2_IMAGE_CACHE_DIR`(기본 `data/local/r2_product_images`)에 선택한 이미지만 둡니다. 신제품 단독 이미지 생성에는 재고 이미지가 전달되지 않고 착장 합성 단계에서만 참조됩니다. `VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD`는 기본 `true`이며 `false`로 설정하면 R2 이미지를 외부 이미지 provider에 전송하지 않습니다. Kaggle 데이터 이용 조건상 허용된 환경에서만 켜세요. 기존 허용 host를 통한 `products[].image.url` 입력도 지원합니다. handoff field와 사용 경계는 [`contracts/http-handoff-v0.3.md`](contracts/http-handoff-v0.3.md)에 기록되어 있습니다.
 

@@ -104,7 +104,8 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         self.assertIn("query-trend:E-1", prompt)
         self.assertIn("forest green", prompt)
         self.assertIn("사용자가 지정한 조건", prompt)
-        self.assertIn("시각화 제안", prompt)
+        self.assertIn("단일 구조화 상품 프로필", prompt)
+        self.assertIn("프로필을 덮어쓰거나 프로필에 없는 사양으로 승격하지 않음", prompt)
         self.assertIn("생산 지시가 아닙니다", prompt)
 
     def test_prompt_injection_text_stays_inside_bounded_json_data(self) -> None:
@@ -142,10 +143,12 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         self.assertNotIn("소재=", result.image.request.prompt)
 
     def test_product_image_uses_request_and_trend_but_excludes_stock_facts(self) -> None:
-        context = make_context()
+        context = make_context(inventory_category="outerwear", inventory_evidence=True)
         draft, _ = RuleBasedConceptGenerator().generate(context)
         request = build_image_generation_request(context, draft)
         self.assertIn("요청 범위와 일치", request.prompt)
+        self.assertEqual(request.product_profile, draft.product_profile)
+        self.assertIn("단일 구조화 상품 프로필", request.prompt)
         self.assertNotIn("STOCK-E1", request.evidence_ids)
         self.assertTrue(any(item.source == "inventory_product_result" for item in request.excluded_evidence))
 

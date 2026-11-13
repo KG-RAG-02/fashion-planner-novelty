@@ -31,6 +31,34 @@ _CLAIM_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+_PRODUCT_PROFILE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        name: _CLAIM_SCHEMA for name in (
+            "category", "product_type", "gender", "season", "material",
+            "silhouette", "color",
+        )
+    } | {"details": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "value": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                "kind": _CLAIM_SCHEMA["properties"]["kind"],
+                "evidence_ids": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["name", "value", "kind", "evidence_ids"],
+            "additionalProperties": False,
+        },
+    }},
+    "required": [
+        "category", "product_type", "gender", "season", "material",
+        "silhouette", "color", "details",
+    ],
+    "additionalProperties": False,
+}
+
 PLANNING_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -38,6 +66,7 @@ PLANNING_OUTPUT_SCHEMA: dict[str, Any] = {
         "opportunity": _CLAIM_SCHEMA,
         "target_customer": _CLAIM_SCHEMA,
         "product_definition": _CLAIM_SCHEMA,
+        "product_profile": _PRODUCT_PROFILE_SCHEMA,
         "attributes": {
             "type": "array",
             "items": {
@@ -62,7 +91,7 @@ PLANNING_OUTPUT_SCHEMA: dict[str, Any] = {
         "limitations": {"type": "array", "items": {"type": "string"}},
     },
     "required": [
-        "request_id", "opportunity", "target_customer", "product_definition", "attributes",
+        "request_id", "opportunity", "target_customer", "product_definition", "product_profile", "attributes",
         "relation_to_own_products", "differentiation", "risks", "questions_for_validation", "limitations",
     ],
     "additionalProperties": False,

@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol
 
-from ..domain.concept import ProductConceptDraft, ValidationIssue, validate_concept_draft
+from ..domain.concept import ProductConceptDraft, ProductProfile, ValidationIssue, validate_concept_draft
 from ..domain.context import ProductPlanningContext
 from ..domain.generator import RuleBasedConceptGenerator
 from ..domain.analysis import dimension_mismatches
@@ -50,6 +50,7 @@ class ImageGenerationRequest:
     proposal_fields: tuple[str, ...]
     limitations: tuple[str, ...]
     conflicts: tuple[str, ...]
+    product_profile: ProductProfile | None = None
     styling_relationships: tuple[StylingRelationship, ...] = ()
     system_prompt: str = IMAGE_DESIGNER_SYSTEM_PROMPT
     purpose: str = "MD/디자이너 검토용 상품 콘셉트 시안"
@@ -249,12 +250,33 @@ def build_image_generation_request(
         for signal in product.attributes:
             inventory_ids.update(signal.evidence_ids)
     exclude_ids(inventory_ids, source="inventory_product_result", reason="재고 근거는 착장 단계 전용")
-    for name, claim in (("opportunity", draft.opportunity), ("product_definition", draft.product_definition)):
-        if claim.kind == "proposal" and claim.value:
-            proposal_lines.append(f"- 초안 시각화 제안 ({name}): {claim.value}")
-    for attribute in draft.attributes:
-        if attribute.kind == "proposal" and attribute.value is not None and design_name(attribute.name):
-            proposal_lines.append(f"- 초안 시각화 제안: {attribute.name}={attribute.value}")
+    profile_lines: list[str] = []
+    for field_name in ("category", "product_type", "gender", "season", "material",
+                       "silhouette", "color"):
+        claim = getattr(draft.product_profile, field_name)
+        if not claim.value:
+            continue
+        label = f"{field_name}={claim.value}"
+        if claim.kind in {"user_requested", "evidence_observation"}:
+            ids = use_ids(claim.evidence_ids, source="product_profile",
+                          source_ref=field_name, supports=label)
+            profile_lines.append(label + (f" [Evidence: {', '.join(ids)}]" if ids else ""))
+        elif claim.kind == "proposal":
+            profile_lines.append(f"{label} (P06 검토 제안)")
+        elif claim.kind in {"hypothesis", "interpretation", "to_validate"}:
+            profile_lines.append(f"{label} (미확정 가설; 시각적 확정 사양으로 표현하지 않음)")
+    for detail in draft.product_profile.details:
+        if detail.value is None:
+            continue
+        label = f"{detail.name}={detail.value}"
+        if detail.kind in {"user_requested", "evidence_observation"}:
+            ids = use_ids(detail.evidence_ids, source="product_profile",
+                          source_ref=f"details.{detail.name}", supports=label)
+            profile_lines.append(label + (f" [Evidence: {', '.join(ids)}]" if ids else ""))
+        elif detail.kind == "proposal":
+            profile_lines.append(f"{label} (P06 검토 제안)")
+        else:
+            profile_lines.append(f"{label} (미확정; 확정 사양으로 표현하지 않음)")
 
     # Retain stable, unique exclusions while preserving multiple source-specific reasons.
     excluded = list(dict.fromkeys(excluded))
@@ -267,13 +289,15 @@ def build_image_generation_request(
     if any(not claim.evidence_ids for claim in context.request.requested_attributes if claim.value is not None):
         limitations.append("사용자 지정 디자인 속성 중 일부에는 속성별 Evidence ID가 연결되지 않았습니다.")
     if not proposal_lines:
-        proposal_lines.append("- 색상·소재·실루엣·패턴·디테일은 미확정이며, 임의 선택은 모두 검토용 시각화 제안")
+        proposal_lines.append("- 별도 검토용 디자인 제안 없음. 프로필에 없는 색상·소재·실루엣·디테일을 임의로 확정하지 않음")
     prompt_sections = [
         "상품기획 검토용 신제품 콘셉트 이미지 1장을 생성합니다. 완성 상품, 실제 상품 사진, 승인된 디자인 또는 생산 지시가 아닙니다.",
         "사용자 요청 범위 (재고·판매시장 데이터 제외):\n" + ("\n".join(user_scope) if user_scope else "- 미제공"),
         "요청 범위와 일치하며 속성·설명 단위로 Evidence가 연결된 디자인 관찰:\n" + ("\n".join(evidence_lines) if evidence_lines else "- 제공 가능한 검증 관찰 없음"),
+        "초안과 이미지가 공유하는 단일 구조화 상품 프로필. 이 사양을 바꾸지 말고 이미지화:\n" + ("\n".join(profile_lines) if profile_lines else "- 확정 가능한 프로필 디자인 속성 없음"),
+        "트렌드 Evidence 관찰은 참고 맥락이며 위 프로필을 덮어쓰거나 프로필에 없는 사양으로 승격하지 않음.",
         "검토용 제안 또는 미검증 항목 (사실로 표현하지 않음):\n" + "\n".join(proposal_lines),
-        "미확인·제외 조건:\n- 재고·판매·시장 결과는 사용하지 않음.\n- 근거 없는 트렌드 의미, 수요, 고객 선호, 생산 가능성을 주장하지 않음.\n- 로고, 문구, 워터마크를 추가하지 않음.",
+        "미확인·제외 조건:\n- 재고·판매·시장 결과는 사용하지 않음.\n- 프로필에 없는 핵심 상품 사양은 임의로 추가·확정하지 않음.\n- 근거 없는 트렌드 의미, 수요, 고객 선호, 생산 가능성을 주장하지 않음.\n- 로고, 문구, 워터마크를 추가하지 않음.",
     ]
     conflict_text: tuple[str, ...] = ()
     prompt = render_prompt("concept_image", "user", {
@@ -293,6 +317,7 @@ def build_image_generation_request(
         proposal_fields=tuple(dict.fromkeys(proposal_lines)),
         limitations=tuple(dict.fromkeys(limitations)),
         conflicts=(),
+        product_profile=draft.product_profile,
         styling_relationships=(),
         system_prompt=IMAGE_DESIGNER_SYSTEM_PROMPT,
         evidence_uses=tuple(dict.fromkeys(evidence_uses)),

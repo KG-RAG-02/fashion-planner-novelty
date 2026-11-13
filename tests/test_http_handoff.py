@@ -2,9 +2,13 @@ import io
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
+from http.server import ThreadingHTTPServer
+from threading import Thread
 from email.message import Message
 from unittest.mock import patch
+from urllib.request import Request, urlopen
 
 from vogue_npp.prototype.server import PrototypeHandler, _build_handoff_result, _request_sales_market_review
 
@@ -34,6 +38,52 @@ class FakeWriter:
 
 
 class HandoffHTTPTests(unittest.TestCase):
+    def test_real_http_planning_and_review_routes(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), PrototypeHandler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        try:
+            value = fixture()
+            value["input"]["trend_result"]["schema_version"] = "1.0"
+            planning = {"request_id": value["request_id"], **value["input"]}
+            settings = type("Settings", (), {
+                "text_generation_enabled": False, "image_generation_enabled": False,
+                "image_generation_api_key": "",
+            })()
+            with patch.dict(os.environ, {"VOGUE_HTTP_MODE": "local", "VOGUE_AGENT_SERVICE_BEARER_TOKEN": "test-token"}), \
+                 patch("vogue_npp.prototype.server.load_settings", return_value=settings):
+                request = Request(base_url + "/api/planning-draft", data=json.dumps(planning).encode(),
+                                  headers={"Content-Type": "application/json"}, method="POST")
+                with urlopen(request) as response:
+                    body = json.loads(response.read())
+                self.assertEqual(body["request_id"], value["request_id"])
+                self.assertIn("product_profile", body["draft"])
+                self.assertNotIn("planning_board", body)
+
+                review_request = {
+                    "contract_version": "vogue-sales-market-review/0.1-proposal",
+                    "request_id": "review-http-1",
+                    "input": {"request_id": "review-http-1", "planning_draft": {
+                        "schema_version": "1.0", "request_id": "review-http-1", "evidence_ids": [],
+                        "draft": {"category": "원피스", "product_profile": {
+                            "category": {"value": "원피스", "kind": "user_requested", "evidence_ids": []},
+                        }},
+                    }},
+                }
+                expected = {"request_id": "review-http-1", "producer": {"agent_id": "sales-market-agent"}}
+                with patch("vogue_npp.prototype.server._request_sales_market_review", return_value=expected):
+                    request = Request(base_url + "/v1/agents/new-product-agent/sales-market-reviews",
+                                      data=json.dumps(review_request).encode(),
+                                      headers={"Content-Type": "application/json",
+                                               "Authorization": "Bearer test-token"}, method="POST")
+                    with urlopen(request) as response:
+                        self.assertEqual(json.loads(response.read()), expected)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
     def invoke(self, value=None, *, raw=None, content_type="application/json", path="/v1/agents/new-product-agent/runs",
                mode="local", token="synthetic-agent-token", content_length=None):
         handler = object.__new__(PrototypeHandler)
@@ -55,7 +105,14 @@ class HandoffHTTPTests(unittest.TestCase):
             "VOGUE_HTTP_MODE": mode,
             "VOGUE_AGENT_SERVICE_BEARER_TOKEN": "synthetic-agent-token",
         }
-        with patch.dict(os.environ, env):
+        fake_settings = SimpleNamespace(
+            text_generation_enabled=False,
+            image_generation_enabled=False,
+            image_generation_api_key="",
+        )
+        with patch.dict(os.environ, env), patch(
+            "vogue_npp.prototype.server.load_settings", return_value=fake_settings,
+        ):
             handler.do_POST()
         return handler.wfile.status, json.loads(handler.wfile.body)
 
@@ -101,6 +158,7 @@ class HandoffHTTPTests(unittest.TestCase):
         self.assertEqual((code, response["error"]["code"]), (422, "INVALID_INPUT"))
 
         draft_payload = {"request_id": value["request_id"], **value["input"]}
+        draft_payload["trend_result"]["schema_version"] = "1.0"
         code, response = self.invoke(draft_payload, path="/api/planning-draft")
         self.assertEqual(code, 200)
         self.assertNotIn("sales_market_result", response["input_evidence"])
@@ -137,8 +195,15 @@ class HandoffHTTPTests(unittest.TestCase):
             "request_id": "review-1",
             "input": {"request_id": "review-1", "planning_draft": {
                 "schema_version": "1.0", "request_id": "review-1",
+                "evidence_ids": [],
                 "draft": {"category": "원피스", "season": "2027SS",
-                          "attributes": [{"name": "material", "value": "cotton"}]},
+                          "product_profile": {
+                              "category": {"value": "원피스", "kind": "user_requested", "evidence_ids": []},
+                              "product_type": {"value": "dress", "kind": "proposal", "evidence_ids": []},
+                              "gender": {"value": None, "kind": "unknown", "evidence_ids": []},
+                              "season": {"value": "2027SS", "kind": "user_requested", "evidence_ids": []},
+                              "material": {"value": "cotton", "kind": "proposal", "evidence_ids": []},
+                          }},
             }},
         }
 
@@ -156,7 +221,7 @@ class HandoffHTTPTests(unittest.TestCase):
         self.assertEqual(sent["request_id"], request["request_id"])
         self.assertEqual(sent["input"]["planning_draft"]["draft_id"], "review-1")
         self.assertEqual(sent["input"]["planning_draft"]["product"], {
-            "category": "원피스", "season": "2027SS", "material": "cotton",
+            "category": "원피스", "season": "2027SS",
         })
 
     def test_sales_market_review_route_requires_auth_and_returns_review_envelope(self):
@@ -164,7 +229,10 @@ class HandoffHTTPTests(unittest.TestCase):
             "contract_version": "vogue-sales-market-review/0.1-proposal",
             "request_id": "review-1",
             "input": {"request_id": "review-1", "planning_draft": {
-                "schema_version": "1.0", "draft_id": "draft-1", "product": {"category": "원피스"},
+                "schema_version": "1.0", "request_id": "review-1", "evidence_ids": [],
+                "draft": {"category": "원피스", "product_profile": {
+                    "category": {"value": "원피스", "kind": "user_requested", "evidence_ids": []},
+                }},
             }},
         }
         forwarded = {"contract_version": request["contract_version"], "request_id": "review-1",
