@@ -6,7 +6,7 @@ Project_06 planning accepts only three inputs through [HTTP handoff v0.3](../../
 |---|---|
 | User planning request | Defines requested season, category, audience, use, constraints, and required attributes. |
 | Trend-agent result | Supplies eligible trend direction and its existing evidence links for the proposed new product. |
-| Inventory-agent result | Supplies compatible existing items for later outfit composition; it does not alter the standalone new-product image request. |
+| Inventory-agent result | Supplies existing-product facts for planning context; stock images are not sent to the new-product image provider. |
 
 Sales/market results are not part of planning or image-generation input. Synthetic catalog and internal-guideline RAG retrieval, generation, publishing, and evaluation code have been removed. Project_06 does not query synthetic company-like data.
 

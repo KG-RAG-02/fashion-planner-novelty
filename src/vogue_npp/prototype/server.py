@@ -15,9 +15,8 @@ from threading import BoundedSemaphore
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import unquote, urlparse
 
-from . import repository
 from ..adapters.handoff import (
     CONTRACT_VERSION as HANDOFF_CONTRACT_VERSION,
     INPUT_KEYS as HANDOFF_INPUT_KEYS,
@@ -32,11 +31,8 @@ from ..domain.context import (
 from ..domain.generator import ConceptGenerator
 from ..domain.prompt_safety import serialize_untrusted_prompt_data
 from ..settings import load_settings
-from ..workflows.image_generation import (
-    DEFAULT_IMAGE_DIR, DEFAULT_IMAGE_MODEL, OpenAIImageEditProvider,
-    build_outfit_image_prompt, fetch_inventory_image, load_r2_inventory_image, selected_outfit_inventory,
-    OpenAIImageProvider, run_concept_to_image,
-)
+from ..sources.r2_product_images import R2ProductImageSettings, R2ProductImageStore
+from ..workflows.image_generation import DEFAULT_IMAGE_DIR, DEFAULT_IMAGE_MODEL, OpenAIImageProvider, run_concept_to_image
 from ..workflows.text_concept_generation import PromptedConceptGenerator
 
 
@@ -168,7 +164,7 @@ def _build_handoff_result(request_id: str, inputs: dict) -> dict:
 
 
 def _stock_article_id(item: dict) -> str | None:
-    """Resolve the H&M article ID from the explicit field or stock SKU list."""
+    """Resolve an article ID from the explicit field or numeric stock SKU."""
     explicit = item.get("article_id")
     if explicit is not None and str(explicit).isdigit():
         return str(explicit)
@@ -178,27 +174,24 @@ def _stock_article_id(item: dict) -> str | None:
     return None
 
 
-def _r2_image_provider_upload_allowed() -> bool:
-    return os.getenv("VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD", "true").strip().casefold() == "true"
-
-
-def _is_hm_kaggle_image(product) -> bool:
-    """Identify the H&M Kaggle article-image layout used in R2."""
-    article_id = getattr(product, "article_id", None)
-    image_url = getattr(product, "image_url", None) or ""
-    is_hm_kaggle = bool(
-        (article_id and re.fullmatch(r"\d{10}", str(article_id)))
-        or re.search(r"(?:^|/)\d{3}/\d{10}\.jpg(?:$|[?#])", image_url)
-    )
-    return is_hm_kaggle
-
+def load_r2_inventory_image(article_id: str) -> tuple[bytes, str]:
+    """Serve one validated H&M image reference for the P08 visual-analysis path."""
+    settings = R2ProductImageSettings.from_env()
+    if settings is None:
+        raise ValueError("R2 product images are not configured")
+    try:
+        return R2ProductImageStore(settings).load(article_id)
+    except ValueError:
+        raise ValueError("article_id is invalid") from None
+    except Exception:
+        raise OSError("R2 image is unavailable") from None
 
 
 class PrototypeHandler(BaseHTTPRequestHandler):
     server_version = "VOGUEPlanningAPI/0.1"
 
     def log_message(self, fmt: str, *args: object) -> None:
-        # Keep local query terms, brief text, and review content out of logs.
+        # Keep planning requests and review content out of logs.
         return
 
     def _send(self, status: int, content: bytes, content_type: str) -> None:
@@ -252,7 +245,6 @@ class PrototypeHandler(BaseHTTPRequestHandler):
         path = unquote(parsed.path)
         try:
             if path == "/api/health":
-                repository.initialize()
                 self._json(200, {"ok": True, "mode": "new-product-planning"})
             elif path == "/api/image-generation-status":
                 settings = load_settings()
@@ -278,19 +270,6 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                 else:
                     image, mime = load_r2_inventory_image(match.group(1))
                     self._send(200, image, mime)
-            elif path == "/api/bootstrap":
-                self._json(200, {
-                    "brief": repository.get_brief(),
-                    "brief_versions": repository.list_brief_versions(),
-                    "variants": repository.list_variants(), "evaluations": repository.list_evaluations(),
-                })
-            elif path.startswith("/api/variants/") and path.endswith(".svg"):
-                variant_id = path.removeprefix("/api/variants/").removesuffix(".svg")
-                image = repository.get_variant_image(variant_id)
-                if image is None:
-                    self._json(404, {"error": "시안을 찾을 수 없습니다."})
-                else:
-                    self._send(200, image.encode("utf-8"), "image/svg+xml; charset=utf-8")
             else:
                 self._json(404, {"error": "Not found"})
         except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -310,7 +289,7 @@ class PrototypeHandler(BaseHTTPRequestHandler):
         if os.getenv("VOGUE_HTTP_MODE") == "service" and not self._authorized_handoff():
             self._handoff_error(401, "UNAUTHORIZED", "인증이 필요합니다.")
             return
-        if path not in {"/api/planning-draft", "/api/brief", "/api/variants", "/api/evaluations"}:
+        if path != "/api/planning-draft":
             self._json(404, {"error": "Not found"})
             return
         try:
@@ -318,18 +297,7 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                 self._handoff_error(415, "UNSUPPORTED_MEDIA_TYPE", "Content-Type application/json이 필요합니다.")
                 return
             payload = self._body()
-            if path == "/api/planning-draft":
-                self._json(200, _build_planning_draft_response(payload))
-            elif path == "/api/brief":
-                self._json(201, repository.save_brief(payload))
-            elif path == "/api/variants":
-                brief = repository.get_brief()
-                requested_version = payload.get("brief_version")
-                if requested_version != brief["version"]:
-                    raise ValueError("브리프가 변경되었습니다. 최신 버전을 저장한 뒤 시안을 만들어 주세요.")
-                self._json(201, {"variants": repository.generate_variant(payload, str(payload.get("image_type", "product")), int(payload.get("count", 3)))})
-            elif path == "/api/evaluations":
-                self._json(201, repository.save_evaluation(payload))
+            self._json(200, _build_planning_draft_response(payload))
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             self._json(400, {"error": str(exc)})
         except OSError:
@@ -413,7 +381,6 @@ class PrototypeHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    repository.initialize()
     host = os.getenv("VOGUE_HOST", "127.0.0.1")
     port = int(os.getenv("VOGUE_PORT", "8767"))
     mode = os.getenv("VOGUE_HTTP_MODE", "")
@@ -870,130 +837,42 @@ def _build_planning_draft_response(
     )))
     draft_data["title"] = f"{draft.season or '시즌 미정'} {draft.category or '카테고리 미정'} 신제품 기획 초안"
     draft_data["review_status"] = "md_review_required"
-    image_result = None
-    outfit_result = None
-    # The integration contract always requests both image stages. Runtime image
-    # provider activation remains controlled by server settings.
-    generate_image_requested = True
-    if generate_image_requested:
-        image_model = str(payload.get("image_model", "gpt-image-2.5-flare"))
-        if image_model not in COMPARISON_IMAGE_MODELS:
-            raise ValueError("지원하지 않는 이미지 모델입니다.")
-        workflow = run_concept_to_image(
-            context,
-            draft=draft,
-            provider=(OpenAIImageProvider(
-                api_key=settings.image_generation_api_key or "",
-                model=image_model,
-            ) if settings.image_generation_api_key else None),
-            image_generation_enabled=settings.image_generation_enabled,
-            confirm_image_generation=True,
-        )
-        image_path = Path(workflow.image.image_path) if workflow.image.image_path else None
-        image_name = image_path.name if image_path else None
-        image_result = {
-            "status": workflow.image.status,
-            "model": workflow.image.model or image_model,
-            "image_url": f"/api/generated-images/{image_name}" if image_name else None,
-            "product_specification": asdict(workflow.image.request.product_profile)
-                if workflow.image.request.product_profile else None,
-            "specification_source": "draft.product_profile",
-            "specification_shared_with_draft": workflow.image.request.product_profile == draft.product_profile,
-            "rendered_image_consistency": "not_automatically_verified",
-            "prompt_version": workflow.image.request.prompt_version,
-            "prompt_sha256": workflow.image.request.prompt_sha256,
-            "evidence_ids": list(workflow.image.request.evidence_ids),
-            "evidence_uses": [asdict(item) for item in workflow.image.request.evidence_uses],
-            "excluded_evidence": [asdict(item) for item in workflow.image.request.excluded_evidence],
-            "limitations": list(workflow.image.limitations),
-            "error_code": workflow.image.error_code,
-            "review_only": workflow.image.review_only,
-        }
-        outfit_prompt = build_outfit_image_prompt(context)
-        outfit_result = None
-        if outfit_prompt and workflow.image.status == "generated" and image_path and image_path.is_file():
-            try:
-                selected_products = selected_outfit_inventory(context)
-                references = [(image_path.read_bytes(), "image/png")]
-                image_sources = []
-                image_fetch_errors = []
-                for product in selected_products[:3]:
-                    if not product.image_url and not product.article_id:
-                        image_fetch_errors.append("INVENTORY_IMAGE_MISSING")
-                        image_sources.append({
-                            "style_id": product.style_id,
-                            "source_product_index": product.source_product_index,
-                            "status": "missing",
-                            "error_code": "INVENTORY_IMAGE_MISSING",
-                        })
-                        continue
-                    try:
-                        if product.image_url:
-                            image_bytes, image_mime = fetch_inventory_image(product.image_url)
-                        else:
-                            if not _r2_image_provider_upload_allowed() and not _is_hm_kaggle_image(product):
-                                image_fetch_errors.append("R2_IMAGE_PROVIDER_FORWARD_DISABLED")
-                                image_sources.append({
-                                    "style_id": product.style_id,
-                                    "article_id": product.article_id,
-                                    "source_product_index": product.source_product_index,
-                                    "status": "not_forwarded",
-                                    "error_code": "R2_IMAGE_PROVIDER_FORWARD_DISABLED",
-                                })
-                                continue
-                            image_bytes, image_mime = load_r2_inventory_image(product.article_id)
-                        references.append((image_bytes, image_mime))
-                        image_sources.append({
-                            "style_id": product.style_id,
-                            "article_id": product.article_id,
-                            "source_product_index": product.source_product_index,
-                            "status": "loaded",
-                            "mime_type": image_mime,
-                            "source": "stock_agent_r2" if product.article_id and not product.image_url else "handoff_url",
-                        })
-                    except Exception as image_exc:
-                        image_fetch_errors.append(getattr(image_exc, "code", "INVENTORY_IMAGE_UNAVAILABLE"))
-                        image_sources.append({
-                            "style_id": product.style_id,
-                            "source_product_index": product.source_product_index,
-                            "status": "unavailable",
-                            "error_code": getattr(image_exc, "code", "INVENTORY_IMAGE_UNAVAILABLE"),
-                        })
-                outfit_generated = OpenAIImageEditProvider(
-                    api_key=settings.image_generation_api_key or "",
-                    model=image_model,
-                ).generate_from_reference(
-                    outfit_prompt,
-                    tuple(references),
-                    mime_type="image/png",
-                )
-                outfit_name = f"{image_path.stem}-outfit.png"
-                outfit_path = GENERATED_IMAGE_ROOT / outfit_name
-                outfit_path.parent.mkdir(parents=True, exist_ok=True)
-                outfit_path.write_bytes(outfit_generated.image_bytes)
-                outfit_result = {
-                    "status": "generated", "model": outfit_generated.model,
-                    "image_url": f"/api/generated-images/{outfit_name}",
-                    "reference_image_url": image_result["image_url"],
-                    "prompt": outfit_prompt,
-                    "inventory_image_sources": image_sources,
-                    "inventory_image_errors": list(dict.fromkeys(image_fetch_errors)),
-                    "limitations": ["재고 아이템을 이용한 검토용 착장 시안이며 실제 재고 상태나 착장 선호를 보증하지 않습니다."],
-                    "review_only": True,
-                }
-            except Exception as exc:
-                outfit_result = {
-                    "status": "failed", "model": image_model,
-                    "error_code": getattr(exc, "code", "OUTFIT_IMAGE_GENERATION_FAILED"),
-                    "limitations": ["착장 이미지 생성에 실패했으며 신제품 이미지는 유지됩니다."],
-                    "review_only": True,
-                }
-        elif outfit_prompt:
-            outfit_result = {
-                "status": "blocked", "image_url": None,
-                "limitations": ["신제품 이미지가 생성되지 않아 착장 이미지 생성을 건너뛰었습니다."],
-                "review_only": True,
-            }
+    # The planning endpoint requests one product image; provider activation
+    # remains controlled by server settings.
+    image_model = str(payload.get("image_model", "gpt-image-2.5-flare"))
+    if image_model not in COMPARISON_IMAGE_MODELS:
+        raise ValueError("지원하지 않는 이미지 모델입니다.")
+    workflow = run_concept_to_image(
+        context,
+        draft=draft,
+        provider=(OpenAIImageProvider(
+            api_key=settings.image_generation_api_key or "",
+            model=image_model,
+        ) if settings.image_generation_api_key else None),
+        image_generation_enabled=settings.image_generation_enabled,
+        confirm_image_generation=True,
+    )
+    image_path = Path(workflow.image.image_path) if workflow.image.image_path else None
+    image_name = image_path.name if image_path else None
+    image_result = {
+        "status": workflow.image.status,
+        "model": workflow.image.model or image_model,
+        "image_url": f"/api/generated-images/{image_name}" if image_name else None,
+        "product_specification": asdict(workflow.image.request.product_profile)
+            if workflow.image.request.product_profile else None,
+        "specification_source": "draft.product_profile",
+        "specification_shared_with_draft": workflow.image.request.product_profile == draft.product_profile,
+        "rendered_image_consistency": "not_automatically_verified",
+        "prompt_version": workflow.image.request.prompt_version,
+        "prompt_sha256": workflow.image.request.prompt_sha256,
+        "evidence_ids": list(workflow.image.request.evidence_ids),
+        "evidence_uses": [asdict(item) for item in workflow.image.request.evidence_uses],
+        "excluded_evidence": [asdict(item) for item in workflow.image.request.excluded_evidence],
+        "limitations": list(workflow.image.limitations),
+        "error_code": workflow.image.error_code,
+        "review_only": workflow.image.review_only,
+    }
+
     return {
         "schema_version": "1.0",
         "status": "partial" if context.limitations or context.conflicts else "ok",
@@ -1005,7 +884,6 @@ def _build_planning_draft_response(
         "input_evidence": input_evidence,
         "stock_trend_results": [asdict(item) for item in inventory.trend_results],
         "image": image_result,
-        "outfit_image": outfit_result,
         "hm_visual_references": visual_references,
         "validation_issues": [asdict(issue) for issue in issues],
         "evidence_ids": list(context.evidence_ids),

@@ -29,7 +29,7 @@ LLM_API_KEY=<secret>
 
 `OPENAI_API_KEY` is a fallback key name. The feature is disabled in `.env.example`; enabling it sends bounded user request and trend/inventory results, plus optional H&M visual observations, to OpenAI. Synthetic company data and Sales Market findings are not included. Raw H&M photos, URLs, and catalog metadata are excluded from the text prompt. Responses use `store=false` and no tools. This controls response storage and tool access in the API call; it is not a blanket data-transfer approval or a guarantee about provider-side processing/retention. Enable it only where the organization permits the request data to be sent to the configured API provider.
 
-The resulting validated planner draft is passed unchanged into the new-product image workflow. The image provider receives the planner's product definition and visual proposals; synthetic company data and Sales Market payloads are not used. A separate outfit workflow may use compatible stock images after the new-product image is created.
+The resulting validated planner draft is passed unchanged into the new-product image workflow. The image provider receives the planner's product definition and visual proposals; synthetic company data, Sales Market payloads, and stock images are not used.
 
 The adapter uses the Responses API `instructions`, `input`, and `text.format` with strict `json_schema`, following the [OpenAI Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs) and [Responses create reference](https://developers.openai.com/api/reference/resources/responses/methods/create). No SDK dependency, tools, retries, or prompt/response logging is added.
 

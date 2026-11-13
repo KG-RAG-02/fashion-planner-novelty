@@ -6,7 +6,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     VOGUE_HOST=0.0.0.0 \
     VOGUE_HTTP_MODE=service \
     VOGUE_PORT=8767 \
-    VOGUE_DB_PATH=/app/data/local/prototype.sqlite3 \
     VOGUE_TLS_CERT_FILE=/run/secrets/server_cert \
     VOGUE_TLS_KEY_FILE=/run/secrets/server_key
 

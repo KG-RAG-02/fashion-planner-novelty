@@ -4,7 +4,7 @@
 
 Project_06 no longer queries the synthetic planning workbench, synthetic catalog, synthetic internal rules, taxonomy, or precedent documents. The `/runs` and `/api/planning-draft` paths use only the planning request, trend result, and inventory result. The sales/market result is not part of the planning or product-image inputs.
 
-R2 access remains available for optional H&M image references. The application reads H&M `articles` and `article_attrs` rows to select a small number of category-matched article IDs, then downloads images from the configured R2 image prefix. These are external visual references. They do not support company-policy, material-composition, quality, demand, sales, or customer-preference claims. The generated new-product image prompt does not receive the H&M image or stock item data; stock images are used only in outfit composition.
+R2 access remains available for optional H&M image references. The application reads H&M `articles` and `article_attrs` rows to select a small number of category-matched article IDs, then downloads images from the configured R2 image prefix. These are external visual references. They do not support company-policy, material-composition, quality, demand, sales, or customer-preference claims. The generated new-product image prompt does not receive H&M or inventory image bytes.
 
 ```mermaid
 flowchart LR

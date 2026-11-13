@@ -181,6 +181,13 @@ class HandoffHTTPTests(unittest.TestCase):
         self.assertEqual(code, 404)
         self.assertEqual(body["error"], "Not found")
 
+    def test_legacy_workbench_routes_are_removed(self):
+        for path in ("/api/brief", "/api/variants", "/api/evaluations"):
+            with self.subTest(path=path):
+                code, body = self.invoke({}, path=path)
+                self.assertEqual(code, 404)
+                self.assertEqual(body["error"], "Not found")
+
     def test_sales_market_review_proxy_forwards_versioned_draft_and_returns_opaque_response(self):
         response_body = {
             "contract_version": "vogue-sales-market-review/0.1-proposal",

@@ -9,8 +9,6 @@ from email.message import Message
 from vogue_npp.prototype.server import (
     PrototypeHandler,
     _build_planning_draft_response,
-    _is_hm_kaggle_image,
-    _r2_image_provider_upload_allowed,
     _stock_article_id,
 )
 
@@ -47,19 +45,6 @@ class PlanningDraftApiTests(unittest.TestCase):
         invalid_loader.assert_not_called()
         self.assertEqual(error["status"], 404)
 
-    def test_r2_image_provider_upload_requires_explicit_opt_in(self):
-        with patch.dict("os.environ", {}, clear=True):
-            self.assertTrue(_r2_image_provider_upload_allowed())
-        with patch.dict("os.environ", {"VOGUE_R2_IMAGE_ALLOW_PROVIDER_UPLOAD": "false"}):
-            self.assertFalse(_r2_image_provider_upload_allowed())
-
-    def test_hm_kaggle_article_images_are_always_identified_for_provider_transfer(self):
-        hm_product = SimpleNamespace(article_id="0999991001", image_url=None)
-        local_product = SimpleNamespace(article_id=None, image_url="https://example.test/product.jpg")
-        with patch.dict("os.environ", {}, clear=True):
-            self.assertTrue(_is_hm_kaggle_image(hm_product))
-            self.assertFalse(_is_hm_kaggle_image(local_product))
-
     def test_product_image_is_requested_without_generating_a_planning_board(self):
         payload = {
             "request_id": "board-auto-1",
@@ -67,7 +52,6 @@ class PlanningDraftApiTests(unittest.TestCase):
             "trend_result": {"request_id": "board-auto-1", "status": "no_results", "candidates": []},
             "inventory_product_result": {"request_id": "board-auto-1", "status": "no_results", "products": []},
             "generate_image": False,
-            "generate_planning_board": False,
         }
         fake_settings = SimpleNamespace(
             text_generation_enabled=False,

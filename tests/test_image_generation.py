@@ -21,9 +21,7 @@ from vogue_npp import (
 from vogue_npp.domain.context import InventoryProductResult, TrendResult
 from vogue_npp.domain.generator import RuleBasedConceptGenerator
 from vogue_npp.domain.prompt_safety import serialize_untrusted_prompt_data
-from vogue_npp.workflows.image_generation import (
-    OpenAIImageEditProvider, OpenAIImageProvider, build_image_generation_request,
-)
+from vogue_npp.workflows.image_generation import OpenAIImageProvider, build_image_generation_request
 from vogue_npp.domain.concept import validate_concept_draft
 
 
@@ -211,7 +209,6 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         self.assertIn("청바지가 많이 남는다", pairing_claim.value or "")
         self.assertIn("미확인 정보", pairing_claim.value or "")
         self.assertNotIn("청바지", result.image.request.prompt)
-        self.assertFalse(result.image.request.styling_relationships)
         self.assertNotIn("카테고리 불일치", result.image.request.prompt)
 
     def test_freeform_jeans_note_maps_to_bottom_role_without_fabricating_category_or_stock(self) -> None:
@@ -305,50 +302,6 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         self.assertEqual(generated.model, "gpt-image-2.5-sunburst")
         self.assertNotIn("secret-test-key", repr(OpenAIImageProvider(api_key="secret-test-key")))
         self.assertEqual(open_url.call_count, 1)
-
-    def test_openai_edit_adapter_sends_generated_product_as_reference(self) -> None:
-        response = {"data": [{"b64_json": base64.b64encode(b"board-png").decode("ascii")}]}
-
-        class FakeResponse:
-            def __enter__(self):
-                return self
-            def __exit__(self, *_args):
-                return False
-            def read(self):
-                return json.dumps(response).encode("utf-8")
-
-        reference = b"product-png"
-        with patch("urllib.request.urlopen", return_value=FakeResponse()) as open_url:
-            generated = OpenAIImageEditProvider(api_key="secret-test-key").generate_from_reference(
-                "Make a planning board", reference,
-            )
-        request = open_url.call_args.args[0]
-        body = json.loads(request.data.decode("utf-8"))
-        self.assertEqual(generated.image_bytes, b"board-png")
-        self.assertEqual(generated.model, "gpt-image-2.5-sunburst")
-        self.assertEqual(body["model"], "gpt-image-2.5-sunburst")
-        self.assertIn(base64.b64encode(reference).decode("ascii"), body["images"][0]["image_url"])
-        self.assertEqual(body["prompt"], "Make a planning board")
-
-    def test_openai_edit_adapter_accepts_product_and_inventory_references(self) -> None:
-        response = {"data": [{"b64_json": base64.b64encode(b"outfit-png").decode("ascii")}]}
-
-        class FakeResponse:
-            def __enter__(self):
-                return self
-            def __exit__(self, *_args):
-                return False
-            def read(self):
-                return json.dumps(response).encode("utf-8")
-
-        with patch("urllib.request.urlopen", return_value=FakeResponse()) as open_url:
-            OpenAIImageEditProvider(api_key="secret-test-key").generate_from_reference(
-                "Create outfit", ((b"product-png", "image/png"), (b"stock-jpg", "image/jpeg")),
-            )
-        body = json.loads(open_url.call_args.args[0].data)
-        self.assertEqual(len(body["images"]), 2)
-        self.assertTrue(body["images"][0]["image_url"].startswith("data:image/png;base64,"))
-        self.assertTrue(body["images"][1]["image_url"].startswith("data:image/jpeg;base64,"))
 
 if __name__ == "__main__":
     unittest.main()
