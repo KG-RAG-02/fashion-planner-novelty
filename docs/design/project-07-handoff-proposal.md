@@ -1,6 +1,6 @@
 # Project_07 handoff implementation note
 
-> **Superseded transport note:** the current shared HTTP boundary is `vogue-handoff/0.1`. See [Project_06 repository boundaries](../repository-boundaries.md) and [the implemented HTTP handoff](../../contracts/http-handoff-v0.1.md). The proposal status and legacy `/api/planning-draft` statements below are historical context.
+> **Historical proposal:** the active P06 planning handoff is `vogue-handoff/0.3`, documented in [the implemented HTTP handoff](../../contracts/http-handoff-v0.3.md). The sales/market payload proposal below remains historical context, not the P06 review bridge contract.
 
 Status: proposal only; not a ratified shared wire contract. Project_07 owns the sales/market result schema proposal; Project_06 treats that result as an opaque handoff until Project_07, Project_06, and the designated contract steward approve a shared contract.
 

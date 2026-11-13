@@ -8,4 +8,4 @@ The Sales Market result object is not part of the planning or image-generation r
 
 Project_06 does not query synthetic catalog, company guideline, precedent, or taxonomy datasets. Those offline fixtures and tools do not enter the runtime prompt or planning context. Optional H&M photo analysis from R2 is treated only as external visual inspiration and is separated from company facts.
 
-The new-product image is generated from the product draft informed by the request and eligible trend results. Inventory attributes and photos are kept for a later, separate outfit-composition step. See the [R2 visual-reference boundary](r2-cloud-planning-rag.md) and [text-planning prompt integration](text-planning-openai-integration.md) for details.
+The new-product image is generated from the product draft informed by the request and eligible trend results. P06 does not generate outfit or planning-board images. Optional H&M visual references are analyzed separately from company product facts. See the [R2 visual-reference boundary](r2-cloud-planning-rag.md) and [text-planning prompt integration](text-planning-openai-integration.md) for details.

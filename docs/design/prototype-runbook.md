@@ -12,11 +12,11 @@ The service binds to `127.0.0.1:8767` by default. The canonical `/runs` route al
 
 ## API boundary
 
-`POST /api/planning-draft` accepts planning request, trend, inventory, and optional Project_07 payloads. It does not query upstream source systems. Project_07 sales/market input is passed through as an opaque handoff.
+`POST /api/planning-draft` accepts planning request, trend, and inventory inputs, then returns the P06 draft and new-product image. It does not query upstream source systems or require P07 review output.
 
-The agreed common handoff is implemented at `POST /v1/agents/new-product-agent/runs`; see [HTTP handoff v0.2](../../contracts/http-handoff-v0.2.md) for request/response fields, supported versions, service mode and errors. The legacy route remains available.
+The versioned handoff is implemented at `POST /v1/agents/new-product-agent/runs`; see [HTTP handoff v0.3](../../contracts/http-handoff-v0.3.md) for request/response fields, supported versions, service mode and errors. The legacy planning route remains available. P08 submits the full P06 response to `POST /v1/agents/new-product-agent/sales-market-reviews`; P06 validates and maps the profile to P07, then returns P07's envelope.
 
-The API also supports existing planning brief and image variant operations. SQLite state and generated image files are local runtime artifacts; this service does not serve the browser UI.
+Generated P06 product images are served from `/api/generated-images/{filename}`. P06 does not retain planning drafts or create planning-board images. The service does not serve the browser UI.
 
 ## Image generation
 

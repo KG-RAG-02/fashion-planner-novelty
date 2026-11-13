@@ -8,8 +8,6 @@ import json
 import os
 import re
 import ssl
-import ipaddress
-import socket
 import urllib.error
 import urllib.request
 import uuid
@@ -17,13 +15,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol
 
-from ..domain.concept import ProductConceptDraft, ValidationIssue, validate_concept_draft
+from ..domain.concept import ProductConceptDraft, ProductProfile, ValidationIssue, validate_concept_draft
 from ..domain.context import ProductPlanningContext
 from ..domain.generator import RuleBasedConceptGenerator
 from ..domain.analysis import dimension_mismatches
 from ..domain.prompt_safety import serialize_untrusted_prompt_data
 from ..domain.prompt_registry import load_prompt, prompt_version_id, render_prompt
-from ..domain.styling import StylingRelationship
 
 
 ImageStatus = Literal["not_requested", "ready", "generated", "blocked", "failed"]
@@ -50,7 +47,7 @@ class ImageGenerationRequest:
     proposal_fields: tuple[str, ...]
     limitations: tuple[str, ...]
     conflicts: tuple[str, ...]
-    styling_relationships: tuple[StylingRelationship, ...] = ()
+    product_profile: ProductProfile | None = None
     system_prompt: str = IMAGE_DESIGNER_SYSTEM_PROMPT
     purpose: str = "MD/디자이너 검토용 상품 콘셉트 시안"
     evidence_uses: tuple["ImageEvidenceUse", ...] = ()
@@ -248,13 +245,34 @@ def build_image_generation_request(
         inventory_ids.update(product.evidence_ids)
         for signal in product.attributes:
             inventory_ids.update(signal.evidence_ids)
-    exclude_ids(inventory_ids, source="inventory_product_result", reason="재고 근거는 착장 단계 전용")
-    for name, claim in (("opportunity", draft.opportunity), ("product_definition", draft.product_definition)):
-        if claim.kind == "proposal" and claim.value:
-            proposal_lines.append(f"- 초안 시각화 제안 ({name}): {claim.value}")
-    for attribute in draft.attributes:
-        if attribute.kind == "proposal" and attribute.value is not None and design_name(attribute.name):
-            proposal_lines.append(f"- 초안 시각화 제안: {attribute.name}={attribute.value}")
+    exclude_ids(inventory_ids, source="inventory_product_result", reason="재고 Evidence는 신제품 이미지 사양에 사용하지 않음")
+    profile_lines: list[str] = []
+    for field_name in ("category", "product_type", "gender", "season", "material",
+                       "silhouette", "color"):
+        claim = getattr(draft.product_profile, field_name)
+        if not claim.value:
+            continue
+        label = f"{field_name}={claim.value}"
+        if claim.kind in {"user_requested", "evidence_observation"}:
+            ids = use_ids(claim.evidence_ids, source="product_profile",
+                          source_ref=field_name, supports=label)
+            profile_lines.append(label + (f" [Evidence: {', '.join(ids)}]" if ids else ""))
+        elif claim.kind == "proposal":
+            profile_lines.append(f"{label} (P06 검토 제안)")
+        elif claim.kind in {"hypothesis", "interpretation", "to_validate"}:
+            profile_lines.append(f"{label} (미확정 가설; 시각적 확정 사양으로 표현하지 않음)")
+    for detail in draft.product_profile.details:
+        if detail.value is None:
+            continue
+        label = f"{detail.name}={detail.value}"
+        if detail.kind in {"user_requested", "evidence_observation"}:
+            ids = use_ids(detail.evidence_ids, source="product_profile",
+                          source_ref=f"details.{detail.name}", supports=label)
+            profile_lines.append(label + (f" [Evidence: {', '.join(ids)}]" if ids else ""))
+        elif detail.kind == "proposal":
+            profile_lines.append(f"{label} (P06 검토 제안)")
+        else:
+            profile_lines.append(f"{label} (미확정; 확정 사양으로 표현하지 않음)")
 
     # Retain stable, unique exclusions while preserving multiple source-specific reasons.
     excluded = list(dict.fromkeys(excluded))
@@ -267,13 +285,15 @@ def build_image_generation_request(
     if any(not claim.evidence_ids for claim in context.request.requested_attributes if claim.value is not None):
         limitations.append("사용자 지정 디자인 속성 중 일부에는 속성별 Evidence ID가 연결되지 않았습니다.")
     if not proposal_lines:
-        proposal_lines.append("- 색상·소재·실루엣·패턴·디테일은 미확정이며, 임의 선택은 모두 검토용 시각화 제안")
+        proposal_lines.append("- 별도 검토용 디자인 제안 없음. 프로필에 없는 색상·소재·실루엣·디테일을 임의로 확정하지 않음")
     prompt_sections = [
         "상품기획 검토용 신제품 콘셉트 이미지 1장을 생성합니다. 완성 상품, 실제 상품 사진, 승인된 디자인 또는 생산 지시가 아닙니다.",
         "사용자 요청 범위 (재고·판매시장 데이터 제외):\n" + ("\n".join(user_scope) if user_scope else "- 미제공"),
         "요청 범위와 일치하며 속성·설명 단위로 Evidence가 연결된 디자인 관찰:\n" + ("\n".join(evidence_lines) if evidence_lines else "- 제공 가능한 검증 관찰 없음"),
+        "초안과 이미지가 공유하는 단일 구조화 상품 프로필. 이 사양을 바꾸지 말고 이미지화:\n" + ("\n".join(profile_lines) if profile_lines else "- 확정 가능한 프로필 디자인 속성 없음"),
+        "트렌드 Evidence 관찰은 참고 맥락이며 위 프로필을 덮어쓰거나 프로필에 없는 사양으로 승격하지 않음.",
         "검토용 제안 또는 미검증 항목 (사실로 표현하지 않음):\n" + "\n".join(proposal_lines),
-        "미확인·제외 조건:\n- 재고·판매·시장 결과는 사용하지 않음.\n- 근거 없는 트렌드 의미, 수요, 고객 선호, 생산 가능성을 주장하지 않음.\n- 로고, 문구, 워터마크를 추가하지 않음.",
+        "미확인·제외 조건:\n- 재고·판매·시장 결과는 사용하지 않음.\n- 프로필에 없는 핵심 상품 사양은 임의로 추가·확정하지 않음.\n- 근거 없는 트렌드 의미, 수요, 고객 선호, 생산 가능성을 주장하지 않음.\n- 로고, 문구, 워터마크를 추가하지 않음.",
     ]
     conflict_text: tuple[str, ...] = ()
     prompt = render_prompt("concept_image", "user", {
@@ -293,7 +313,7 @@ def build_image_generation_request(
         proposal_fields=tuple(dict.fromkeys(proposal_lines)),
         limitations=tuple(dict.fromkeys(limitations)),
         conflicts=(),
-        styling_relationships=(),
+        product_profile=draft.product_profile,
         system_prompt=IMAGE_DESIGNER_SYSTEM_PROMPT,
         evidence_uses=tuple(dict.fromkeys(evidence_uses)),
         excluded_evidence=tuple(excluded),
@@ -441,184 +461,3 @@ class OpenAIImageProvider:
         except (KeyError, IndexError, TypeError, ValueError):
             raise ImageProviderError("IMAGE_API_IMAGE_MISSING") from None
         return GeneratedImage(image_bytes=image_bytes, mime_type="image/png", provider=self.provider_name, model=self.model)
-
-
-@dataclass
-class OpenAIImageEditProvider:
-    """Generate a new image from a prompt and one already generated reference image."""
-
-    api_key: str = field(repr=False)
-    model: str = "gpt-image-2.5-sunburst"
-    timeout_seconds: int = 240
-    endpoint: str = "https://api.openai.com/v1/images/edits"
-    provider_name: str = "OpenAI Images Edit API"
-
-    def generate_from_reference(
-        self,
-        prompt: str,
-        reference_image: bytes | tuple[bytes | tuple[bytes, str], ...],
-        *,
-        mime_type: str = "image/png",
-        size: str = "1536x1024",
-    ) -> GeneratedImage:
-        if not self.api_key.strip():
-            raise ImageProviderError("IMAGE_API_KEY_MISSING")
-        if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
-            raise ImageProviderError("IMAGE_API_REFERENCE_FORMAT_UNSUPPORTED")
-        references = (reference_image,) if isinstance(reference_image, bytes) else reference_image
-        if not references or len(references) > 4:
-            raise ImageProviderError("IMAGE_API_REFERENCE_COUNT_UNSUPPORTED")
-        data_urls = []
-        for reference in references:
-            image, image_mime = reference if isinstance(reference, tuple) else (reference, mime_type)
-            if image_mime not in {"image/png", "image/jpeg", "image/webp"}:
-                raise ImageProviderError("IMAGE_API_REFERENCE_FORMAT_UNSUPPORTED")
-            data_urls.append(f"data:{image_mime};base64,{base64.b64encode(image).decode('ascii')}")
-        body = json.dumps({
-            "model": self.model,
-            "images": [{"image_url": data_url} for data_url in data_urls],
-            "prompt": prompt,
-            "size": size,
-            "quality": "high",
-            "output_format": "png",
-            "n": 1,
-        }, ensure_ascii=False).encode("utf-8")
-        http_request = urllib.request.Request(
-            self.endpoint,
-            data=body,
-            method="POST",
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-        )
-        try:
-            with urllib.request.urlopen(http_request, timeout=self.timeout_seconds) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raise ImageProviderError(f"IMAGE_API_HTTP_{exc.code}") from None
-        except urllib.error.URLError as exc:
-            reason = exc.reason
-            if isinstance(reason, TimeoutError):
-                raise ImageProviderError("IMAGE_API_TIMEOUT") from None
-            if isinstance(reason, OSError) and getattr(reason, "errno", None) in {-2, 8}:
-                raise ImageProviderError("IMAGE_API_DNS_FAILURE") from None
-            if isinstance(reason, ssl.SSLError):
-                raise ImageProviderError("IMAGE_API_TLS_FAILURE") from None
-            raise ImageProviderError("IMAGE_API_UNAVAILABLE") from None
-        except TimeoutError:
-            raise ImageProviderError("IMAGE_API_TIMEOUT") from None
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            raise ImageProviderError("IMAGE_API_INVALID_RESPONSE") from None
-        try:
-            encoded = payload["data"][0]["b64_json"]
-            image_bytes = base64.b64decode(encoded, validate=True)
-        except (KeyError, IndexError, TypeError, ValueError):
-            raise ImageProviderError("IMAGE_API_IMAGE_MISSING") from None
-        return GeneratedImage(image_bytes, "image/png", self.provider_name, self.model)
-
-
-def fetch_inventory_image(url: str, *, timeout_seconds: int = 8, max_bytes: int = 8_000_000) -> tuple[bytes, str]:
-    """Fetch a bounded public HTTPS image, rejecting redirects and private hosts."""
-    from urllib.parse import urlsplit
-
-    parsed = urlsplit(url)
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-        raise ImageProviderError("INVENTORY_IMAGE_URL_INVALID")
-    allowed_hosts = {
-        host.strip().casefold()
-        for host in os.getenv("VOGUE_INVENTORY_IMAGE_ALLOWED_HOSTS", "").split(",")
-        if host.strip()
-    }
-    hostname = parsed.hostname.casefold()
-    if not any(hostname == host or hostname.endswith("." + host) for host in allowed_hosts):
-        raise ImageProviderError("INVENTORY_IMAGE_HOST_NOT_ALLOWED")
-    try:
-        addresses = socket.getaddrinfo(parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM)
-        if not addresses or any(not ipaddress.ip_address(item[4][0]).is_global for item in addresses):
-            raise ImageProviderError("INVENTORY_IMAGE_HOST_NOT_PUBLIC")
-    except (OSError, ValueError):
-        raise ImageProviderError("INVENTORY_IMAGE_HOST_UNAVAILABLE") from None
-
-    class NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, *_args, **_kwargs):
-            return None
-
-    opener = urllib.request.build_opener(NoRedirect())
-    request = urllib.request.Request(url, headers={"Accept": "image/png,image/jpeg,image/webp"})
-    try:
-        with opener.open(request, timeout=timeout_seconds) as response:
-            content_type = response.headers.get_content_type()
-            length = response.headers.get("Content-Length")
-            if content_type not in {"image/png", "image/jpeg", "image/webp"}:
-                raise ImageProviderError("INVENTORY_IMAGE_FORMAT_UNSUPPORTED")
-            if length and int(length) > max_bytes:
-                raise ImageProviderError("INVENTORY_IMAGE_TOO_LARGE")
-            content = response.read(max_bytes + 1)
-            if not content or len(content) > max_bytes:
-                raise ImageProviderError("INVENTORY_IMAGE_TOO_LARGE")
-            signatures = {
-                "image/png": content.startswith(b"\x89PNG\r\n\x1a\n"),
-                "image/jpeg": content.startswith(b"\xff\xd8\xff"),
-                "image/webp": len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP",
-            }
-            if not signatures.get(content_type, False):
-                raise ImageProviderError("INVENTORY_IMAGE_CONTENT_INVALID")
-            return content, content_type
-    except urllib.error.HTTPError as exc:
-        raise ImageProviderError(f"INVENTORY_IMAGE_HTTP_{exc.code}") from None
-    except (urllib.error.URLError, TimeoutError, OSError):
-        raise ImageProviderError("INVENTORY_IMAGE_UNAVAILABLE") from None
-
-
-def build_outfit_image_prompt(context: ProductPlanningContext) -> str | None:
-    """Build a companion outfit brief, isolated from new-product generation."""
-    if context.input_statuses.get("inventory_product_result") not in {"ok", "partial"}:
-        return None
-    relationships = [
-        relation for relation in context.styling_relationships
-        if relation.inventory_product_index < len(context.inventory.products)
-    ]
-    if not relationships:
-        return None
-    products = []
-    for relation in relationships:
-        product = context.inventory.products[relation.inventory_product_index]
-        role = "상의" if relation.inventory_role == "upper_body" else "하의"
-        facts = [f"역할={role}", f"상품={product.style_id or product.category or product.note or '미제공'}"]
-        if product.category:
-            facts.append(f"카테고리={product.category}")
-        for attribute in product.attributes:
-            if attribute.value is not None:
-                facts.append(f"{attribute.name}={attribute.value}")
-        if product.note:
-            facts.append(f"참고 메모={product.note}")
-        products.append("; ".join(facts))
-    return (
-        "제공된 신제품 참조 이미지의 의상은 그대로 유지하고, 아래 재고 의상과 함께 입은 검토용 착장 이미지를 생성합니다. "
-        "새상품의 색상·형태·디테일을 바꾸거나 재고 상품을 신제품으로 재해석하지 마세요. "
-        "재고 의상을 역할에 맞게 착장하고 로고·문구는 추가하지 마세요.\n"
-        "재고 착장 아이템:\n" + "\n".join(f"- {item}" for item in products)
-    )
-
-
-def selected_outfit_inventory(context: ProductPlanningContext):
-    """Return only inventory products paired by the existing role compatibility rule."""
-    return tuple(
-        context.inventory.products[relation.inventory_product_index]
-        for relation in context.styling_relationships
-        if relation.inventory_product_index < len(context.inventory.products)
-    )
-
-
-def load_r2_inventory_image(article_id: str, *, store=None, cache_dir: Path | None = None) -> tuple[bytes, str]:
-    """Load one product JPEG from the stock-agent R2 object-key convention."""
-    from ..sources.r2_product_images import R2ProductImageSettings, R2ProductImageStore
-
-    settings = R2ProductImageSettings.from_env()
-    if settings is None:
-        raise ImageProviderError("R2_PRODUCT_IMAGES_NOT_CONFIGURED")
-    image_store = store or R2ProductImageStore(settings, cache_dir=cache_dir)
-    try:
-        return image_store.load(article_id)
-    except ValueError:
-        raise ImageProviderError("R2_ARTICLE_ID_INVALID") from None
-    except Exception:
-        raise ImageProviderError("R2_PRODUCT_IMAGE_UNAVAILABLE") from None

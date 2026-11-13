@@ -12,6 +12,8 @@ from typing import Protocol
 from .concept import (
     ClaimKind,
     ProductConceptDraft,
+    ProductProfile,
+    base_product_profile,
     ProposedAttribute,
     SourcedClaim,
     ValidationIssue,
@@ -176,6 +178,44 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
             for signal in product.attributes:
                 add(signal, trend_signal=True)
     return tuple(attributes)
+
+
+def _profile_from_planning_attributes(
+    profile: ProductProfile, attributes: tuple[ProposedAttribute, ...],
+) -> ProductProfile:
+    """Promote one unambiguous structured visual attribute into the shared profile."""
+    aliases = {
+        "product_type": {"product_type", "product type", "상품종류", "상품 종류"},
+        "gender": {"gender", "성별"},
+        "material": {"material", "fabric", "소재", "원단"},
+        "silhouette": {"silhouette", "shape", "실루엣"},
+        "color": {"color", "colour", "color_group", "colour_group", "색상", "컬러"},
+    }
+    result = {key: getattr(profile, key) for key in aliases}
+    details = list(profile.details)
+    for key, names in aliases.items():
+        if key == "gender":
+            continue  # Only explicit request/taxonomy mappings can set gender.
+        if result[key].value is not None:
+            continue
+        matches = [item for item in attributes
+                   if item.name.strip().casefold() in {name.casefold() for name in names}
+                   and isinstance(item.value, str) and item.value.strip()]
+        distinct_values = {item.value.strip() for item in matches}
+        if len(distinct_values) != 1:
+            continue
+        match = matches[0]
+        if key == "gender" and match.value.strip() not in {"women", "men", "unisex", "unknown"}:
+            continue
+        result[key] = SourcedClaim(match.value.strip(), match.kind, match.evidence_ids)
+    canonical = {name.casefold() for names in aliases.values() for name in names}
+    details.extend(
+        item for item in attributes
+        if item.name.strip().casefold() not in canonical and isinstance(item.value, str)
+        and item.value.strip() and item.kind != "unknown"
+    )
+    return ProductProfile(category=profile.category, season=profile.season,
+                          **result, details=tuple(details))
 
 
 def _inventory_relationships(context: ProductPlanningContext) -> tuple[SourcedClaim, ...]:
@@ -437,6 +477,26 @@ def generate_concept_draft(
         if evidenced_trends
         else "요청 범위에 적용할 수 있는 입력 근거가 부족해 구체적인 기획 기회를 판단하지 않았습니다."
     )
+    proposed_attributes = _proposed_attributes(context)
+    profile_signal_keys = {
+        (signal.name.strip().casefold(), str(signal.value))
+        for signal in context.request.requested_attributes
+        if signal.value is not None and _input_usable(context, "planning_request")
+    }
+    if _input_usable(context, "trend_result") and _input_usable(context, "planning_request"):
+        profile_signal_keys.update(
+            (signal.name.strip().casefold(), str(signal.value))
+            for candidate in context.trends.candidates
+            if not dimension_mismatches(context.request, candidate)
+            for signal in candidate.attributes if signal.value is not None
+        )
+    # Existing inventory facts are styling context; they must not silently
+    # become specifications for the proposed new product.
+    profile_attributes = tuple(
+        item for item in proposed_attributes
+        if (item.name.strip().casefold(), str(item.value)) in profile_signal_keys
+    )
+    product_profile = _profile_from_planning_attributes(base_product_profile(context), profile_attributes)
     draft = ProductConceptDraft(
         request_id=context.request_id,
         season=context.request.season if _input_usable(context, "planning_request") else None,
@@ -496,7 +556,8 @@ def generate_concept_draft(
             else SourcedClaim(value=None, kind="unknown")
         ),
         product_definition=_product_definition(context),
-        attributes=_proposed_attributes(context),
+        product_profile=product_profile,
+        attributes=proposed_attributes,
         opportunity_findings=analysis.findings,
         relation_to_own_products=_inventory_relationships(context),
         differentiation=(),
