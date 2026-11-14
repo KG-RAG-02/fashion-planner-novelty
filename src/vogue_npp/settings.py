@@ -1,4 +1,4 @@
-"""Provider-neutral local settings for future LLM integration."""
+"""Local settings for P06 image generation."""
 
 from __future__ import annotations
 
@@ -33,25 +33,14 @@ except ModuleNotFoundError:  # Keep the local API runnable with stdlib only.
 class Settings:
     """Runtime settings; secret values are excluded from repr output."""
 
-    llm_api_key: str | None = field(default=None, repr=False)
     image_generation_api_key: str | None = field(default=None, repr=False)
-    text_generation_enabled: bool = False
-    image_generation_enabled: bool = False
 
 
 def load_settings() -> Settings:
     """Load local .env values without selecting a provider or making a request."""
 
     load_dotenv()
-    api_key = os.getenv("LLM_API_KEY", "").strip()
-    # Use the shared credential name for OpenAI text/image features. Keep the old
-    # name as a local compatibility fallback for existing installations.
-    image_api_key = os.getenv("LLM_API_KEY", "").strip() or os.getenv("OPENAI_API_KEY", "").strip()
-    text_enabled = os.getenv("VOGUE_TEXT_GENERATION_ENABLED", "").strip().casefold() == "true"
-    image_enabled = os.getenv("VOGUE_IMAGE_GENERATION_ENABLED", "").strip().casefold() == "true"
+    image_api_key = os.getenv("OPENAI_API_KEY", "").strip()
     return Settings(
-        llm_api_key=api_key or None,
         image_generation_api_key=image_api_key or None,
-        text_generation_enabled=text_enabled,
-        image_generation_enabled=image_enabled,
     )

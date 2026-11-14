@@ -1,5 +1,3 @@
-# Load local .env configuration when provider integration is implemented.
-# No model SDK is selected yet; this agent consumes upstream RAG evidence.
+# The active P06 service uses the standard library for HTTP and provider calls.
+# python-dotenv is optional; settings.py includes a stdlib .env fallback.
 python-dotenv>=1.0,<2.0
-boto3>=1.35
-duckdb>=2.0,<3.0

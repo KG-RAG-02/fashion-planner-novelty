@@ -1,8 +1,8 @@
 {
   "text_planning": {
-    "version": "v6",
-    "version_id": "new-product-planner-v6-single-product-profile",
-    "directory": "text_planning/v6"
+    "version": "v7",
+    "version_id": "new-product-planner-v7-current-inputs-only",
+    "directory": "text_planning/v7"
   },
   "concept_image": {
     "version": "v2",

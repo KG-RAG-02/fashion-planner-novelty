@@ -1,13 +1,11 @@
 # Project_06 input and evidence boundary
 
-Project_06 planning accepts only three inputs through [HTTP handoff v0.3](../../contracts/http-handoff-v0.3.md):
+Project_06's `POST /v1/agents/new-product-agent/runs` endpoint accepts the PlanningRequest and P08-supplied Trend/Stock results. The supported request and response are compared with P08's local `vogue-handoff/0.3` contract; see the [service runbook](prototype-runbook.md).
 
 | Input | Use |
 |---|---|
 | User planning request | Defines requested season, category, audience, use, constraints, and required attributes. |
 | Trend-agent result | Supplies eligible trend direction and its existing evidence links for the proposed new product. |
-| Inventory-agent result | Supplies existing-product facts for planning context; stock images are not sent to the new-product image provider. |
+| Stock-agent result | Supplies existing-product facts for planning context; stock photos are not sent to the new-product image provider. |
 
-Sales/market results are not part of planning or image-generation input. Synthetic catalog and internal-guideline RAG retrieval, generation, publishing, and evaluation code have been removed. Project_06 does not query synthetic company-like data.
-
-Optional H&M product-photo analysis is external visual inspiration only. It may inform visible design suggestions when configured, but it does not support company-policy, material-composition, quality, sales, demand, or customer-preference claims. Source and image transfer settings are documented in [R2 H&M visual-reference setup](r2-cloud-planning-rag.md).
+Sales/market results are not part of planning or image-generation input. P08 calls P07 only after receiving the P06 draft. Project_06 does not query synthetic company-like operational data.

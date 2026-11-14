@@ -1,27 +1,29 @@
-# Project_06 planning API
+# Project_06 workflow service
 
 ## Run locally
 
-From the repository root:
-
 ```bash
-VOGUE_HTTP_MODE=local PYTHONPATH=src python3 -m vogue_npp.prototype.server
+VOGUE_HTTP_MODE=local \
+VOGUE_DRAFT_ARTIFACT_DIR=data/local/p06-artifacts \
+PYTHONPATH=src python3 -m vogue_npp.prototype.server
 ```
 
-The service binds to `127.0.0.1:8767` by default. The canonical `/runs` route also requires `Authorization: Bearer` matching `VOGUE_AGENT_SERVICE_BEARER_TOKEN` in local mode. `VOGUE_HTTP_MODE=local` is required and permits only loopback. The default port is distinct from Project_08's UI (8765) and Project_07's local HTTP adapter (8766). It does not serve a browser UI; Project_08 owns the local interface. Stop the service with `Ctrl+C`.
+The server binds to `127.0.0.1:8767`. `GET /api/health` returns service health. Local mode is loopback-only. For container-to-container plain HTTP, use `VOGUE_HTTP_MODE=private` with bearer authentication on an isolated network. `service` mode requires TLS and bearer authentication.
 
-## API boundary
+## Active API
 
-`POST /api/planning-draft` accepts planning request, trend, and inventory inputs, then returns the P06 draft and new-product image. It does not query upstream source systems or require P07 review output.
+`POST /v1/agents/new-product-agent/runs` accepts `vogue-handoff/0.3`: an envelope with `contract_version`, `request_id`, and `input`. The input contains only `planning_request`, `trend_result`, and `inventory_product_result`. P06 validates the request ID, producer/schema versions and statuses, normalizes Trend 1.1 on an internal copy, and preserves source payloads and adapter provenance in the response.
 
-The versioned handoff is implemented at `POST /v1/agents/new-product-agent/runs`; see [HTTP handoff v0.3](../../contracts/http-handoff-v0.3.md) for request/response fields, supported versions, service mode and errors. The legacy planning route remains available. P08 submits the full P06 response to `POST /v1/agents/new-product-agent/sales-market-reviews`; P06 validates and maps the profile into a P07 0.2 request payload, then returns that payload. P08 calls P07 and owns review-response aggregation.
+The response uses the P08 native envelope and result schema 1.0. P06 produces `draft.product_profile`, concept, limitations, conflicts and questions; P08 uses the profile for its own P07 `/reviews` call. P06 does not call P07 or create the planning board. Reusing a committed `request_id` with different input returns `409 REQUEST_ID_REUSED`; simultaneous identical requests return the first committed response.
 
-Generated P06 product images are served from `/api/generated-images/{filename}`. P06 does not retain planning drafts or create planning-board images. The service does not serve the browser UI.
+## Product and outfit visuals
 
-## Image generation
+P06 returns both `draft.visuals.product` and `draft.visuals.outfit` with an explicit `generated`, `failed`, or `skipped` status. Each visual includes the same `product_specification_sha256` and `specification_alignment: same_product_profile`; this confirms the prompts used the same product profile, not that rendered pixels match. Real generation is enabled only with `VOGUE_DRAFT_IMAGE_PROVIDER=openai` and image credentials. No configured provider is marked skipped; an unsupported provider name or provider/artifact failure is marked failed and makes the overall result `partial`. Synthetic fixture image generation is not part of the runtime. Both prompts are derived from the same product profile, but visual identity across the two images is not guaranteed. Stock photos are not forwarded as image-generation references. The two OpenAI image calls run concurrently with a per-process two-call cap and one active image pair at a time. `VOGUE_DRAFT_IMAGE_TIMEOUT_SECONDS` controls each call (default 180 seconds, clamped to 5–300). P06 does not automatically retry model calls because a timed-out client cannot know whether the provider already processed and billed the request. A durable request claim and saved response prevent replay of completed work and refuse to repeat a paid image attempt whose outcome is unknown; use a new request ID for an intentional new attempt.
 
-Set `VOGUE_IMAGE_GENERATION_ENABLED=true` and `LLM_API_KEY` in the runtime environment. Image generation is opt-in per API request. Generated images are exploratory design material and do not validate fit, materials, demand or production feasibility.
+`generation_metadata.timings_ms` reports input validation/normalization, planning analysis, each image call, combined image wall time, per-artifact persistence, response serialization, and total processing before response-cache persistence. The `p06_draft_completed` Docker log adds response-cache persistence and total processing including that write. The correlated `p06_http_response_serialized` log reports the HTTP status and response JSON serialization time. Join both log events by `request_id`; neither log contains prompts, image bytes, raw upstream payloads, or credentials. The response's `validation_issues` and completion log `partial_issue_codes` identify causes such as `UPSTREAM_PARTIAL`, `UPSTREAM_NO_RESULTS`, `PLANNING_ANALYSIS_PARTIAL`, `IMAGE_API_TIMEOUT`, or `ARTIFACT_PERSISTENCE_FAILED`.
 
-## Project_07 data products
+Artifacts are stored under `VOGUE_DRAFT_ARTIFACT_DIR` (default `/app/data/local/p06-artifacts`) at `images/<sha256>.<ext>`. References include URI, media type, size and digest; a SQLite ledger binds request ID + visual kind to the artifact. P08 mounts the volume read-only and verifies bytes before use. P06 exposes no public image URL route.
 
-Project_06 does not load sales, market, H&M historical or operations datasets. Those source and analysis responsibilities belong to Project_07.
+## Contract source
+
+The implementation was compared against P08's local `orchestrator-integration-branch` working tree, including its `/runs` request/response schema and `planning_sheet.py` visual reader. That P08 tree is local and uncommitted; this is compatibility with that snapshot, not proof of a frozen cross-project contract. Keep both repos' schemas and artifact mount in sync before deployment.

@@ -10,7 +10,7 @@
 
 평가를 두 트랙으로 분리합니다.
 
-1. **생성 엔진 비교:** `PlanningRequest`, `TrendResult`, `InventoryProductResult` 핵심 입력을 동일하게 제공하고 생성기만 바꿉니다. H&M 과거 `SalesAnalysisResult`는 선택형 로컬 확장으로, 비교에 사용할 경우 모든 엔진에 같은 버전·기간·Evidence를 전달하고 이를 명시합니다. 이 비교로 프롬프트·생성 모델의 차이를 살핍니다.
+1. **생성 엔진 비교:** `PlanningRequest`, `TrendResult`, `InventoryProductResult` 입력을 동일하게 제공하고 생성기만 바꿉니다. 판매·시장 분석은 P06 입력이 아니므로 비교 조건에 포함하지 않습니다. 이 비교로 프롬프트·생성 모델의 차이를 살핍니다.
 2. **End-to-end RAG 비교:** 검색 설정 또는 검색 파이프라인까지 바뀌는 실험은 별도 트랙으로 기록합니다. 결과 차이를 검색 품질과 생성 품질로 나눠 해석하며, 생성 엔진 비교 결과와 합치지 않습니다.
 
 현재 3번 에이전트는 자체 검색기나 인덱스를 소유하지 않으며, 1번 에이전트가 전달한 트렌드 Evidence를 사용합니다. 따라서 우선 생성 엔진 비교의 검색 컨텍스트는 고정합니다. 이후 여러 검색 엔진을 비교할 때는 각 검색 결과를 저장·버전 관리하고 retrieval-only 평가와 전체 파이프라인 평가를 추가합니다.
@@ -88,4 +88,4 @@
 
 모델이 응답에 적은 출처나 Evidence ID 자체는 근거로 인정하지 않습니다. 각 출력 claim의 ID는 입력 Evidence allowlist와 대조하고, 근거가 실제 주장을 지지하는지 평가합니다. 모델 호출 전 자료 전송 권한을 확인하며, API key 및 민감한 원문은 로그나 Git에 남기지 않습니다.
 
-현재 구현된 구조화 프롬프트 버전은 `new-product-planner-v3-evidence-grounded`입니다. 응답의 `generation_metadata`에는 engine/status/prompt version/model 식별자가 포함되며 프롬프트나 모델 원문은 포함되지 않습니다. 실행 기록을 별도 저장하지 않습니다. 합성 mock 테스트는 파싱·요청 격리·Evidence allowlist·fallback을 검증합니다. OpenAI Responses API 어댑터는 도구를 비활성화하고 `store=false`를 지정하며, 기능은 기본 비활성화 상태입니다. 실 API 호출 1회의 성공은 프롬프트 품질이나 프롬프트 인젝션 저항성을 입증하지 않으며, 계속적인 합성 평가와 MD 검토가 필요합니다.
+현재 manifest의 구조화 프롬프트 버전은 `new-product-planner-v7-current-inputs-only`입니다. 이 standalone text generator는 active `/runs` 경로에서 선택되지 않으며, active 경로는 규칙 기반 generator를 사용합니다. 응답의 `generation_metadata`에는 engine/status/prompt version/model 식별자가 포함되며 프롬프트나 모델 원문은 포함되지 않습니다. 실행 기록을 별도 저장하지 않습니다. 합성 mock 테스트는 파싱·요청 격리·Evidence allowlist·fallback을 검증합니다. 별도 OpenAI Responses API 어댑터는 도구를 비활성화하고 `store=false`를 지정합니다. HTTP 경로에서는 이 adapter를 호출하지 않습니다. 실 API 호출 1회의 성공은 프롬프트 품질이나 프롬프트 인젝션 저항성을 입증하지 않으며, 계속적인 합성 평가와 MD 검토가 필요합니다.

@@ -1,17 +1,17 @@
-# Project_06 repository layout and service boundary
+# Project_06 repository boundary
 
-## Folder layout
+## Current ownership
 
-The shared repository layout is `src/`, `tests/`, `docs/`, `data/`, `examples/`, `prompts/`, `scripts/`, and `contracts/`. Project_06 has no separate `configs/` or `web/` tree because its current service has no standalone configuration bundle or browser UI. Developer generators live under `scripts/`; generated and local state stays under `data/`.
+P06 owns analysis of the PlanningRequest, Trend and Stock results, the sourced new-product draft, and `draft.visuals.product` / `draft.visuals.outfit` creation. P08 owns the Trend and Stock calls, the P06 call, the P07 review call, response aggregation and planning-board rendering. P06 never calls P07 and never creates a planning board.
 
-## Ownership and HTTP boundary
+The active endpoint is `POST /v1/agents/new-product-agent/runs`, using the P08 local branch's `vogue-handoff/0.3` request and response envelope. P06 accepts exactly `planning_request`, `trend_result`, and `inventory_product_result`; supported schemas are 1.0, 1.1, and 1.0 respectively. The input adapter retains original payloads and schema/provenance information while preparing the Trend copy for internal analysis.
 
-Project_06 owns planning-draft generation and the new-product image. It has no local brief/variant workbench or draft persistence. Its canonical agent route is `POST /v1/agents/new-product-agent/runs` using `vogue-handoff/0.3`. The input contains only `planning_request`, `trend_result`, and `inventory_product_result`; sales/market output is not part of planning or image generation. The P06-specific accepted versions and result behavior are defined in [`contracts/http-handoff-v0.3.md`](../contracts/http-handoff-v0.3.md).
+## Service and data boundary
 
-Project_06 consumes upstream results and does not import sibling repositories. A separate `POST /v1/agents/new-product-agent/sales-market-reviews` adapter receives the full P06 PlanningDraft response, validates it, and returns only the projected Project_07 `/reviews` request payload. It never calls Project_07. Project_08 calls this adapter after P06 completes, sends the returned payload to Project_07, then combines the P06 and P07 results for the UI.
+P06 consumes producer responses supplied by P08 and does not import sibling repositories or query operational Trend/Stock databases. Generated images are stored as content-addressed artifacts below `VOGUE_DRAFT_ARTIFACT_DIR`; a local SQLite ledger records request ownership and response replay. P08 reads the shared image volume read-only and verifies artifact byte size and SHA-256.
 
-## Independent local operation
+`local` mode binds to loopback. `private` mode supports bearer-authenticated HTTP inside an isolated service network. `service` mode requires bearer authentication and TLS.
 
-Run the local service with `VOGUE_HTTP_MODE=local`. It binds to loopback on port `8767` by default; Project_07 uses `8766` and Project_08 uses `8765`. `GET /api/health` checks the service; it does not validate caller compatibility.
+## Removed from the active flow
 
-Local mode is loopback-only and the canonical `/runs` route requires `VOGUE_AGENT_SERVICE_BEARER_TOKEN`. Service mode additionally requires TLS files and the same bearer token for all API routes. It must not be exposed as a production service without deployment-level review.
+`/v1/agents/new-product-agent/drafts`, P06 review bridge routes, planning-board generation and old workflow/0.1 request adapters are not active runtime paths. Offline tests use mock image providers; P06 does not generate fixture images. The runbook and README describe the current `/runs` flow; retired proposal and provisional-decision documents have been removed.
