@@ -1,11 +1,13 @@
-# Project_06 prompts
+# Project_06 prompt assets
 
-Prompt sources are versioned assets. Runtime code loads them through `vogue_npp.domain.prompt_registry`; `manifest.json` selects the current version and stable ID. Retired prompt templates are removed from this repository; old result metadata may still contain their version IDs.
+This directory contains versioned prompt templates used by P06 workflows. The active `/runs` endpoint currently builds the planning Draft with deterministic rules; it does not call the text-planning model. It does use the concept-image prompt when a real image provider is configured to create the product and outfit visuals from the same product profile.
+
+Runtime code loads prompts through `vogue_npp.domain.prompt_registry`. `manifest.json` selects each component's current version and stable ID. Retired templates are removed from the repository; older result metadata may still refer to their version IDs.
 
 | Component | Current version | Stable prompt ID | Purpose |
 |---|---|---|---|
-| `text_planning` | `v7` | `new-product-planner-v7-current-inputs-only` | Standalone evidence-aware text generator; the active `/runs` endpoint currently selects the deterministic rule generator. |
-| `concept_image` | `v2` | `product-concept-image-prompt-v2-designer` | Product and outfit image prompts based on the same product profile. |
+| `text_planning` | `v7` | `new-product-planner-v7-current-inputs-only` | Standalone evidence-aware text generation workflow; not selected by the active HTTP `/runs` endpoint. |
+| `concept_image` | `v2` | `product-concept-image-prompt-v2-designer` | Product and outfit image prompts derived from the same validated product profile. |
 
 Each version directory has a `system_template.md`, `user_template.md`, and generated `rendered_system.md`. Templates accept only named placeholders; untrusted request data is serialized and bounded before insertion.
 
@@ -16,4 +18,4 @@ Each version directory has a `system_template.md`, `user_template.md`, and gener
 3. Run `PYTHONPATH=src python3 scripts/render_prompts.py`.
 4. Run prompt registry, planning, and image prompt tests; review the rendered prompt diff.
 
-Prompt changes can alter model behavior. A new version ID alone does not establish improved quality. The text prompt/provider are not selected by the active HTTP `/runs` route.
+Prompt changes can alter model behavior. A new version ID alone does not establish improved quality. Keep prompt inputs bounded and preserve the distinction between sourced facts, proposals, and unknown values. The image prompt's shared product-profile hash indicates a common specification; it does not prove that the rendered pixels are identical in design.
