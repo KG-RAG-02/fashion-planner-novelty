@@ -1,11 +1,13 @@
 # Project_06 new-product planning agent
 
-## Current runtime behavior
+## Current runtime
 
-Project_06 creates a reviewable product-planning draft from exactly three inputs: the user planning request, Trend Agent result, and Inventory Agent result. The canonical API contract is [HTTP handoff v0.3](../../contracts/http-handoff-v0.3.md).
+P06 exposes `POST /v1/agents/new-product-agent/runs` using `vogue-handoff/0.3`. P08 sends a PlanningRequest 1.0, Trend 1.1, and Stock 1.0 result. P06 validates and normalizes inputs, runs its evidence-aware planning analysis, and returns `draft.product_profile` with a narrative concept and two visual statuses at `draft.visuals.product` and `draft.visuals.outfit`.
 
-The Sales Market result object is not part of the planning or image-generation request. A separate optional post-draft review bridge validates and returns a Project_07 request payload to Project_08. Project_08 calls Project_07; P06 does not make that call. The review is not an input to the planner or image generator.
+P06 uses an explicitly configured real provider for actual concept images. Offline tests use a mock provider and do not create synthetic image artifacts. If no provider is configured, image statuses are `skipped`; an unsupported provider or generation/storage error is `failed` and makes the overall result partial.
 
-Project_06 does not query synthetic catalog, company guideline, precedent, or taxonomy datasets. Those offline fixtures and tools do not enter the runtime prompt or planning context. Optional H&M photo analysis from R2 is treated only as external visual inspiration and is separated from company facts.
+P06 does not call Trend, Stock, or P07, and does not create the planning-board image. P08 owns upstream calls, P07 review, aggregation and board rendering. It receives the P06 draft, projects its product profile into P07's `/reviews` request, and returns the integrated result.
 
-The new-product image is generated from the product draft informed by the request and eligible trend results. P06 does not generate outfit or planning-board images. Optional H&M visual references are analyzed separately from company product facts. See the [R2 visual-reference boundary](r2-cloud-planning-rag.md) and [text-planning prompt integration](text-planning-openai-integration.md) for details.
+## Analysis boundary
+
+P06 uses the request, eligible Trend evidence, and Stock product/inventory context. It does not query operational databases or consume P07 review results. Claim types and evidence IDs remain distinguishable through draft generation. See the [P06 structure](project-structure.md) and [service runbook](prototype-runbook.md).

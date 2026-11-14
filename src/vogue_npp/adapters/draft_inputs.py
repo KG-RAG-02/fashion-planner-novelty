@@ -1,4 +1,4 @@
-"""Versioned Project_06 handoff input registry and compatibility adapter."""
+"""Versioned Project_06 workflow input registry and compatibility adapter."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 
-CONTRACT_VERSION = "vogue-handoff/0.3"
 ADAPTER_VERSION = "project06-input-normalizer/1.3"
 INPUT_KEYS = frozenset({
     "planning_request", "trend_result", "inventory_product_result",
@@ -26,7 +25,7 @@ EXPECTED_PRODUCERS = {
 DOMAIN_STATUSES = frozenset({"ok", "partial", "no_results", "error"})
 
 
-class AdapterCompatibilityError(ValueError):
+class WorkflowInputError(ValueError):
     """Safe, machine-readable input compatibility failure."""
 
     def __init__(self, code: str, safe_message: str):
@@ -36,7 +35,7 @@ class AdapterCompatibilityError(ValueError):
 
 
 @dataclass(frozen=True)
-class NormalizedHandoffInputs:
+class NormalizedWorkflowInputs:
     request_id: str
     source_inputs: Mapping[str, Any]
     normalized_inputs: Mapping[str, Any]
@@ -48,7 +47,7 @@ def _fingerprint(value: Any) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def normalize_handoff_inputs(request_id: str, inputs: Mapping[str, Any]) -> NormalizedHandoffInputs:
+def normalize_workflow_inputs(request_id: str, inputs: Mapping[str, Any]) -> NormalizedWorkflowInputs:
     """Validate the producer matrix and return independent raw/normalized copies.
 
     This adapter supports only the reviewed versions in ``SUPPORTED_VERSIONS``.
@@ -57,34 +56,34 @@ def normalize_handoff_inputs(request_id: str, inputs: Mapping[str, Any]) -> Norm
     ``source_inputs`` and is fingerprinted for traceability.
     """
     if not isinstance(request_id, str) or not request_id.strip():
-        raise AdapterCompatibilityError("INVALID_REQUEST_ID", "request_id는 비어 있지 않은 문자열이어야 합니다.")
+        raise WorkflowInputError("INVALID_REQUEST_ID", "request_id는 비어 있지 않은 문자열이어야 합니다.")
     if not isinstance(inputs, Mapping) or set(inputs) != INPUT_KEYS:
-        raise AdapterCompatibilityError("INVALID_INPUT", "input에는 planning_request, trend_result, inventory_product_result만 포함해야 합니다.")
+        raise WorkflowInputError("INVALID_INPUT", "input에는 planning_request, trend_result, inventory_product_result만 포함해야 합니다.")
 
     try:
         source_inputs = copy.deepcopy(dict(inputs))
     except Exception as exc:
-        raise AdapterCompatibilityError("INVALID_PRODUCER_PAYLOAD", "입력 payload를 보존할 수 없습니다.") from exc
+        raise WorkflowInputError("INVALID_PRODUCER_PAYLOAD", "입력 payload를 보존할 수 없습니다.") from exc
     normalized_inputs = copy.deepcopy(source_inputs)
     schema_trace: dict[str, Any] = {}
 
     for name, payload in source_inputs.items():
         if not isinstance(payload, dict):
-            raise AdapterCompatibilityError("INVALID_PRODUCER_PAYLOAD", f"{name}는 JSON 객체여야 합니다.")
+            raise WorkflowInputError("INVALID_PRODUCER_PAYLOAD", f"{name}는 JSON 객체여야 합니다.")
         if payload.get("request_id") != request_id:
-            raise AdapterCompatibilityError("REQUEST_ID_MISMATCH", "모든 입력 request_id는 envelope request_id와 일치해야 합니다.")
+            raise WorkflowInputError("REQUEST_ID_MISMATCH", "모든 입력 request_id는 envelope request_id와 일치해야 합니다.")
         source_version = payload.get("schema_version")
         if not isinstance(source_version, str) or source_version not in SUPPORTED_VERSIONS[name]:
-            raise AdapterCompatibilityError("UNSUPPORTED_PRODUCER_SCHEMA", f"지원하지 않는 {name} schema_version입니다.")
+            raise WorkflowInputError("UNSUPPORTED_PRODUCER_SCHEMA", f"지원하지 않는 {name} schema_version입니다.")
         producer_id = payload.get("agent_id")
         if name in EXPECTED_PRODUCERS and (
             (producer_id is not None and not isinstance(producer_id, str))
             or producer_id not in EXPECTED_PRODUCERS[name]
         ):
-            raise AdapterCompatibilityError("PRODUCER_MISMATCH", f"{name} producer ID가 지원 목록과 일치하지 않습니다.")
+            raise WorkflowInputError("PRODUCER_MISMATCH", f"{name} producer ID가 지원 목록과 일치하지 않습니다.")
         status = payload.get("status")
         if name != "planning_request" and (not isinstance(status, str) or status not in DOMAIN_STATUSES):
-            raise AdapterCompatibilityError("INVALID_DOMAIN_STATUS", f"{name} status가 지원되지 않습니다.")
+            raise WorkflowInputError("INVALID_DOMAIN_STATUS", f"{name} status가 지원되지 않습니다.")
         schema_trace[name] = {
             "producer_id": producer_id,
             "source_schema_version": source_version,
@@ -97,7 +96,7 @@ def normalize_handoff_inputs(request_id: str, inputs: Mapping[str, Any]) -> Norm
 
     planning = source_inputs["planning_request"]
     if not isinstance(planning, dict) or planning.get("request_id") != request_id:
-        raise AdapterCompatibilityError("REQUEST_ID_MISMATCH", "PlanningRequest request_id가 envelope와 일치해야 합니다.")
+        raise WorkflowInputError("REQUEST_ID_MISMATCH", "PlanningRequest request_id가 envelope와 일치해야 합니다.")
 
     trend = normalized_inputs["trend_result"]
     trend["schema_version"] = "1.0"
@@ -105,7 +104,7 @@ def normalize_handoff_inputs(request_id: str, inputs: Mapping[str, Any]) -> Norm
     schema_trace["trend_result"]["internal_schema_version"] = "1.0"
     schema_trace["trend_result"]["transformed"] = True
 
-    return NormalizedHandoffInputs(
+    return NormalizedWorkflowInputs(
         request_id=request_id,
         source_inputs=source_inputs,
         normalized_inputs=normalized_inputs,

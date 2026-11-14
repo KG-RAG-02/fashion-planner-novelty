@@ -182,7 +182,6 @@ class ProductPlanningContext:
     evidence_ids: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
     questions_for_validation: tuple[str, ...] = ()
-    hm_visual_references: Mapping[str, Any] | None = None
 
 
 def _unique(values: Sequence[str]) -> tuple[str, ...]:

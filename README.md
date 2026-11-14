@@ -1,35 +1,34 @@
-# Project_06 — 새상품 기획 에이전트
+# Project_06 — 신제품 기획 에이전트
 
-Project_06(P06)은 요청·트렌드·상품 정보를 분석해 새상품 기획 초안과 신제품 이미지를 생성합니다. Project_08(P08)이 각 에이전트를 호출하고 결과를 통합합니다. P06은 P07을 직접 호출하지 않습니다.
+Project_06(P06)은 P08이 전달한 사용자 요청, Trend 결과, Stock 결과를 분석해 **신제품 기획 초안과 상품·착장 이미지**를 반환합니다. P06은 Trend·Stock 조회, P07 review 호출, 통합 응답, 기획안 보드를 담당하지 않습니다. 그 호출과 최종 통합은 P08이 담당합니다.
 
-## 전체 흐름
+## 입력 → 분석 → 출력
 
 ```text
-Input → 분석 흐름 → Output
+입력
+  P08 → P06 POST /v1/agents/new-product-agent/runs
+       ├─ planning_request (schema 1.0)
+       ├─ trend_result (schema 1.1)
+       └─ inventory_product_result (schema 1.0)
+       모든 request_id는 요청 envelope의 ID와 같아야 함
 
-사용자 요청 + Trend 결과 + Stock 결과
-  → P08이 P06 `/runs`에 전달
-  → P06이 입력·근거·충돌을 검증
-  → 하나의 상품 프로필과 콘셉트를 구성
-  → 같은 프로필로 기획 초안과 신제품 이미지 생성
-  → P06 결과를 P08에 반환
-  → P08이 P06 결과를 review bridge에 보내 P07 요청 payload를 받음
-  → P08이 P07 호출 및 결과 통합, 기획안 보드 구성
+분석
+  1. envelope·request ID·producer·schema·status 검증
+  2. 입력 원본과 provenance 보존
+  3. Trend 입력을 내부 분석 형식으로 정규화
+  4. 요청·Trend·Stock 근거, 누락, 충돌을 분석해 product_profile과 Draft 작성
+  5. 실제 이미지 provider가 설정된 경우 동일 상품 프로필로 product/outfit 이미지 생성
+  6. artifact를 저장하고 요청 ID에 소유권을 연결
+
+출력
+  P06 → P08에 Draft, product_profile, 입력 provenance,
+       validation issues, product/outfit 이미지 상태와 artifact 메타데이터 반환
+  P08 → P07 /reviews 호출, 결과 통합 및 기획안 보드 생성
 ```
 
-P06의 범위는 **기획 초안, 구조화 상품 프로필, 신제품 이미지, P07 요청 payload 변환**입니다. Trend·Stock·P07 호출, 통합 응답, 기획안 보드는 P08이 담당합니다.
+## 입력 계약
 
-## 1. Input
-
-정식 P06 API는 `POST /v1/agents/new-product-agent/runs`입니다. 요청 envelope는 `vogue-handoff/0.3`이며 `input`에는 다음 세 객체를 포함합니다.
-
-| 입력 | 내용 | P06에서의 사용 |
-| --- | --- | --- |
-| `planning_request` | 요청 ID, 사용자 기획 질문, 카테고리·시즌 등 명시 조건 | 사용자 의도와 명시된 상품 사양의 기준 |
-| `trend_result` | Trend 에이전트 결과, 관측값, Evidence | 트렌드 관찰과 기획 근거 |
-| `inventory_product_result` | Stock 에이전트의 상품·재고 정보와 Evidence | 참고할 상품 특성 및 재고 맥락 |
-
-세 입력은 같은 `request_id`로 연결합니다. 각 producer의 schema와 Evidence ID를 검증하고 원본 자료를 결과에 보존합니다. 판매·시장 review 결과는 초안과 이미지 생성 입력이 아닙니다. P06은 운영 DB에서 Trend·Stock 정보를 직접 조회하지 않습니다.
+현재 P08 연동은 `vogue-handoff/0.3`을 사용합니다. `input`에는 아래 세 객체만 허용합니다.
 
 ```json
 {
@@ -44,106 +43,86 @@ P06의 범위는 **기획 초안, 구조화 상품 프로필, 신제품 이미�
     "trend_result": {
       "schema_version": "1.1",
       "request_id": "planning-001",
-      "status": "partial",
-      "trends": [],
-      "evidence": []
+      "status": "ok"
     },
     "inventory_product_result": {
       "schema_version": "1.0",
       "request_id": "planning-001",
       "agent_id": "stock-agent",
-      "status": "ok",
-      "products": [],
-      "evidence": []
+      "status": "ok"
     }
   }
 }
 ```
 
-## 2. 분석 흐름
+지원 schema는 PlanningRequest 1.0, Trend 1.1, Stock 1.0입니다. 각 입력 ID, 허용 producer와 상태를 확인합니다. Trend 1.1은 원본을 보존한 채 내부 분석용 복사본만 정규화합니다. 지원하지 않는 schema, 잘못된 상태, producer 또는 request ID는 요청 오류로 반환합니다.
 
-### 입력 검증 및 근거 정리
+## 분석 결과와 상태
 
-P06은 요청 ID, 입력 schema, producer 정보와 Evidence 연결을 확인합니다. 원본 Trend·Stock 자료를 보존하고, 누락·오류·충돌은 상태와 제한사항으로 남깁니다. 근거가 없거나 서로 충돌하는 값은 사실처럼 확정하지 않습니다.
+성공 응답 envelope는 `contract_version`, `request_id`, `producer`, `status`, `result`를 포함합니다. `result.draft`에는 읽을 수 있는 기획 초안, 출처가 구분된 `product_profile`, `visuals.product`, `visuals.outfit`이 들어갑니다. `result.input_evidence`와 `compatibility`에는 입력 원본, provenance, schema 변환 정보가 보존됩니다. `validation_issues`, `limitations`, `conflicts`, `questions_for_validation`에서 결과의 한계와 확인할 사항을 확인할 수 있습니다.
 
-### 상품 프로필과 콘셉트 구성
+- `ok`: 입력 분석과 요청된 출력이 완료됐습니다.
+- `partial`: 입력에 부분 결과·누락·충돌이 있거나 이미지 생성/저장이 완료되지 않았습니다. 구체적인 원인은 `validation_issues`의 코드로 확인합니다.
+- 입력 계약 오류는 4xx로 거부됩니다.
+- 처리 완료 후 같은 `request_id`를 다른 입력에 재사용하면 `409 REQUEST_ID_REUSED`를 반환합니다. 같은 입력의 동시 요청은 최초 저장된 응답으로 수렴합니다.
+- 유료 이미지 요청이 처리 중이거나 결과가 불확실하면 중복 호출을 막기 위해 `409 IMAGE_REQUEST_IN_PROGRESS_OR_OUTCOME_UNKNOWN`을 반환할 수 있습니다.
 
-`product_profile`에 카테고리, 상품 종류, 성별, 시즌, 소재 등 초안에 필요한 필드를 값과 출처 종류, Evidence ID와 함께 구조화합니다. 사용자 입력에서 온 값, 근거 관찰, 기획 제안, 미확정 상태를 구분합니다. 미확정 값은 null/unknown으로 둡니다.
+P06은 P07을 호출하지 않습니다. P08은 P06의 `product_profile`에서 P07 허용 필드를 구성해 review를 호출하고, review와 Draft를 통합합니다.
 
-이 프로필과 동일한 분석 결과를 기준으로 서술형 기획 초안을 만듭니다. 별도의 후처리 단계에서 초안으로부터 프로필을 역추출하지 않습니다.
+현재 `/runs`는 규칙 기반 Draft 생성 경로를 사용하며 `find_categories` 도구나 외부 텍스트 모델을 호출하지 않습니다. 입력에 전달된 도구 진단 문구는 provenance와 limitation에 보존합니다. 상류 status가 `ok`이고 필수 Draft·시각자료가 생성됐으며 오류·누락·충돌이 없다면, 복구된 규칙 경고 문구만으로 결과를 `partial`로 바꾸지 않습니다.
 
-### 신제품 이미지 생성
+## 상품·착장 이미지
 
-이미지 프롬프트는 기획 초안과 같은 `product_profile`을 사용합니다. 미정인 소재·색상·디테일은 확정 사양으로 추가하지 않도록 제한합니다. 응답에는 이미지 생성 상태와 사용한 사양, 이미지 참조 방법 및 추적 정보가 포함됩니다. 생성된 픽셀이 프로필과 일치하는지는 자동 판정하지 않습니다.
+실제 이미지 생성은 `VOGUE_DRAFT_IMAGE_PROVIDER=openai`와 이미지 API 키가 함께 설정된 경우에만 실행됩니다. provider를 지정하지 않으면 두 visual이 `skipped`로 반환됩니다. 지원하지 않는 provider 이름은 `IMAGE_PROVIDER_UNSUPPORTED` 오류로 나타납니다. 실제 생성 또는 artifact 저장에 실패하면 해당 visual은 `failed`가 되고 전체 결과는 `partial`입니다.
 
-### P07 review 요청 변환
+P06은 이미지 두 장을 최대 2개 동시 작업으로 생성합니다. 동일 상품 프로필의 hash를 각 visual에 기록하지만 이미지 픽셀의 디자인 일치는 자동 검증하지 않습니다. P08은 공유 artifact 저장소에서 `artifact://p06/images/<sha256>.<ext>`를 해석하고, 소유권·크기·SHA-256을 검증해야 합니다. 이미지 바이트 자체는 Draft JSON에 넣지 않습니다.
 
-초안 생성이 끝나면 P08이 전체 P06 결과 객체를 P06 review bridge에 전달합니다. `/runs` 응답을 사용하는 경우 바깥 envelope가 아니라 `result` 안의 기획 결과 객체를 bridge의 `planning_draft`로 전달합니다. P06 bridge는 request ID, 카테고리, 상품 프로필과 Evidence ID를 검증한 뒤 P07 0.2 요청 payload를 P08에 반환합니다.
+완료 응답은 동일 request ID와 동일 요청 본문에 재사용됩니다. 같은 입력의 동시 요청도 최초 저장된 응답으로 수렴합니다. 다른 본문에 같은 request ID를 사용하면 `409 REQUEST_ID_REUSED`입니다. 유료 이미지 요청의 처리 결과가 불확실하면 중복 과금을 막기 위해 같은 ID의 재호출을 거부할 수 있습니다. 실패 이미지를 의도적으로 다시 요청하려면 새 request ID를 사용하세요. 자동 재시도는 하지 않습니다.
 
-Bridge는 P07을 직접 호출하지 않습니다. P08이 반환된 payload를 P07 `/reviews`에 보내고 review 응답을 통합합니다. P07 payload에는 필수 `category`와 확인된 `product_type`, `gender`, `season`, `material`만 포함됩니다. 가격·통화·원가·이미지·내부 Evidence 메타데이터는 전달하지 않습니다.
+## 실행
 
-## 3. Output
-
-### P06 기획·이미지 결과
-
-`/runs` 응답은 `contract_version`, `request_id`, `producer`, `status`, `result`를 포함합니다. `result`에는 다음 주요 값이 들어갑니다.
-
-| 출력 | 내용 |
-| --- | --- |
-| `draft` | 서술형 기획 초안, `product_profile`, 질문 및 검토 사항 |
-| `image` | 생성 상태, 모델, 이미지 URL, 사용한 상품 사양, 프롬프트 추적 정보 |
-| `input_statuses` | 각 입력 producer의 처리 상태 |
-| `input_evidence` | 입력 원본 및 관련 Evidence 정보 |
-| `limitations`, `conflicts` | 미확정 사항, 입력 한계, 충돌 |
-
-P06의 결과 status는 `ok`, `partial`, `no_results`, `error`일 수 있습니다. 이러한 도메인 결과는 HTTP 200으로 반환되며, 잘못된 요청이나 계약은 오류 HTTP 상태와 코드로 반환됩니다.
-
-### P06 bridge 출력
-
-P06 bridge는 P07 0.2 요청 payload만 반환합니다. 확인된 프로필 필드가 없는 선택 항목은 생략됩니다.
-
-```json
-{
-  "contract_version": "vogue-sales-market-review/0.2-proposal",
-  "request_id": "planning-001",
-  "input": {
-    "request_id": "planning-001",
-    "product": {
-      "category": "Outerwear",
-      "product_type": "Jacket",
-      "season": "winter"
-    }
-  }
-}
-```
-
-P06은 P07 응답을 받거나 보존하지 않습니다. 최종 통합 결과와 기획안 보드는 P08의 출력입니다.
-
-## 실행 방법
-
-Python 3.12 이상에서 의존성을 설치하고 로컬 서버를 시작합니다.
+### 로컬
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -r requirements.txt
-
-export VOGUE_HTTP_MODE=local
-export VOGUE_AGENT_SERVICE_BEARER_TOKEN='로컬에서 사용할 임의의 비밀값'
+VOGUE_HTTP_MODE=local \
+VOGUE_DRAFT_ARTIFACT_DIR=data/local/p06-artifacts \
 PYTHONPATH=src python3 -m vogue_npp.prototype.server
 ```
 
-서버 주소는 기본 `http://127.0.0.1:8767`입니다. `/runs`와 review bridge는 `Authorization: Bearer <token>` 및 `Content-Type: application/json` 헤더가 필요합니다. `GET /api/health`로 서버 상태를 확인할 수 있습니다.
+기본 주소는 `http://127.0.0.1:8767`이고 health check는 `GET /api/health`입니다. `local` 모드는 loopback 연결만 허용합니다. 서비스 간 격리 네트워크의 `private` 모드는 bearer 인증을 사용하고, `service` 모드는 bearer 인증과 TLS가 필요합니다.
 
-이미지 provider 호출은 기본 비활성화되어 있습니다. 실제 이미지 생성을 켜려면 `VOGUE_IMAGE_GENERATION_ENABLED=true`와 `LLM_API_KEY` 또는 `OPENAI_API_KEY`를 설정합니다. 구조화 텍스트 생성을 사용하려면 `VOGUE_TEXT_GENERATION_ENABLED=true`도 설정합니다. 비밀값은 `.env` 또는 승인된 비밀 저장소에 두고 Git에 커밋하지 마세요. 선택 기능 설정 이름은 `.env.example`을 참고하세요.
+### Docker
 
-## 테스트 및 상세 문서
+저장소의 `.env.example`을 참고해 비밀값을 로컬 환경에 준비한 뒤:
+
+```bash
+docker compose up --build
+```
+
+Docker 설정은 `VOGUE_HTTP_MODE=service`와 TLS 인증서를 사용합니다. P08과 함께 실행할 때는 두 서비스가 같은 artifact volume을 보도록 배포 설정을 맞춰야 합니다. 키나 인증 토큰을 Git, 채팅, 로그에 기록하지 마세요.
+
+### 실제 이미지 provider 설정
+
+```bash
+VOGUE_DRAFT_IMAGE_PROVIDER=openai
+VOGUE_DRAFT_IMAGE_MODEL=gpt-image-2.5-sunburst
+VOGUE_DRAFT_IMAGE_TIMEOUT_SECONDS=180
+OPENAI_API_KEY=<승인된 secret 저장소에서 주입>
+```
+
+timeout 기본값은 180초이며 허용 범위는 5–300초입니다. 이미지 API 호출은 비용이 발생할 수 있습니다. 테스트는 합성 입력과 mock provider를 사용하며 실제 모델을 호출하지 않습니다. **합성 fixture 이미지 생성 모드는 제공하지 않습니다.**
+
+## 지연·부분 상태 진단
+
+`generation_metadata.timings_ms`에는 입력 검증·정규화, Draft 분석, 각 이미지 호출, 이미지 구간 전체 시간, artifact 저장, 응답 직렬화 시간이 기록됩니다. Docker 로그의 `p06_draft_completed`에는 캐시 저장 시간을 포함한 총 처리 시간이 추가됩니다. `p06_http_response_serialized` 로그에는 같은 request ID의 HTTP status와 응답 JSON 직렬화 시간이 기록됩니다. 두 로그를 request ID로 연결해 확인하세요. 로그에는 프롬프트, 이미지 바이트, upstream 원본 payload, 비밀값을 남기지 않습니다.
+
+## 테스트
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-- [HTTP handoff 계약](contracts/http-handoff-v0.3.md)
-- [저장소 책임 경계](docs/repository-boundaries.md)
-- [구조화 상품 프로필과 P07 변환](docs/design/p06-structured-planning-draft.md)
-- [로컬 실행 안내](docs/design/prototype-runbook.md)
+자세한 내용: [저장소 책임 경계](docs/repository-boundaries.md), [입력·출력 흐름](docs/design/input-output-processing-flow.md), [서비스 runbook](docs/design/prototype-runbook.md), [구조화 상품 프로필](docs/design/p06-structured-planning-draft.md).

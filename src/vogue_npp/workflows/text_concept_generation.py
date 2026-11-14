@@ -103,23 +103,6 @@ def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
             ],
         } for item in context.inventory.products]
 
-    visual_references = None
-    if context.hm_visual_references:
-        # Keep only visual observations. Never send catalog metadata, URLs, or image bytes.
-        visual_references = {
-            "data_nature": "external_visual_reference_not_company_policy_or_sales_evidence",
-            "status": context.hm_visual_references.get("status"),
-            "references": [{
-                "reference_id": item.get("reference_id"),
-                "visual_summary": (item.get("visual_observations") or {}).get("visual_summary"),
-                "visible_features": (item.get("visual_observations") or {}).get("visible_features", []),
-                "visible_colors": (item.get("visual_observations") or {}).get("visible_colors", []),
-                "silhouette": (item.get("visual_observations") or {}).get("silhouette"),
-                "visible_details": (item.get("visual_observations") or {}).get("visible_details", []),
-                "not_assessable": (item.get("visual_observations") or {}).get("not_assessable", []),
-            } for item in context.hm_visual_references.get("references", [])
-              if isinstance(item, dict) and isinstance(item.get("visual_observations"), dict)],
-        }
     prompt_data = {
         "request_id": context.request_id,
         "input_statuses": dict(context.input_statuses),
@@ -144,7 +127,6 @@ def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
         "trend_limitations": list(context.trends.result.limitations) if trend_usable else [],
         "inventory_products": products,
         "inventory_limitations": list(context.inventory.result.limitations) if inventory_usable else [],
-        "hm_visual_reference_analysis": visual_references,
         "conflicts": [{"field": item.field, "values": dict(item.values), "message": item.message}
                       for item in context.conflicts],
         "limitations": list(context.limitations),

@@ -25,13 +25,13 @@
 
 | 영역 | 현재 확인한 구현 | 한계와 의미 |
 |---|---|---|
-| 공개 호출 | `POST /v1/agents/new-product-agent/runs`; 기존 `/api/planning-draft` 유지 | loopback 개발과 service TLS/Bearer 경계가 구현되어 있으나 인증·키 회전·테넌트 격리·운영 배포는 별도 검증 필요 |
-| 입력 버전 | PlanningRequest `1.0`, Trend `1.1`, Stock `1.0`, Project_07 `1.0`만 handoff adapter에서 허용 | 이 버전 밖의 입력은 자동 대응하지 않고 호환 오류를 반환해야 함 |
-| Trend 변환 | `src/vogue_npp/adapters/handoff.py` registry가 내부 복사본의 버전 슬롯을 `1.0`으로 매핑하고 원본 Trend `1.1` 및 SHA-256 provenance를 보존 | 버전 문자열 정규화가 의미 호환성을 증명하지 않음. 현재 mapping은 지원 matrix에서 허용한 `1.1` 구조의 명시 adapter로만 취급하고 버전별 fixture를 유지해야 함 |
+| 공개 호출 | `POST /v1/agents/new-product-agent/runs` | P08 로컬 `vogue-handoff/0.3` 형식으로 구현. cross-project contract 동결과 운영 배포 검증은 남아 있음 |
+| 입력 버전 | PlanningRequest `1.0`, Trend `1.1`, Stock `1.0`만 P08 handoff adapter에서 허용 | 이 버전 밖의 입력은 자동 대응하지 않고 호환 오류를 반환해야 함 |
+| Trend 변환 | `src/vogue_npp/adapters/draft_inputs.py` validates producer versions and preserves Trend 1.1 provenance while adapting internal input | Version normalization alone does not prove semantic compatibility; maintain versioned fixtures |
 | 입력 normalization | server에서 request/trend/stock payload를 `PlanningRequest`, `TrendResult`, `InventoryProductResult` 등으로 수동 변환 | 고정된 필드 매핑 중심. 임의 CSV/Excel/PDF나 producer 변화에 대한 범용 parser가 아님 |
-| Project_07 | 내부 context에서는 `sales-market-agent`, schema `1.0`을 확인하고 결과 본문을 보존 | 세부 판매/시장 필드를 Project_06에서 재집계하지 않음. 현재 draft의 도메인 해석은 제한적 |
+| Project_07 | P08이 P06 초안을 받은 뒤 P07 `/reviews`를 직접 호출 | P06은 P07 응답을 입력으로 받지 않으며 P07 요청을 보내지 않음 |
 | 초안 생성 | `RuleBasedConceptGenerator`가 Evidence를 연결한 초안 scaffold를 생성 | 텍스트 LLM provider는 실제 연결되어 있지 않음. 규칙은 제한된 의미의 후보만 다루며 상품기획 전문성·성과를 입증하지 않음 |
-| RAG | 합성 corpus와 retrieval 포트/검증 코드가 있음 | 운영 인덱스·자료권한 체계·회사 문서 연결은 기본 설정되어 있지 않음 |
+| RAG | 별도 TrendBatch/retrieval 라이브러리 prototype과 테스트가 있음 | active `/runs` 요청에서는 호출하지 않으며, 운영 인덱스·자료권한 체계·회사 문서 연결도 없음 |
 | 외부 모델 | 선택형 이미지 생성 경로 | 고객 자료 전송 승인, tenant 격리, provider 계약·운영 보호가 확정된 기업 연결로 볼 수 없음 |
 | 평가 | 합성/mock 기반 단위·계약 테스트와 평가 계획 | 현업 MD blind 평가, 실제 업무 기준선, 수치화된 유용성 검증은 없음 |
 | 업무 결정 | 결과는 `md_review_required`; 판매/시장 계산은 Project_07 소유 | 상품 채택, 가격·원가·마진, 생산 가능성, 수량/발주를 자동 결정하지 않음 |
@@ -40,13 +40,13 @@
 
 ### 이번 설계 기반 작업 기록
 
-현재 단계에서는 Project_06 내부 handoff 입력만 대상으로 version registry를 코드로 분리했다. `normalize_handoff_inputs()`는 지원 버전·producer·status·request ID와 top-level input key를 검사하고, 원본 사본·정규화 사본·adapter/version/hash provenance를 반환한다. HTTP handoff adapter는 이 registry를 사용한다. 다른 CSV/Excel/PDF나 임의 producer version에 자동 대응하는 기능, 업무 의미 확장, Project_08 schema 변경은 구현 범위에 포함되지 않는다.
+현재 단계에서는 P08 `/runs` 입력만 대상으로 version registry를 코드로 분리했다. `normalize_workflow_inputs()`는 지원 버전·producer·status·request ID와 top-level input key를 검사하고, 원본 사본·정규화 사본·adapter/version/hash provenance를 반환한다. HTTP `/runs` handler는 이 registry를 사용한다. 다른 CSV/Excel/PDF나 임의 producer version에 자동 대응하는 기능, 업무 의미 확장, Project_08 schema 변경은 구현 범위에 포함되지 않는다.
 
 ### 현재 데이터 처리의 강점과 제한
 
 - 강점: request ID·status·Evidence·limitations·errors 및 원본 payload 보존, `no_results`와 실제 수량 0 구분, 재고를 수요로 해석하지 않는 경계, 미등록 Evidence 검증, MD 확인 질문.
 - 제한: `schema_version` 지원은 닫힌 목록이며 내부 context가 request/trend/stock의 동일 내부 버전을 요구한다. 새 producer 버전은 명시 adapter·fixture·승인 없이 받을 수 없다.
-- 제한: 필드가 보존되는 것과 초안에서 의미 있게 사용되는 것은 다르다. 특히 opaque Project_07 payload는 보존 가능하지만 필드 정의를 해석하거나 제안에 적용하는 범위는 제한적이다.
+- 제한: 필드가 보존되는 것과 초안에서 의미 있게 사용되는 것은 다르다. P07은 P06 응답 후 P08이 호출한다. P06에는 P07 payload가 전달되지 않는다.
 - 제한: Evidence ID가 현재 입력에 존재하는지 검사하는 것과 그 Evidence가 실제 문장을 뒷받침하는지 검증하는 것은 별도다.
 
 ## 3. 현업 MD 업무 설계: 확인할 가설
@@ -125,7 +125,7 @@ producer-owned payload
 
 Adapter 결과에는 최소 `producer_id`, `source_schema_version`, `adapter_id`, `adapter_version`, `normalized_schema_version`, `source_payload_hash`, 변환 경고/오류, 변환된 필드 경로를 남긴다. 원본 저장 정책에 따라 응답에 원문 대신 보호된 reference/hash를 둘 수 있지만, 접근 권한과 retention을 먼저 합의한다. 현재 handoff 응답은 trace에 raw JSON을 포함하므로 운영 tenant별 redaction/크기 제한은 제품화 전 결정해야 한다.
 
-어댑터 호환표는 코드 registry(`src/vogue_npp/adapters/handoff.py`)와 문서가 함께 바뀌어야 한다. 새 version은 기존 version에 별칭 붙이기로 승인하지 않는다. producer fixture, adapter unit test, consumer contract test, backward compatibility test가 통과하기 전에는 지원 목록에 추가하지 않는다.
+어댑터 호환표는 `src/vogue_npp/adapters/draft_inputs.py`와 함께 바뀌어야 한다. 새 producer version은 fixture와 adapter 검증 없이 지원 목록에 추가하지 않는다.
 
 ## 6. 기획 출력: 주장, 대안, Evidence 연결
 
@@ -200,7 +200,7 @@ MD 평가는 출력 순서를 무작위화하고 엔진 이름을 가린 뒤 다
 
 | 주제 | 현재 상태 | 파일럿/운영 전에 필요한 일 | 승인 주체 후보 |
 |---|---|---|---|
-| Transport/API | Project_06 v0.1 route 구현, loopback local/service mode | service address, ingress/TLS boundary, contract consumer test | Project_06/08, platform |
+| Transport/API | `/runs` `vogue-handoff/0.3`; local/private/service HTTP 보안 모드 | 운영 배포의 ingress/TLS 경계와 cross-project contract 동결 검증 | Project_06/08, platform |
 | Auth/secret | service mode Bearer token 검사 | 발급자·audience·rotation·secret store·폐기/감사 | security/platform |
 | Tenant isolation | 업무 데이터 tenant model 확인 불가 | 모든 DB/index/cache/log/request에 tenant scope 강제 및 교차 tenant 시험 | 고객 보안, platform |
 | 사내 문서 권한 | 합성 corpus 정책만; 운영 index 미연결 | source ACL 상속, 사용자별 retrieval filter, 삭제/권한 철회 전파, 허가 문서 목록 | 고객 data owner/security |
@@ -209,8 +209,8 @@ MD 평가는 출력 순서를 무작위화하고 엔진 이름을 가린 뒤 다
 | 모델 전송 | 텍스트 모델 provider 미연결, 이미지 API 선택 경로 존재 | 어떤 필드가 어디로 전송되는지 allowlist, no-train/retention 조건, 고객 opt-in | 고객/security/product |
 | Audit/observability | 개발 테스트 수준 | 사용자·tenant·adapter/model/version/status 중심 최소 감사, 원문/secret 제외 | platform/security |
 | Availability/recovery | 로컬 prototype | SLO, rate limit, queue, circuit breaker, backup/restore, incident runbook | SRE/product |
-| Idempotency/retry | Project_06 자동 retry 없음, durable idempotency store 없음 | 중복 요청 body conflict, 재실행 정책, outbox/trace persistence | Project_06/08 |
-| Timeout/cost | adapter worker deadline 60초; caller connection timeout은 Project_08 소유 | end-to-end deadline propagation, saturation/backpressure, category 비용/지연 제한 | Project_06/08/platform |
+| Idempotency/retry | `/runs`는 request ID와 payload hash로 완료 응답을 재사용하고, 다른 payload 재사용 및 불확실한 이미지 재시도를 거부. 자동 provider retry 없음 | 다중 인스턴스 운영 보장과 retention 정책은 별도 검증 필요 | Project_06/08 |
+| Timeout/cost | 이미지 호출 timeout 기본 180초(5–300초 범위); 호출자 HTTP deadline은 P08 소유 | end-to-end deadline propagation, 공급자 제한과 비용 운영 기준은 별도 합의 필요 | Project_06/08/platform |
 | Human approval | `md_review_required` | UI 권한, review state transition, 승인 이력, 자동 채택 금지 확인 | MD workflow owner/Project_08 |
 
 운영 전 보안 검토, 고객 데이터 처리 승인, 자료 사용권 확인, 삭제 테스트, tenant 침투 테스트가 필요하다. 코드상 설정이 존재하는 것과 생산 운영 승인·적합성 검증은 별개다.
