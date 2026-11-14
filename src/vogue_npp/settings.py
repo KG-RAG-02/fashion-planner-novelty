@@ -40,7 +40,7 @@ def load_settings() -> Settings:
     """Load local .env values without selecting a provider or making a request."""
 
     load_dotenv()
-    image_api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    image_api_key = os.getenv("LLM_API_KEY", "").strip()
     return Settings(
         image_generation_api_key=image_api_key or None,
     )

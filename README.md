@@ -69,6 +69,12 @@ Project_06(P06)은 P08이 전달한 사용자 요청, Trend 결과, Stock 결과
 
 P06은 P07을 호출하지 않습니다. P08은 P06의 `product_profile`에서 P07 허용 필드를 구성해 review를 호출하고, review와 Draft를 통합합니다.
 
+## 환경 변수와 데이터 연결
+
+P06은 업무용 Trend·Stock 데이터베이스에 직접 접속하지 않습니다. P08이 해당 데이터를 조회해 `trend_result`와 `inventory_product_result`로 전달합니다. 따라서 P06 `.env`에는 Trend·Stock DB 키가 필요하지 않으며, P06의 로컬 SQLite는 artifact 소유권과 요청 재생 처리만 기록합니다. 현재 `/runs`에서 실제 외부 모델을 호출하는 기능은 이미지 생성이며, 이때 `LLM_API_KEY`를 사용합니다. 텍스트 생성 코드는 별도 경로로 존재하지만 현재 `/runs`에서는 호출하지 않습니다.
+
+향후 데이터 조회를 통합할 때는 키를 P06에 복사하는 대신, 데이터베이스 소유 서비스(P08 또는 별도 upstream)가 하나의 credential로 필요한 데이터셋을 묶어 조회하고 현재 입력 계약에 맞는 결과를 P06에 전달하도록 설계합니다. `.env`와 `.envrc`는 각 저장소·실행 컴퓨터의 로컬 설정이므로 저장소 사이에 공유되지 않습니다.
+
 현재 `/runs`는 규칙 기반 Draft 생성 경로를 사용하며 `find_categories` 도구나 외부 텍스트 모델을 호출하지 않습니다. 입력에 전달된 도구 진단 문구는 provenance와 limitation에 보존합니다. 상류 status가 `ok`이고 필수 Draft·시각자료가 생성됐으며 오류·누락·충돌이 없다면, 복구된 규칙 경고 문구만으로 결과를 `partial`로 바꾸지 않습니다.
 
 ## 상품·착장 이미지
@@ -110,7 +116,7 @@ Docker 설정은 `VOGUE_HTTP_MODE=service`와 TLS 인증서를 사용합니다. 
 VOGUE_DRAFT_IMAGE_PROVIDER=openai
 VOGUE_DRAFT_IMAGE_MODEL=gpt-image-2.5-sunburst
 VOGUE_DRAFT_IMAGE_TIMEOUT_SECONDS=180
-OPENAI_API_KEY=<승인된 secret 저장소에서 주입>
+LLM_API_KEY=<승인된 secret 저장소에서 주입>
 ```
 
 timeout 기본값은 180초이며 허용 범위는 5–300초입니다. 이미지 API 호출은 비용이 발생할 수 있습니다. 테스트는 합성 입력과 mock provider를 사용하며 실제 모델을 호출하지 않습니다. **합성 fixture 이미지 생성 모드는 제공하지 않습니다.**

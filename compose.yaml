@@ -13,7 +13,7 @@ services:
       VOGUE_TLS_KEY_FILE: /run/secrets/server_key
       VOGUE_AGENT_SERVICE_BEARER_TOKEN: ${VOGUE_AGENT_SERVICE_BEARER_TOKEN:?Set the shared agent bearer token}
       VOGUE_DRAFT_IMAGE_PROVIDER: ${VOGUE_DRAFT_IMAGE_PROVIDER:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
       VOGUE_DRAFT_ARTIFACT_DIR: /app/data/local/p06-artifacts
     volumes:
       - vogue-local-data:/app/data/local
