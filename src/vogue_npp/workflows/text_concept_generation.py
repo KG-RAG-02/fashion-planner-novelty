@@ -351,9 +351,10 @@ class PromptedConceptGenerator:
     fallback: ConceptGenerator | None = None
     generation_status: str = field(default="not_requested", init=False)
     generation_error_code: str | None = field(default=None, init=False)
+    llm_empty_fields: tuple[str, ...] = field(default=(), init=False)
 
     @property
-    def generation_metadata(self) -> dict[str, str | None]:
+    def generation_metadata(self) -> dict[str, object]:
         attempted = self.enabled
         return {
             "engine": "structured_text" if self.generation_status == "generated" else "rule_based",
@@ -361,6 +362,7 @@ class PromptedConceptGenerator:
             "prompt_version": PROMPT_VERSION if attempted else None,
             "model": getattr(self.provider, "model_name", None) if attempted else None,
             "error_code": self.generation_error_code,
+            "llm_empty_fields": list(self.llm_empty_fields),
         }
 
     def generate(self, context: ProductPlanningContext) -> tuple[ProductConceptDraft, tuple[ValidationIssue, ...]]:
@@ -368,10 +370,12 @@ class PromptedConceptGenerator:
         if not self.enabled:
             self.generation_status = "disabled"
             self.generation_error_code = None
+            self.llm_empty_fields = ()
             return fallback.generate(context)
         if self.provider is None:
             self.generation_status = "unavailable"
             self.generation_error_code = "TEXT_API_NOT_CONFIGURED"
+            self.llm_empty_fields = ()
             safe_draft, base_issues = fallback.generate(context)
             safe_draft = replace(
                 safe_draft,
@@ -393,12 +397,16 @@ class PromptedConceptGenerator:
                 user_prompt=prompt.user_prompt,
             )
             draft = parse_concept_output(raw, context, prompt.allowed_evidence_ids)
+            self.llm_empty_fields = _empty_poster_fields(draft)
+            rule_draft, _ = fallback.generate(context)
+            draft = _fill_empty_non_differentiation_fields(draft, rule_draft)
             self.generation_status = "generated"
             self.generation_error_code = None
             return draft, ()
         except Exception as exc:
             self.generation_status = "fallback"
             self.generation_error_code = getattr(exc, "code", "TEXT_OUTPUT_INVALID")
+            self.llm_empty_fields = ()
             safe_draft, base_issues = fallback.generate(context)
             safe_draft = replace(
                 safe_draft,
@@ -413,3 +421,54 @@ class PromptedConceptGenerator:
                 message="텍스트 생성 결과를 검증하지 못해 규칙 기반 초안으로 대체했습니다.",
             )
             return safe_draft, (*base_issues, issue)
+
+
+def _empty_poster_fields(draft: ProductConceptDraft) -> tuple[str, ...]:
+    """Return poster-facing fields that the successful LLM response left empty."""
+    empty: list[str] = []
+
+    def claim_empty(claim: SourcedClaim) -> bool:
+        return claim.value is None or not str(claim.value).strip()
+
+    for name in ("opportunity", "product_definition"):
+        if claim_empty(getattr(draft, name)):
+            empty.append(name)
+    for name in ("product_type", "material", "silhouette", "color"):
+        if claim_empty(getattr(draft.product_profile, name)):
+            empty.append(f"product_profile.{name}")
+    if not draft.product_profile.details:
+        empty.append("product_profile.details")
+    if not draft.relation_to_own_products:
+        empty.append("relation_to_own_products")
+    if not draft.differentiation:
+        empty.append("differentiation")
+    return tuple(empty)
+
+
+def _fill_empty_non_differentiation_fields(
+    draft: ProductConceptDraft,
+    fallback: ProductConceptDraft,
+) -> ProductConceptDraft:
+    """Use rules for empty poster fields, while preserving empty differentiation."""
+
+    def claim_or_fallback(claim: SourcedClaim, fallback_claim: SourcedClaim) -> SourcedClaim:
+        return fallback_claim if claim.value is None or not str(claim.value).strip() else claim
+
+    model_profile = draft.product_profile
+    fallback_profile = fallback.product_profile
+    profile = replace(
+        model_profile,
+        product_type=claim_or_fallback(model_profile.product_type, fallback_profile.product_type),
+        material=claim_or_fallback(model_profile.material, fallback_profile.material),
+        silhouette=claim_or_fallback(model_profile.silhouette, fallback_profile.silhouette),
+        color=claim_or_fallback(model_profile.color, fallback_profile.color),
+        details=model_profile.details or fallback_profile.details,
+    )
+    return replace(
+        draft,
+        opportunity=claim_or_fallback(draft.opportunity, fallback.opportunity),
+        product_definition=claim_or_fallback(draft.product_definition, fallback.product_definition),
+        product_profile=profile,
+        relation_to_own_products=draft.relation_to_own_products or fallback.relation_to_own_products,
+        # differentiation intentionally remains exactly as returned by LLM.
+    )

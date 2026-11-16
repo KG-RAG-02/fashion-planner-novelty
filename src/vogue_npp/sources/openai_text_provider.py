@@ -104,7 +104,7 @@ class OpenAIResponsesTextProvider:
 
     def __init__(self, api_key: str, *, model: str | None = None, timeout_seconds: int | None = None):
         self.api_key = api_key.strip()
-        self.model_name = (model or os.getenv("VOGUE_TEXT_GENERATION_MODEL", "gpt-6-astra")).strip()
+        self.model_name = (model or os.getenv("VOGUE_TEXT_GENERATION_MODEL", "gpt-6-luna")).strip()
         if timeout_seconds is None:
             try:
                 timeout_seconds = int(os.getenv("VOGUE_TEXT_GENERATION_TIMEOUT_SECONDS", "60"))

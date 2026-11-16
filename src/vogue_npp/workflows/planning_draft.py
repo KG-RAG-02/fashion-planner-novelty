@@ -467,7 +467,13 @@ def _analyze_planning_inputs(
     )))
     draft_data["title"] = f"{draft.season or '시즌 미정'} {draft.category or '카테고리 미정'} 신제품 기획 초안"
     draft_data["review_status"] = "md_review_required"
-    validation_issue_data = [asdict(issue) for issue in issues]
+    # Text-provider fallback is represented in generation_metadata so P08 can
+    # distinguish the engine without treating a valid deterministic Draft as
+    # an invalid/partial handoff.
+    validation_issue_data = [
+        asdict(issue) for issue in issues
+        if issue.code not in {"TEXT_GENERATION_FALLBACK", "TEXT_GENERATION_UNAVAILABLE"}
+    ]
     if inventory.mapping_issues:
         validation_issue_data.append({
             "path": "stock_trend_results",
@@ -493,7 +499,9 @@ def _analyze_planning_inputs(
             or bool(context.conflicts)
             or bool(request.missing_fields)
             or not bool(draft.category)
-            or any(issue.code != "TEXT_GENERATION_FALLBACK" for issue in issues)
+            or any(issue.code not in {
+                "TEXT_GENERATION_FALLBACK", "TEXT_GENERATION_UNAVAILABLE",
+            } for issue in issues)
         ) else "ok",
         "request_id": context.request_id,
         "input_statuses": dict(context.input_statuses),

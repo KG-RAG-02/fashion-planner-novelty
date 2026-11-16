@@ -19,9 +19,11 @@ from urllib.parse import urlparse
 from ..adapters.draft_inputs import WorkflowInputError, normalize_workflow_inputs
 from ..domain.generator import RuleBasedConceptGenerator
 from ..settings import load_settings
+from ..sources.openai_text_provider import OpenAIResponsesTextProvider
 from ..workflows.planning_draft import (
     _analyze_planning_inputs, _is_recovered_category_lookup_warning, _stock_article_id,
 )
+from ..workflows.text_concept_generation import PromptedConceptGenerator
 from ..workflows.draft_artifacts import (
     DraftArtifactStore,
     ImageRunAlreadyClaimed,
@@ -33,6 +35,29 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 MAX_RUN_BODY_BYTES = 1_000_000
 IMAGE_REQUEST_SLOT = BoundedSemaphore(1)
 IMAGE_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="p06-image")
+
+
+def _env_flag(name: str, *, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _build_concept_generator() -> PromptedConceptGenerator:
+    """Build the opt-in text generator used by the active /runs route."""
+    fallback = RuleBasedConceptGenerator()
+    if not _env_flag("VOGUE_TEXT_GENERATION_ENABLED", default=True):
+        return PromptedConceptGenerator(enabled=False, fallback=fallback)
+
+    settings = load_settings()
+    provider = None
+    if settings.image_generation_api_key:
+        provider = OpenAIResponsesTextProvider(
+            settings.image_generation_api_key,
+            model=os.getenv("VOGUE_TEXT_GENERATION_MODEL", "gpt-6-luna"),
+        )
+    return PromptedConceptGenerator(provider=provider, enabled=True, fallback=fallback)
 
 
 def _safe_image_error_code(exc: Exception) -> str:
@@ -117,7 +142,7 @@ def _build_handoff_run(payload: object) -> dict:
 
     analysis_input = {"request_id": request_id, **normalized.normalized_inputs}
     analysis_started = time.perf_counter()
-    result = _analyze_planning_inputs(analysis_input, concept_generator=RuleBasedConceptGenerator())
+    result = _analyze_planning_inputs(analysis_input, concept_generator=_build_concept_generator())
     timings["planning_draft_analysis"] = round((time.perf_counter() - analysis_started) * 1000)
     source_limitations = tuple(result["limitations"])
     # Keep exact received upstream bytes and schema versions beside the internal normalized model.

@@ -130,6 +130,27 @@ class TextConceptGenerationTests(unittest.TestCase):
         self.assertFalse(hasattr(draft, "sales_market_result"))
         self.assertEqual(issues, ())
 
+    def test_empty_poster_fields_are_preserved_and_reported(self):
+        output = valid_output()
+        output["opportunity"] = {"value": None, "kind": "unknown", "evidence_ids": []}
+        output["product_definition"] = {"value": None, "kind": "unknown", "evidence_ids": []}
+        output["product_profile"]["color"] = {"value": None, "kind": "unknown", "evidence_ids": []}
+        output["product_profile"]["silhouette"] = {"value": None, "kind": "unknown", "evidence_ids": []}
+        provider = FakeStructuredProvider(output)
+
+        generator = PromptedConceptGenerator(provider=provider, enabled=True)
+        draft, issues = generator.generate(make_context())
+
+        self.assertEqual(issues, ())
+        self.assertIn("기획", draft.opportunity.value or "")
+        self.assertIn("콘셉트", draft.product_definition.value or "")
+        self.assertEqual(draft.product_profile.color.value, "olive")
+        self.assertEqual(draft.differentiation, ())
+        self.assertIn("opportunity", generator.generation_metadata["llm_empty_fields"])
+        self.assertIn("product_profile.color", generator.generation_metadata["llm_empty_fields"])
+        # The model-authored value remains authoritative when it is present.
+        self.assertEqual(draft.product_profile.product_type.value, None)
+
     def test_api_generation_boundary_accepts_injected_generator(self):
         from vogue_npp.prototype.server import _analyze_planning_inputs
 
