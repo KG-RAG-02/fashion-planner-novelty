@@ -15,6 +15,7 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
+COPY prompts/ ./prompts/
 RUN useradd --create-home --uid 10001 vogue \
     && mkdir -p /app/data/local \
     && chown -R vogue:vogue /app
