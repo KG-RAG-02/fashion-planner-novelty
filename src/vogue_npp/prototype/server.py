@@ -267,8 +267,13 @@ def _build_handoff_run(payload: object) -> dict:
     visual_limitations.append("product와 outfit 이미지의 사양은 같은 상품 프로필에서 생성되지만, 이미지 간 시각적 동일성은 자동 보증되지 않습니다.")
     draft["limitations"] = list(dict.fromkeys([*draft["limitations"], *visual_limitations]))
     result["limitations"] = draft["limitations"]
-    if any(item["status"] != "generated" for item in visuals.values()):
-        result["status"] = "partial"
+    # Deliverable-based status (VOGUE integration decision 2026-11-13, reapplied 2026-11-16): ok when the Draft and
+    # both visuals were produced and every upstream input was ok. Analysis gaps and upstream limitation notes stay
+    # in limitations and validation_issues; they no longer turn a complete deliverable into partial.
+    if result["status"] in {"ok", "partial"}:
+        produced = all(item["status"] == "generated" for item in visuals.values())
+        upstream_ok = all(status == "ok" for status in result["input_statuses"].values())
+        result["status"] = "ok" if produced and upstream_ok else "partial"
 
     issues = result["validation_issues"]
     for input_name, input_status in result["input_statuses"].items():
