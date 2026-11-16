@@ -139,6 +139,25 @@ class HandoffRunTests(unittest.TestCase):
         codes = {issue["code"] for issue in response["result"]["validation_issues"]}
         self.assertIn("UPSTREAM_DATA_MISSING", codes)
 
+    def test_complete_deliverables_with_informational_limitations_are_ok(self):
+        value = request()
+        value["input"]["trend_result"].update(status="ok", limitations=["재고·판매가는 가상 데이터(sample)입니다."])
+        value["input"]["inventory_product_result"]["status"] = "ok"
+
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
+            "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "openai",
+        }), patch("vogue_npp.prototype.server.load_settings",
+                  return_value=SimpleNamespace(image_generation_api_key="test-key")), \
+             patch.object(OpenAIDraftImageProvider, "generate", return_value=b"mock-image"):
+            response = _build_handoff_run(value)
+
+        # Deliverable-based status: the Draft and both visuals exist and every input is ok.
+        self.assertEqual(response["status"], "ok")
+        self.assertEqual(response["result"]["status"], "ok")
+        codes = {issue["code"] for issue in response["result"]["validation_issues"]}
+        self.assertIn("INPUT_LIMITATION_PRESENT", codes)  # the limitation stays visible for review
+        self.assertIn("재고·판매가는 가상 데이터(sample)입니다.", response["result"]["limitations"])
+
     def test_safe_logs_correlate_cache_and_http_serialization_timings(self):
         value = request()
         logs = io.StringIO()
