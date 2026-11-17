@@ -21,6 +21,7 @@ from ..domain.generator import RuleBasedConceptGenerator
 from ..domain.analysis import dimension_mismatches
 from ..domain.prompt_safety import serialize_untrusted_prompt_data
 from ..domain.prompt_registry import load_prompt, prompt_version_id, render_prompt
+from ..domain.trend_basis import DESIGN_ATTRIBUTE_NAMES
 
 
 ImageStatus = Literal["not_requested", "ready", "generated", "blocked", "failed"]
@@ -28,12 +29,8 @@ PROMPT_VERSION = prompt_version_id("concept_image")
 DEFAULT_IMAGE_MODEL = "gpt-image-2.5-sunburst"
 DEFAULT_IMAGE_DIR = Path("data/local/generated_images")
 IMAGE_DESIGNER_SYSTEM_PROMPT = load_prompt("concept_image", "system")
-_DESIGN_ATTRIBUTE_NAMES = {
-    "color", "colour", "color_group", "colour_group", "색상", "컬러",
-    "pattern", "print", "패턴", "프린트", "silhouette", "shape", "실루엣",
-    "material", "fabric", "소재", "원단", "fit", "핏", "디테일", "detail",
-    "decoration", "장식", "texture", "조직감", "length", "기장",
-}
+# Shared with the trend selection rule (domain/trend_basis.py): one set, not two lists.
+_DESIGN_ATTRIBUTE_NAMES = DESIGN_ATTRIBUTE_NAMES
 
 @dataclass(frozen=True)
 class ImageGenerationRequest:

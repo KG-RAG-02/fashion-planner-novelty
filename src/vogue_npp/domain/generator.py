@@ -22,6 +22,11 @@ from .concept import (
 from .context import AttributeSignal, ProductPlanningContext, TrendCandidate
 from .analysis import analyze_opportunities, dimension_mismatches
 from .styling import display_inventory_label
+from .trend_basis import (
+    build_trend_basis,
+    select_primary_trend,
+    usable_trend_candidates as _usable_trend_candidates,  # noqa: F401  re-exported for offline replay scripts
+)
 
 
 class ConceptGenerator(Protocol):
@@ -49,10 +54,17 @@ def _attribute_kind(signal: AttributeSignal) -> ClaimKind:
     return "to_validate"
 
 
-def _usable_trend_candidates(
+def _trend_attribute_sources(
     context: ProductPlanningContext,
+    primary: TrendCandidate | None,
 ) -> tuple[TrendCandidate, ...]:
-    """Return named, evidenced trends that match the normalized request."""
+    """Trends whose attributes feed the Draft: only the primary trend when there is one.
+
+    Without a usable trend the earlier behaviour stays: every candidate that
+    does not contradict the request.
+    """
+    if primary is not None:
+        return (primary,)
     if not (
         _input_usable(context, "trend_result")
         and _input_usable(context, "planning_request")
@@ -61,9 +73,7 @@ def _usable_trend_candidates(
     return tuple(
         candidate
         for candidate in context.trends.candidates
-        if candidate.name.strip()
-        and candidate.evidence_ids
-        and not dimension_mismatches(context.request, candidate)
+        if not dimension_mismatches(context.request, candidate)
     )
 
 
@@ -106,7 +116,10 @@ def _korean_object_particle(value: str) -> str:
     return "을"
 
 
-def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttribute, ...]:
+def _proposed_attributes(
+    context: ProductPlanningContext,
+    primary: TrendCandidate | None,
+) -> tuple[ProposedAttribute, ...]:
     attributes: list[ProposedAttribute] = []
     positions: dict[tuple[str, str], int] = {}
 
@@ -151,15 +164,7 @@ def _proposed_attributes(context: ProductPlanningContext) -> tuple[ProposedAttri
         )
 
     # Keep the planning order: trend evidence, request scope, then own-product context.
-    candidates = (
-        context.trends.candidates
-        if _input_usable(context, "trend_result")
-        and _input_usable(context, "planning_request")
-        else ()
-    )
-    for candidate in candidates:
-        if dimension_mismatches(context.request, candidate):
-            continue
+    for candidate in _trend_attribute_sources(context, primary):
         for signal in candidate.attributes:
             add(signal, trend_signal=True)
     if _input_usable(context, "planning_request"):
@@ -298,7 +303,10 @@ def _inventory_relationships(context: ProductPlanningContext) -> tuple[SourcedCl
     return tuple(relationships)
 
 
-def _product_definition(context: ProductPlanningContext) -> SourcedClaim:
+def _product_definition(
+    context: ProductPlanningContext,
+    primary: TrendCandidate | None,
+) -> SourcedClaim:
     request_usable = _input_usable(context, "planning_request")
     parts = [
         value
@@ -325,7 +333,8 @@ def _product_definition(context: ProductPlanningContext) -> SourcedClaim:
         and signal.name.strip()
         and signal.origin == "user_requested"
     ]
-    evidenced_trends = _usable_trend_candidates(context)
+    # The concept names one trend only: the primary trend (none without a usable trend).
+    evidenced_trends = (primary,) if primary is not None else ()
     fragments = [f"{prefix} 콘셉트 검토 초안"]
     if evidenced_trends:
         fragments.append(
@@ -447,7 +456,9 @@ def generate_concept_draft(
     future wire adapter emits a shared ``ProductConcept`` response.
     """
 
-    analysis = analyze_opportunities(context)
+    # One primary trend per Draft (VOGUE decision 2026-11-17); the other trends are not mixed in.
+    primary = select_primary_trend(context)
+    analysis = analyze_opportunities(context, primary_trend=primary)
     analysis_evidence_ids = tuple(
         dict.fromkeys(
             evidence_id
@@ -455,7 +466,7 @@ def generate_concept_draft(
             for evidence_id in finding.statement.evidence_ids
         )
     )
-    evidenced_trends = _usable_trend_candidates(context)
+    evidenced_trends = (primary,) if primary is not None else ()
     trend_names = tuple(dict.fromkeys(candidate.name for candidate in evidenced_trends))
     trend_summary = (
         "입력 트렌드명 "
@@ -477,19 +488,17 @@ def generate_concept_draft(
         if evidenced_trends
         else "요청 범위에 적용할 수 있는 입력 근거가 부족해 구체적인 기획 기회를 판단하지 않았습니다."
     )
-    proposed_attributes = _proposed_attributes(context)
+    proposed_attributes = _proposed_attributes(context, primary)
     profile_signal_keys = {
         (signal.name.strip().casefold(), str(signal.value))
         for signal in context.request.requested_attributes
         if signal.value is not None and _input_usable(context, "planning_request")
     }
-    if _input_usable(context, "trend_result") and _input_usable(context, "planning_request"):
-        profile_signal_keys.update(
-            (signal.name.strip().casefold(), str(signal.value))
-            for candidate in context.trends.candidates
-            if not dimension_mismatches(context.request, candidate)
-            for signal in candidate.attributes if signal.value is not None
-        )
+    profile_signal_keys.update(
+        (signal.name.strip().casefold(), str(signal.value))
+        for candidate in _trend_attribute_sources(context, primary)
+        for signal in candidate.attributes if signal.value is not None
+    )
     # Existing inventory facts are styling context; they must not silently
     # become specifications for the proposed new product.
     profile_attributes = tuple(
@@ -555,7 +564,7 @@ def generate_concept_draft(
             if context.request.target_customer and _input_usable(context, "planning_request")
             else SourcedClaim(value=None, kind="unknown")
         ),
-        product_definition=_product_definition(context),
+        product_definition=_product_definition(context, primary),
         product_profile=product_profile,
         attributes=proposed_attributes,
         opportunity_findings=analysis.findings,
@@ -566,6 +575,7 @@ def generate_concept_draft(
             for limitation in tuple(dict.fromkeys((*context.limitations, *analysis.limitations)))
         ),
         questions_for_validation=_validation_questions(context, analysis.questions),
+        trend_basis=build_trend_basis(context),
     )
     return draft, validate_concept_draft(context, draft)
 

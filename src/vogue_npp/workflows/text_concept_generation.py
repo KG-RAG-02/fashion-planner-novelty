@@ -31,6 +31,7 @@ from ..domain.prompt_budget import (
 )
 from ..domain.prompt_safety import serialize_untrusted_prompt_data
 from ..domain.prompt_registry import load_prompt, prompt_version_id, render_prompt
+from ..domain.trend_basis import TREND_SELECTION_RULE, build_trend_basis, select_primary_trend
 
 
 PROMPT_VERSION = prompt_version_id("text_planning")
@@ -95,24 +96,27 @@ def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
     trend_usable = _usable(context, "trend_result") and request_usable
     inventory_usable = _usable(context, "inventory_product_result")
     request = context.request
+    # The model sees only the primary trend chosen by P06's rule (the same trend the
+    # rule-based Draft uses); it does not choose among trends. None: no usable trend.
+    primary = select_primary_trend(context)
     trend_candidates = []
-    if trend_usable:
+    if primary is not None:
         trend_candidates = [{
-            "name": item.name,
-            "qualification": item.qualification,
-            "season": item.season,
-            "market": list(item.market),
-            "channel": list(item.channel),
-            "category": item.category,
-            "description": item.description,
-            "evidence_ids": list(item.evidence_ids),
-            "description_evidence_ids": list(item.description_evidence_ids),
+            "name": primary.name,
+            "qualification": primary.qualification,
+            "season": primary.season,
+            "market": list(primary.market),
+            "channel": list(primary.channel),
+            "category": primary.category,
+            "description": primary.description,
+            "evidence_ids": list(primary.evidence_ids),
+            "description_evidence_ids": list(primary.description_evidence_ids),
             "attributes": [
                 {"name": attr.name, "value": attr.value, "origin": attr.origin,
                  "evidence_ids": list(attr.evidence_ids)}
-                for attr in item.attributes
+                for attr in primary.attributes
             ],
-        } for item in context.trends.candidates]
+        }]
     products = []
     if inventory_usable:
         products = [{
@@ -151,6 +155,8 @@ def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
             ],
             "evidence_ids": list(request.result.evidence_ids),
         } if request_usable else None),
+        "primary_trend": ({"name": primary.name, "selection_rule": TREND_SELECTION_RULE}
+                          if primary is not None else None),
         "trend_candidates": trend_candidates,
         "trend_limitations": list(context.trends.result.limitations) if trend_usable else [],
         "inventory_products": products,
@@ -376,6 +382,8 @@ def parse_concept_output(
             *context.questions_for_validation,
             *text_list("questions_for_validation"),
         ))),
+        # The rule's record, never the model's: the output has no trend field to choose with.
+        trend_basis=build_trend_basis(context),
     )
     issues = validate_concept_draft(context, draft)
     if issues:

@@ -444,6 +444,8 @@ class ModelTextTests(unittest.TestCase):
 
 
 class GeneratorBudgetTests(unittest.TestCase):
+    # Only the primary trend reaches the LLM data (domain/trend_basis.py), so these fixtures exceed the budget with
+    # inventory products, limitation lines and request constraints instead of many trend candidates.
     def legacy_prompt(self, context):
         """build_planning_prompt as of d05e74e: serialize, collect IDs, render."""
         serialized = serialize_untrusted_prompt_data(prompt_data_of(context))
@@ -474,7 +476,7 @@ class GeneratorBudgetTests(unittest.TestCase):
         self.assertNotIn("prompt_reduction", disabled.generation_metadata)
 
     def test_over_the_budget_data_is_reduced_instead_of_collapsed(self):
-        context = make_context(trends=14, description="가" * 300, products=3, inventory_lines=CLIP_LINES[:50])
+        context = make_context(trends=14, description="가" * 300, products=3, inventory_lines=CLIP_LINES)
         data = prompt_data_of(context)
         self.assertGreater(pb.prompt_data_chars(data), PROMPT_DATA_MAX_CHARS)
         self.assertIn("data_preview", json.loads(serialize_untrusted_prompt_data(data)))
@@ -501,7 +503,7 @@ class GeneratorBudgetTests(unittest.TestCase):
         self.assertEqual(issues, ())
 
     def test_grouping_notes_reach_the_model_but_never_the_draft(self):
-        context = make_context(trends=25, description="가" * 300, products=1, inventory_lines=CLIP_LINES)
+        context = make_context(trends=25, description="가" * 300, products=30, inventory_lines=CLIP_LINES)
         grouped = f"{CLIP_LINES[0]} ({GROUPED_NOTE.format(count=89)})"
 
         def respond(shown):
@@ -517,7 +519,8 @@ class GeneratorBudgetTests(unittest.TestCase):
         self.assertIn("톤 확인", draft.questions_for_validation)
 
     def test_aliases_round_trip_through_generation(self):
-        context = make_context(trends=40, description="나" * 200, ids_per_trend=8, id_tag="0123456789abcdef01234567")
+        context = make_context(trends=40, description="나" * 200, ids_per_trend=8, id_tag="0123456789abcdef01234567",
+                               products=100)
         seen = {}
 
         def respond(shown):
@@ -539,7 +542,8 @@ class GeneratorBudgetTests(unittest.TestCase):
         self.assertFalse(any(item.startswith("E") and item[1:].isdigit() for item in draft.evidence_ids))
 
     def test_unknown_alias_is_rejected_by_the_claim_check(self):
-        context = make_context(trends=40, description="나" * 200, ids_per_trend=8, id_tag="0123456789abcdef01234567")
+        context = make_context(trends=40, description="나" * 200, ids_per_trend=8, id_tag="0123456789abcdef01234567",
+                               products=100)
         provider, generator, draft, issues = self.generate(context, lambda shown: answer(context, ["E9999"]))
         self.assertEqual(provider.calls, 1)
         self.assertEqual(generator.generation_metadata["status"], "fallback")
@@ -553,7 +557,10 @@ class GeneratorBudgetTests(unittest.TestCase):
                                      context, prompt.allowed_evidence_ids)
 
     def test_t5_trimming_is_named_in_the_draft(self):
-        context = make_context(trends=60, description="다" * 600, ids_per_trend=4, products=10)
+        # Request constraints are never reduced: they fill the data so that T5 drops 7 of the 10 products and
+        # still has to cut the primary trend's description (2,000 chars) to fit.
+        context = make_context(trends=60, description="다" * 2_000, ids_per_trend=4, products=10,
+                               constraints=["가" * 2_000] * 10 + ["가" * 1_360])
         provider, generator, draft, issues = self.generate(
             context, lambda shown: answer(context, [first_trend_id(shown)]))
         metadata = generator.generation_metadata
@@ -561,9 +568,9 @@ class GeneratorBudgetTests(unittest.TestCase):
         self.assertEqual(metadata["status"], "generated")
         self.assertEqual(reduction["steps"], ["T1", "T2", "T3", "T4", "T5"])
         self.assertLessEqual(reduction["chars_after"], PROMPT_DATA_MAX_CHARS)
-        self.assertEqual(reduction["trimmed"], {"inventory": 7, "descriptions": 60, "trends": 0})
+        self.assertEqual(reduction["trimmed"], {"inventory": 7, "descriptions": 1, "trends": 0})
         self.assertIn("텍스트 LLM 입력이 한도(24,000자)를 넘어 다음 입력은 LLM에 보내지 않았습니다: "
-                      "재고 상품 7개, 트렌드 설명 60개의 160자 이후 부분.", draft.limitations)
+                      "재고 상품 7개, 트렌드 설명 1개의 160자 이후 부분.", draft.limitations)
         self.assertEqual(draft.limitations[:len(context.limitations)], context.limitations)
 
     def test_input_over_budget_after_reduction_never_reaches_the_provider(self):

@@ -6,7 +6,7 @@ Runtime code loads prompts through `vogue_npp.domain.prompt_registry`. `manifest
 
 | Component | Current version | Stable prompt ID | Purpose |
 |---|---|---|---|
-| `text_planning` | `v7` | `new-product-planner-v7-current-inputs-only` | Opt-in evidence-aware text generation workflow used by the active HTTP `/runs` endpoint when enabled. |
+| `text_planning` | `v8` | `new-product-planner-v8-primary-trend` | Opt-in evidence-aware text generation workflow used by the active HTTP `/runs` endpoint when enabled. The data carries only the one primary trend P06 selects (`primary_trend`), and the model is told to plan around it without mixing in other trends. |
 | `concept_image` | `v2` | `product-concept-image-prompt-v2-designer` | Product and outfit image prompts derived from the same validated product profile. |
 
 Each version directory has a `system_template.md`, `user_template.md`, and generated `rendered_system.md`. Templates accept only named placeholders; untrusted request data is serialized and bounded before insertion.

@@ -67,6 +67,8 @@ Project_06(P06)은 P08이 전달한 사용자 요청, Trend 결과, Stock 결과
 - 처리 완료 후 같은 `request_id`를 다른 입력에 재사용하면 `409 REQUEST_ID_REUSED`를 반환합니다. 같은 입력의 동시 요청은 최초 저장된 응답으로 수렴합니다.
 - 유료 이미지 요청이 처리 중이거나 결과가 불확실하면 중복 호출을 막기 위해 `409 IMAGE_REQUEST_IN_PROGRESS_OR_OUTCOME_UNKNOWN`을 반환할 수 있습니다.
 
+기획 초안은 트렌드 하나를 기준으로 만듭니다. P06은 사용 가능한 트렌드 후보(이름·Evidence가 있고 요청 시즌·카테고리·시장·채널과 어긋나지 않는 후보) 중에서 Evidence가 연결된 디자인 속성(색상·패턴·디테일·소재·핏·실루엣·기장 등)이 가장 많은 후보를, 같으면 Evidence ID가 더 많은 후보를, 그래도 같으면 먼저 입력된 후보를 고릅니다(`src/vogue_npp/domain/trend_basis.py`). 규칙 기반 Draft의 콘셉트 문장·기회 문장·속성·상품 프로필과 텍스트 LLM 입력은 이 기준 트렌드만 사용하며, 다른 트렌드를 섞지 않습니다. 선택 결과는 `result.draft.trend_basis`(`source_style_id`, `name`, `selection_rule`=`most_evidence_linked_design_attributes/1`, `evidence_ids`, `design_attributes`, `candidates_considered`)에 남고, 사용할 수 있는 트렌드가 없으면 `null`입니다. LLM 경로에서도 이 값은 규칙이 정하며 모델이 바꾸지 않습니다.
+
 P06은 P07을 호출하지 않습니다. P08은 P06의 `product_profile`에서 P07 허용 필드를 구성해 review를 호출하고, review와 Draft를 통합합니다.
 
 ## 환경 변수와 데이터 연결
