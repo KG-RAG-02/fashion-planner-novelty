@@ -54,6 +54,8 @@ _REFERENCE_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*:[^\s,()]+")
 _NUMBER = re.compile(r"\d[\d,.]*")
 GROUPED_LINES_NOTE = "같은 형식의 항목 {count}건 더 있음: 참조 ID·수치만 다름"
 _GROUPED_LINES_NOTE_PATTERN = re.compile(r"같은 형식의 항목 \d+건 더 있음: 참조 ID·수치만 다름")
+# T2 appends the note in parentheses to a real upstream line: " (같은 형식의 항목 N건 …)".
+_GROUPED_LINES_NOTE_SUFFIX = re.compile(r"\s*\(" + _GROUPED_LINES_NOTE_PATTERN.pattern + r"\)")
 # Aliases are an uppercase prefix plus digits (E12, EV3); ASCII-only edges so a
 # Korean particle right after an alias ("E12의") still counts as a boundary.
 _ALIAS_TOKEN = re.compile(r"(?<![0-9A-Za-z_])[A-Z]+[0-9]+(?![0-9A-Za-z_])")
@@ -316,12 +318,30 @@ def _map_evidence_ids(value: object, convert: Callable[[str], str]) -> None:
             _map_evidence_ids(child, convert)
 
 
+def _alias_shaped_tokens(value: object, into: set[str]) -> set[str]:
+    """Every token of the data's text (keys and values, IDs included) that restore_model_text could rewrite."""
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if isinstance(key, str):
+                into.update(_ALIAS_TOKEN.findall(key))
+            _alias_shaped_tokens(child, into)
+    elif isinstance(value, list):
+        for child in value:
+            _alias_shaped_tokens(child, into)
+    elif isinstance(value, str):
+        into.update(_ALIAS_TOKEN.findall(value))
+    return into
+
+
 def alias_evidence_ids(data: dict[str, Any]) -> dict[str, str]:
     """T4: replace Evidence IDs by E1..En in first-appearance order; return alias -> real.
 
     Only values under evidence_id / evidence_ids / description_evidence_ids
-    change; free text is untouched. If a real ID already looks like an alias
-    (E12), the prefix becomes EV (EVV if EV12 exists too, and so on).
+    change; free text is untouched. restore_model_text later rewrites alias
+    tokens anywhere in the model's text, so no token already in the data may
+    look like an alias: if a real ID or any free text (a user query, a trend
+    description) holds E12, the prefix becomes EV (EVV if EV12 exists too, and
+    so on).
     """
     reals: dict[str, None] = {}
 
@@ -330,8 +350,9 @@ def alias_evidence_ids(data: dict[str, Any]) -> dict[str, str]:
         return real
 
     _map_evidence_ids(data, remember)
+    taken = _alias_shaped_tokens(data, set(reals))
     prefix = "E"
-    while any(re.fullmatch(re.escape(prefix) + r"\d+", real) for real in reals):
+    while any(re.fullmatch(re.escape(prefix) + r"\d+", token) for token in taken):
         prefix += "V"
     alias_of = {real: f"{prefix}{number}" for number, real in enumerate(reals, start=1)}
     _map_evidence_ids(data, alias_of.__getitem__)
@@ -356,7 +377,9 @@ def resolve_output_aliases(output: object, alias_to_real: Mapping[str, str]) -> 
 
 def _restore_text(text: str, alias_to_real: Mapping[str, str]) -> str:
     if _GROUPED_LINES_NOTE_PATTERN.search(text):
-        text = "\n".join(line for line in text.splitlines() if not _GROUPED_LINES_NOTE_PATTERN.search(line))
+        # Strip only the note: the line it was appended to is a real upstream line. Dropping the whole line
+        # could leave a single-value claim empty, and EMPTY_CLAIM_VALUE would discard the run's LLM result.
+        text = _GROUPED_LINES_NOTE_PATTERN.sub("", _GROUPED_LINES_NOTE_SUFFIX.sub("", text))
     if alias_to_real:
         text = _ALIAS_TOKEN.sub(lambda match: alias_to_real.get(match.group(0), match.group(0)), text)
     return text
@@ -365,9 +388,9 @@ def _restore_text(text: str, alias_to_real: Mapping[str, str]) -> str:
 def restore_model_text(output: object, alias_to_real: Mapping[str, str]) -> object:
     """Post-process model-written free text after a reduced prompt.
 
-    Alias tokens copied from the prompt become the real Evidence IDs, and lines
-    carrying the T2 grouping note are dropped: the note only describes the
-    prompt copy, while the Draft keeps the original lines through
+    Alias tokens copied from the prompt become the real Evidence IDs, and the
+    T2 grouping note is stripped wherever the model copied it: the note only
+    describes the prompt copy, while the Draft keeps the original lines through
     context.limitations. A list item left empty by that is removed.
     """
     if isinstance(output, dict):

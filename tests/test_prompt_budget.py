@@ -312,6 +312,17 @@ class LadderStepTests(unittest.TestCase):
         data["trend_candidates"][0]["evidence_ids"] += ["E3", "EV2"]
         self.assertTrue(all(alias.startswith("EVV") for alias in pb.alias_evidence_ids(data)))
 
+    def test_t4_prefix_avoids_alias_shaped_tokens_in_free_text(self):
+        # restore_model_text rewrites alias tokens anywhere in the model text, so a token the data already
+        # holds in free text (a user query, a trend description) must not become an alias either.
+        data = sample_data()
+        data["trend_candidates"][1]["description"] = "E2 라인 확장, 볼륨 소매"
+        aliases = pb.alias_evidence_ids(data)
+        self.assertTrue(all(alias.startswith("EV") and alias[2:].isdigit() for alias in aliases))
+        self.assertEqual(data["trend_candidates"][1]["description"], "E2 라인 확장, 볼륨 소매")
+        restored = pb.restore_model_text({"concept": {"value": "E2 라인 확장을 EV1 근거로 제안"}}, aliases)
+        self.assertEqual(restored["concept"]["value"], "E2 라인 확장을 " + aliases["EV1"] + " 근거로 제안")
+
     def test_t5_drops_least_linked_products_later_first_and_stops_when_it_fits(self):
         data = sample_data(products=6)
         trimmed = pb.trim_to_budget(data, lambda d: len(d["inventory_products"]) <= 4, linked=[2, 1, 1, 3, 1, 2])
@@ -407,13 +418,13 @@ class ReducePromptDataTests(unittest.TestCase):
 
 
 class ModelTextTests(unittest.TestCase):
-    def test_aliases_in_free_text_become_real_ids_and_grouping_notes_are_dropped(self):
+    def test_aliases_in_free_text_become_real_ids_and_grouping_notes_are_stripped(self):
         aliases = {"E1": "trend:1:0:a1", "E12": "trend:12:0:a1"}
         note = f"CLIP 줄 ({GROUPED_NOTE.format(count=9)})"
         output = {
             "request_id": "E1", "opportunity": {"value": "E1의 관찰과 [E12], E123 그리고 AE1", "kind": "E1",
                                                 "evidence_ids": ["E1"]},
-            "limitations": ["초안", note, f"첫 줄\n{note}"],
+            "limitations": ["초안", note, f"첫 줄\n{note}", GROUPED_NOTE.format(count=3)],
             "questions_for_validation": ["E12 확인", "줄바꿈\r\n유지"],
         }
         restored = pb.restore_model_text(output, aliases)
@@ -421,8 +432,15 @@ class ModelTextTests(unittest.TestCase):
         self.assertEqual(restored["opportunity"]["kind"], "E1")
         self.assertEqual(restored["opportunity"]["evidence_ids"], ["E1"])
         self.assertEqual(restored["request_id"], "E1")
-        self.assertEqual(restored["limitations"], ["초안", "첫 줄"])
+        # The note goes; the real upstream line it was appended to stays; a note-only item is removed.
+        self.assertEqual(restored["limitations"], ["초안", "CLIP 줄", "첫 줄\nCLIP 줄"])
         self.assertEqual(restored["questions_for_validation"], ["trend:12:0:a1 확인", "줄바꿈\r\n유지"])
+
+    def test_a_grouped_line_copied_into_a_single_value_keeps_its_text(self):
+        # Dropping the whole line here would leave the claim empty (EMPTY_CLAIM_VALUE) and discard the LLM result.
+        grouped = f"{CLIP_LINES[0]} ({GROUPED_NOTE.format(count=89)})"
+        restored = pb.restore_model_text({"risks": [{"value": grouped, "kind": "hypothesis", "evidence_ids": []}]}, {})
+        self.assertEqual(restored["risks"][0]["value"], CLIP_LINES[0])
 
 
 class GeneratorBudgetTests(unittest.TestCase):
