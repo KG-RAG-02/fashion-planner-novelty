@@ -15,7 +15,7 @@ from dataclasses import asdict
 from unittest.mock import patch
 
 from vogue_npp.domain.analysis import analyze_opportunities
-from vogue_npp.domain.concept import base_product_profile
+from vogue_npp.domain.concept import base_product_profile, validate_concept_draft
 from vogue_npp.domain.context import (
     AgentResult,
     AttributeSignal,
@@ -300,6 +300,75 @@ class RuleDraftTests(unittest.TestCase):
         self.assertIsNone(draft.trend_basis)
         self.assertNotIn("겨울 니트", draft.opportunity.value + draft.product_definition.value)
         self.assertEqual(draft.product_profile.details, ())
+
+
+def colour_of(draft):
+    claim = draft.product_profile.color
+    return claim.value, claim.kind, claim.evidence_ids
+
+
+class FirstEvidenceColourTests(unittest.TestCase):
+    """VOGUE decision 2026-11-17: a primary trend with 2+ colours passes its first evidence colour."""
+
+    def test_rule_profile_and_image_take_the_first_evidence_colour(self):
+        draft, issues = RuleBasedConceptGenerator().generate(context_of(*DRESS_TRENDS))
+        self.assertEqual(issues, ())
+        self.assertEqual(colour_of(draft), ("옐로우", "evidence_observation", ("syr:1",)))
+        self.assertEqual(_image_profile_from_draft(asdict(draft))["color"], "옐로우")
+
+    def test_a_colour_without_evidence_is_passed_over(self):
+        two_tone = trend("투톤", signal("color", "화이트"), signal("color", "블랙", "tt:1"),
+                         signal("detail", "포켓", "tt:2"), ids=("tt:0",), style="tt-s0")
+        draft, _ = RuleBasedConceptGenerator().generate(context_of(two_tone))
+        self.assertEqual(colour_of(draft), ("블랙", "evidence_observation", ("tt:1",)))
+
+    def test_material_and_silhouette_keep_the_one_value_rule(self):
+        mixed = trend("믹스 소재", signal("color", "네이비", "mx:1"), signal("color", "아이보리", "mx:2"),
+                      signal("material", "린넨", "mx:3"), signal("material", "코튼", "mx:4"),
+                      ids=("mx:0",), style="mx-s0")
+        profile = RuleBasedConceptGenerator().generate(context_of(mixed))[0].product_profile
+        self.assertEqual(profile.color.value, "네이비")
+        self.assertIsNone(profile.material.value)
+        self.assertIsNone(profile.silhouette.value)
+
+    def test_a_requested_colour_is_kept(self):
+        context = build_planning_context(PlanningInputs(
+            PlanningRequest(AgentResult("user-request", RID, SCHEMA, "ok"), original_query="블랙 드레스 기획",
+                            season="2027SS", category="드레스", field_origins={"season": "user", "category": "user"},
+                            requested_attributes=(AttributeSignal("color", "블랙", "user_requested", ()),)),
+            TrendResult(AgentResult("trend-analysis-agent", RID, SCHEMA, "ok",
+                                    evidence_ids=tuple(sorted(ids_of(SYRUP)))), candidates=(SYRUP,)),
+            InventoryProductResult(AgentResult("stock-agent", RID, SCHEMA, "no_results")),
+        ))
+        draft, _ = RuleBasedConceptGenerator().generate(context)
+        self.assertEqual(draft.product_profile.color.value, "블랙")
+        self.assertEqual(draft.product_profile.color.kind, "user_requested")
+
+    def test_the_model_path_applies_the_same_colour_rule(self):
+        context = context_of(*DRESS_TRENDS)
+        output = valid_output(context, ["syr:2"])
+        sky = {"value": "스카이블루", "kind": "evidence_observation", "evidence_ids": ["syr:2"]}
+        output["product_profile"]["color"] = sky
+        output["attributes"] = [{"name": "color", **sky}]
+        generator = PromptedConceptGenerator(provider=FakeProvider(output), enabled=True)
+        draft, _ = generator.generate(context)
+        self.assertEqual(generator.generation_metadata["status"], "generated")
+        self.assertEqual(colour_of(draft), ("옐로우", "evidence_observation", ("syr:1",)))
+        # The Draft stays consistent: the profile colour is one of its colour attributes.
+        self.assertIn(("color", "옐로우"), {(item.name, item.value) for item in draft.attributes})
+        self.assertEqual(validate_concept_draft(context, draft), ())
+        self.assertEqual(_image_profile_from_draft(asdict(draft))["color"], "옐로우")
+
+    def test_the_model_colour_stays_for_a_single_colour_trend(self):
+        context = context_of(COLOUR)
+        output = valid_output(context, ["col:1"])
+        cream = {"value": "크림", "kind": "proposal", "evidence_ids": []}
+        output["product_profile"]["color"] = cream
+        output["attributes"] = [{"name": "color", **cream}]
+        generator = PromptedConceptGenerator(provider=FakeProvider(output), enabled=True)
+        draft, _ = generator.generate(context)
+        self.assertEqual(generator.generation_metadata["status"], "generated")
+        self.assertEqual(colour_of(draft), ("크림", "proposal", ()))
 
 
 class TextPathTests(unittest.TestCase):

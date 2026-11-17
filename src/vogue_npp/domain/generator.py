@@ -207,9 +207,17 @@ def _profile_from_planning_attributes(
                    if item.name.strip().casefold() in {name.casefold() for name in names}
                    and isinstance(item.value, str) and item.value.strip()]
         distinct_values = {item.value.strip() for item in matches}
-        if len(distinct_values) != 1:
+        if len(distinct_values) == 1:
+            match = matches[0]
+        elif key == "color" and len(distinct_values) > 1:
+            # VOGUE decision 2026-11-17: a primary trend with several colours passes its first
+            # evidence-linked colour (input order). Material and silhouette stay unset when ambiguous.
+            match = next((item for item in matches
+                          if item.kind == "evidence_observation" and item.evidence_ids), None)
+            if match is None:
+                continue
+        else:
             continue
-        match = matches[0]
         if key == "gender" and match.value.strip() not in {"women", "men", "unisex", "unknown"}:
             continue
         result[key] = SourcedClaim(match.value.strip(), match.kind, match.evidence_ids)

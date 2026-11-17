@@ -495,6 +495,7 @@ class PromptedConceptGenerator:
             self.llm_empty_fields = _empty_poster_fields(draft)
             rule_draft, _ = fallback.generate(context)
             draft = _fill_empty_non_differentiation_fields(draft, rule_draft)
+            draft = _apply_first_evidence_colour(draft, rule_draft, context)
             trimmed = reduction.trimmed_limitation() if reduction is not None else None
             if trimmed is not None:
                 draft = replace(draft, limitations=tuple(dict.fromkeys((*draft.limitations, trimmed))))
@@ -531,6 +532,39 @@ def _empty_poster_fields(draft: ProductConceptDraft) -> tuple[str, ...]:
     if not draft.differentiation:
         empty.append("differentiation")
     return tuple(empty)
+
+
+_COLOUR_NAMES = frozenset({"color", "colour", "color_group", "colour_group", "색상", "컬러"})
+
+
+def _apply_first_evidence_colour(
+    draft: ProductConceptDraft,
+    rule_draft: ProductConceptDraft,
+    context: ProductPlanningContext,
+) -> ProductConceptDraft:
+    """Apply the colour rule on the model path too (VOGUE decision 2026-11-17).
+
+    When the primary trend has two or more evidence-linked colours and the request fixes none,
+    the profile colour is the rule's first evidence colour, whatever colour the model chose.
+    """
+    basis = rule_draft.trend_basis
+    if basis is None or base_product_profile(context).color.value is not None:
+        return draft
+    colours = {
+        item.value.strip() for item in basis.design_attributes
+        if item.name.strip().casefold() in _COLOUR_NAMES and isinstance(item.value, str) and item.value.strip()
+    }
+    rule_colour = rule_draft.product_profile.color
+    if len(colours) < 2 or rule_colour.value is None or draft.product_profile.color == rule_colour:
+        return draft
+    attributes = draft.attributes
+    # Keep the Draft consistent (validate_concept_draft: the profile colour is one of the colour attributes).
+    if not any(item.name.strip().casefold() in _COLOUR_NAMES and str(item.value).strip() == rule_colour.value
+               for item in attributes):
+        attributes = (*attributes, ProposedAttribute("color", rule_colour.value, rule_colour.kind,
+                                                     rule_colour.evidence_ids))
+    return replace(draft, attributes=attributes,
+                   product_profile=replace(draft.product_profile, color=rule_colour))
 
 
 def _fill_empty_non_differentiation_fields(
