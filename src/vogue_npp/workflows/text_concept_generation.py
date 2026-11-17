@@ -292,15 +292,29 @@ def parse_concept_output(
             raise ValueError("invalid product_profile.details")
         details.append(ProposedAttribute(name.strip(), detail_value, kind, tuple(dict.fromkeys(ids))))
     base_profile = base_product_profile(context)
-    # Request identity fields are deterministic: model output cannot rewrite them.
+    # The LLM must return concrete values for every P08-required profile field.
+    # Category and season remain exact echoes of normalized request identity.
+    required_profile_fields = ("category", "product_type", "gender", "season", "material")
+    for field_name in required_profile_fields:
+        claim = parsed_profile[field_name]
+        if claim.value is None or not claim.value.strip():
+            raise ValueError(f"empty required product profile field: {field_name}")
     if (parsed_profile["category"].value != base_profile.category.value
             or parsed_profile["season"].value != base_profile.season.value):
         raise ValueError("product profile request fields mismatch")
     parsed_profile["category"] = base_profile.category
     parsed_profile["season"] = base_profile.season
-    # Gender is a taxonomy field, not a creative design choice. Use only an
-    # explicit request attribute until an approved category mapping exists.
-    parsed_profile["gender"] = base_profile.gender
+    # Gender cannot be inferred from category. Keep an explicit request value;
+    # otherwise only the LLM's proposal sentinel is valid.
+    gender = parsed_profile["gender"]
+    if gender.value not in {"women", "men", "unisex", "unknown"}:
+        raise ValueError("invalid product profile gender")
+    if base_profile.gender.value is not None:
+        if gender.value != base_profile.gender.value:
+            raise ValueError("product profile request gender mismatch")
+        parsed_profile["gender"] = base_profile.gender
+    elif gender.value != "unknown" or gender.kind != "proposal":
+        raise ValueError("unrequested product profile gender must be unknown proposal")
     product_profile = ProductProfile(**parsed_profile, details=tuple(details))
     direct_user_values = {
         value for value in (
@@ -522,7 +536,7 @@ def _empty_poster_fields(draft: ProductConceptDraft) -> tuple[str, ...]:
     for name in ("opportunity", "product_definition"):
         if claim_empty(getattr(draft, name)):
             empty.append(name)
-    for name in ("product_type", "material", "silhouette", "color"):
+    for name in ("category", "product_type", "gender", "season", "material"):
         if claim_empty(getattr(draft.product_profile, name)):
             empty.append(f"product_profile.{name}")
     if not draft.product_profile.details:

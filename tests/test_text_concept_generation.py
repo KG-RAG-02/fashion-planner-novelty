@@ -54,10 +54,10 @@ def valid_output(request_id="text-plan-1", evidence_id="trend:E-1"):
         "product_definition": {"value": "올리브 색상 아우터 콘셉트 제안", "kind": "proposal", "evidence_ids": []},
         "product_profile": {
             "category": {"value": "outerwear", "kind": "user_requested", "evidence_ids": []},
-            "product_type": {"value": None, "kind": "unknown", "evidence_ids": []},
-            "gender": {"value": None, "kind": "unknown", "evidence_ids": []},
+            "product_type": {"value": "lightweight jacket", "kind": "proposal", "evidence_ids": []},
+            "gender": {"value": "unknown", "kind": "proposal", "evidence_ids": []},
             "season": {"value": "27SS", "kind": "user_requested", "evidence_ids": []},
-            "material": {"value": None, "kind": "unknown", "evidence_ids": []},
+            "material": {"value": "cotton blend", "kind": "proposal", "evidence_ids": []},
             "silhouette": {"value": "relaxed", "kind": "proposal", "evidence_ids": []},
             "color": {"value": "olive", "kind": "evidence_observation", "evidence_ids": [evidence_id]},
             "details": [],
@@ -126,7 +126,7 @@ class TextConceptGenerationTests(unittest.TestCase):
         self.assertEqual(draft.target_customer.kind, "unknown")
         self.assertEqual(draft.attributes[0].evidence_ids, ("trend:E-1",))
         self.assertEqual(draft.product_profile.color.value, "olive")
-        self.assertIsNone(draft.product_profile.gender.value)
+        self.assertEqual(draft.product_profile.gender.value, "unknown")
         self.assertFalse(hasattr(draft, "sales_market_result"))
         self.assertEqual(issues, ())
 
@@ -149,7 +149,7 @@ class TextConceptGenerationTests(unittest.TestCase):
         self.assertIn("opportunity", generator.generation_metadata["llm_empty_fields"])
         self.assertIn("product_profile.color", generator.generation_metadata["llm_empty_fields"])
         # The model-authored value remains authoritative when it is present.
-        self.assertEqual(draft.product_profile.product_type.value, None)
+        self.assertEqual(draft.product_profile.product_type.value, "lightweight jacket")
 
     def test_api_generation_boundary_accepts_injected_generator(self):
         from vogue_npp.prototype.server import _analyze_planning_inputs
@@ -199,11 +199,13 @@ class TextConceptGenerationTests(unittest.TestCase):
         output["product_profile"]["gender"] = {
             "value": "men", "kind": "proposal", "evidence_ids": [],
         }
-        draft, issues = PromptedConceptGenerator(
+        generator = PromptedConceptGenerator(
             provider=FakeStructuredProvider(output), enabled=True,
-        ).generate(make_context())
-        self.assertEqual(issues, ())
-        self.assertIsNone(draft.product_profile.gender.value)
+        )
+        draft, issues = generator.generate(make_context())
+        self.assertTrue(any(item.code == "TEXT_GENERATION_FALLBACK" for item in issues))
+        self.assertEqual(generator.generation_metadata["status"], "fallback")
+        self.assertEqual(draft.product_profile.gender.value, "unknown")
 
     def test_invalid_json_or_provider_error_uses_deterministic_fallback(self):
         for provider in (
