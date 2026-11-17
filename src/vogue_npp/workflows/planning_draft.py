@@ -14,6 +14,8 @@ from ..domain.context import (
     build_planning_context,
 )
 from ..domain.generator import ConceptGenerator, RuleBasedConceptGenerator
+from ..domain.outfit_companion import select_outfit_companion
+from ..domain.trend_basis import select_primary_trend
 
 
 def _is_recovered_category_lookup_warning(value: object) -> bool:
@@ -45,8 +47,13 @@ def _analyze_planning_inputs(
     payload: dict,
     *,
     concept_generator: ConceptGenerator | None = None,
+    include_outfit_companion: bool = False,
 ) -> dict:
-    """Build a draft from the planning request, trend, and inventory inputs."""
+    """Build a draft from the planning request, trend, and inventory inputs.
+
+    With ``include_outfit_companion`` the result also carries ``outfit_companion``: the stock item the
+    outfit image pairs with the new product (domain/outfit_companion.py), for the caller to pop.
+    """
     request_payload = payload.get("planning_request")
     trend_payload = payload.get("trend_result")
     inventory_payload = payload.get("inventory_product_result")
@@ -484,7 +491,7 @@ def _analyze_planning_inputs(
         limitation for limitation in context.limitations
         if not _is_recovered_category_lookup_warning(limitation)
     )
-    return {
+    result = {
         "schema_version": "1.0",
         # Ignore only an explicitly recovered category-lookup warning. All
         # other limitations plus incomplete inputs, conflicts, required-field
@@ -515,3 +522,6 @@ def _analyze_planning_inputs(
         "conflicts": [asdict(conflict) for conflict in context.conflicts],
         "questions_for_validation": list(context.questions_for_validation),
     }
+    if include_outfit_companion:
+        result["outfit_companion"] = select_outfit_companion(context, select_primary_trend(context))
+    return result

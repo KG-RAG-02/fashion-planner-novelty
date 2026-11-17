@@ -22,8 +22,12 @@ class OpenAIDraftImageProvider:
 
     Sequential by design (VOGUE decision 2026-11-17): the outfit call receives the generated product image as its
     reference input, so both visuals show the same garment. Both prompts carry the same product specification.
+    The outfit shows the new product worn with one existing stock item (VOGUE decision 2026-11-17,
+    domain/outfit_companion.py): its photograph is input image 2 when the stock result carried one, and its
+    stock attributes are described in the prompt either way.
     """
-    prompt_version = "p06-draft-visuals/3"
+    prompt_version = "p06-draft-visuals/4"
+    _ROLE_PHRASES = {"lower_body": " as the bottom", "upper_body": " as the top"}
 
     def __init__(self, api_key: str, model: str, timeout_seconds: int = 180):
         from .image_generation import OpenAIImageEditProvider, OpenAIImageProvider
@@ -32,7 +36,9 @@ class OpenAIDraftImageProvider:
         self.model = model
         self.timeout_seconds = timeout_seconds
 
-    def generate(self, kind: str, product: dict, request_id: str, reference_image: bytes | None = None) -> bytes:
+    def generate(self, kind: str, product: dict, request_id: str, reference_image: bytes | None = None,
+                 companion: dict | None = None) -> bytes:
+        """``companion``: {"specification": dict, "role": str | None, "image": bytes | None, "media_type": str}."""
         from ..domain.prompt_registry import load_prompt
         from .image_generation import ImageGenerationRequest, ImageProviderError
         if kind not in {"product", "outfit"}:
@@ -41,6 +47,8 @@ class OpenAIDraftImageProvider:
             # Without the product image the outfit could show a different garment; never generate it from text alone.
             raise ImageProviderError("OUTFIT_REFERENCE_UNAVAILABLE")
         specification = json.dumps(product, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        companion = companion if kind == "outfit" else None
+        companion_image = companion.get("image") if companion else None
         if kind == "product":
             instruction = (
                 "Create a standalone new fashion product, studio product photograph. "
@@ -48,7 +56,7 @@ class OpenAIDraftImageProvider:
                 "Use only its specified attributes; do not invent unspecified material, color, fit, or decoration. "
                 "Show every listed design detail clearly.\n"
             )
-        else:
+        elif companion is None:
             instruction = (
                 "Input image 1 is the product photograph of this new garment. Change only the presentation: show "
                 "this exact garment worn by a model in a clean studio fashion photograph. Keep the garment identical "
@@ -56,7 +64,28 @@ class OpenAIDraftImageProvider:
                 "and every design detail. Do not redesign, recolor, add, remove, or substitute any detail, and do not "
                 "add logos, text, or watermarks. The JSON product specification below describes the same garment.\n"
             )
+        else:
+            role = self._ROLE_PHRASES.get(companion.get("role") or "", "")
+            stock_item = ("the exact existing stock item shown in input image 2" if companion_image
+                          else "the existing stock item described in the STOCK ITEM JSON below")
+            instruction = (
+                "Input image 1 is the product photograph of this new garment."
+                + (" Input image 2 is the photograph of an existing stock item." if companion_image else "")
+                + f" Show one model in a clean studio fashion photograph wearing this exact new garment together "
+                f"with {stock_item}{role}, styled as one outfit. Keep the new garment identical to input image 1: "
+                "the same color, pattern, silhouette, length, material and texture, construction, and every design "
+                "detail. "
+                + ("Keep the stock item identical to input image 2 in the same way. " if companion_image
+                   else "Render the stock item with exactly the listed category, color, material and fit. ")
+                + "Do not redesign, recolor, add, remove, or substitute any detail of either item, do not hide either "
+                "item, and do not add logos, text, or watermarks. The JSON product specification below describes the "
+                "new garment.\n"
+            )
         prompt = instruction + "PRODUCT SPECIFICATION (identical for product and outfit views):\n" + specification
+        if companion is not None:
+            prompt += ("\nSTOCK ITEM (" + ("input image 2" if companion_image else "no photograph") + "):\n"
+                       + json.dumps(companion["specification"], sort_keys=True, ensure_ascii=False,
+                                    separators=(",", ":")))
         request = ImageGenerationRequest(
             request_id=f"{request_id}:{kind}", season=product.get("season"), category=product.get("category"),
             prompt=prompt, prompt_version=self.prompt_version,
@@ -65,7 +94,8 @@ class OpenAIDraftImageProvider:
         )
         if kind == "product":
             return self._provider.generate(request).image_bytes
-        return self._editor.edit(request, reference_image).image_bytes
+        extra_images = ((companion_image, companion["media_type"]),) if companion_image else ()
+        return self._editor.edit(request, reference_image, extra_images=extra_images).image_bytes
 
 
 class DraftArtifactStore:

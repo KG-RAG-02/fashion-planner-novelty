@@ -85,6 +85,8 @@ P06은 업무용 Trend·Stock 데이터베이스에 직접 접속하지 않습�
 
 P06은 이미지 두 장을 순차로 만듭니다. 먼저 상품 프로필(디테일 포함)로 product 이미지를 생성하고, 저장된 product 이미지를 참조 입력으로 OpenAI Images Edit API(`/v1/images/edits`)에 넣어 같은 옷의 착장(outfit) 이미지를 만듭니다. product 이미지가 없으면 outfit은 텍스트만으로 만들지 않고 `skipped`(`OUTFIT_REFERENCE_UNAVAILABLE`)로 둡니다. outfit visual의 `reference_image_sha256`은 참조한 product 이미지의 SHA-256입니다. 동일 상품 프로필의 hash를 각 visual에 기록하지만 이미지 픽셀의 디자인 일치는 자동 검증하지 않습니다. P08은 공유 artifact 저장소에서 `artifact://p06/images/<sha256>.<ext>`를 해석하고, 소유권·크기·SHA-256을 검증해야 합니다. 이미지 바이트 자체는 Draft JSON에 넣지 않습니다.
 
+착장 이미지는 신상품을 재고 상품 하나와 함께 입힌 모습입니다(2026-11-17 결정). 재고 상품은 규칙으로 하나를 고릅니다: 기준 트렌드(`draft.trend_basis`)의 재고 결과(stock `trend_results`에서 같은 style_id) 중 순위가 가장 높은 상품이며, P08 기획서의 재고 카드와 같은 상품입니다. 다만 코디 역할 규칙(outfit-role-pairing-v1)상 신상품과 같은 역할(예: 상의와 상의)이면 건너뜁니다(`src/vogue_npp/domain/outfit_companion.py`). 그 상품의 사진(stock 결과 `products[].image.data`)이 있으면 edit 호출의 두 번째 입력 이미지로 넣고, 카테고리·색상·소재·핏은 프롬프트의 `STOCK ITEM` JSON으로 함께 전달합니다. 사진이 없으면 JSON 설명만 쓰고, 고를 재고가 없으면 신상품만 입힌 착장을 만듭니다. 어떤 재고를 썼는지는 `outfit_image.companion`(`stock_product_id`, `category`, `trend_style_id`, `rank`, `role`, `selection_rule`, `image_sha256`, `image_media_type`)에 남고, 재고를 쓰지 않았으면 `null`입니다. 프롬프트 버전은 `p06-draft-visuals/4`입니다.
+
 완료 응답은 동일 request ID와 동일 요청 본문에 재사용됩니다. 같은 입력의 동시 요청도 최초 저장된 응답으로 수렴합니다. 다른 본문에 같은 request ID를 사용하면 `409 REQUEST_ID_REUSED`입니다. 유료 이미지 요청의 처리 결과가 불확실하면 중복 과금을 막기 위해 같은 ID의 재호출을 거부할 수 있습니다. 실패 이미지를 의도적으로 다시 요청하려면 새 request ID를 사용하세요. 자동 재시도는 하지 않습니다.
 
 ## 실행

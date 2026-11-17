@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import hmac
 import hashlib
@@ -68,16 +69,49 @@ def _safe_image_error_code(exc: Exception) -> str:
 
 
 def _timed_image_call(provider, kind: str, profile: dict, request_id: str,
-                      reference_image: bytes | None = None) -> tuple[bytes | None, int, str | None]:
+                      reference_image: bytes | None = None,
+                      companion: dict | None = None) -> tuple[bytes | None, int, str | None]:
     started = time.perf_counter()
     try:
         if reference_image is None:
             image_bytes = provider.generate(kind, profile, request_id)
-        else:
+        elif companion is None:
             image_bytes = provider.generate(kind, profile, request_id, reference_image=reference_image)
+        else:
+            image_bytes = provider.generate(kind, profile, request_id, reference_image=reference_image,
+                                            companion=companion)
         return image_bytes, round((time.perf_counter() - started) * 1000), None
     except Exception as exc:
         return None, round((time.perf_counter() - started) * 1000), _safe_image_error_code(exc)
+
+
+_COMPANION_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp"}
+_COMPANION_IMAGE_MAX_BYTES = 4 * 1024 * 1024
+
+
+def _companion_photo(stock_payload: object, companion) -> tuple[bytes | None, str | None]:
+    """The stock item's photo from the received stock result: its own entry first, else the first entry of the
+    same style_id that still carries one (P08's p06-input/2 view sends each product's photo once)."""
+    products = stock_payload.get("products") if isinstance(stock_payload, dict) else None
+    if companion is None or not isinstance(products, list):
+        return None, None
+    own = [products[companion.product_index]] if 0 <= companion.product_index < len(products) else []
+    same_style = [item for item in products
+                  if isinstance(item, dict) and companion.style_id and item.get("style_id") == companion.style_id]
+    for item in (*own, *same_style):
+        image = item.get("image") if isinstance(item, dict) else None
+        if not isinstance(image, dict) or not isinstance(image.get("data"), str):
+            continue
+        media_type = image.get("media_type")
+        if media_type not in _COMPANION_IMAGE_TYPES or image.get("encoding", "base64") != "base64":
+            continue
+        try:
+            data = base64.b64decode(image["data"], validate=True)
+        except (ValueError, TypeError):
+            continue
+        if data and len(data) <= _COMPANION_IMAGE_MAX_BYTES:
+            return data, media_type
+    return None, None
 
 
 def _safe_completion_log(request_id: str, status: str, issues: list[dict], visuals: dict, timings: dict) -> None:
@@ -151,7 +185,9 @@ def _build_handoff_run(payload: object) -> dict:
 
     analysis_input = {"request_id": request_id, **normalized.normalized_inputs}
     analysis_started = time.perf_counter()
-    result = _analyze_planning_inputs(analysis_input, concept_generator=_build_concept_generator())
+    result = _analyze_planning_inputs(analysis_input, concept_generator=_build_concept_generator(),
+                                      include_outfit_companion=True)
+    companion = result.pop("outfit_companion", None)
     timings["planning_draft_analysis"] = round((time.perf_counter() - analysis_started) * 1000)
     source_limitations = tuple(result["limitations"])
     # Keep exact received upstream bytes and schema versions beside the internal normalized model.
@@ -210,10 +246,12 @@ def _build_handoff_run(payload: object) -> dict:
                     raise
                 image_started = time.perf_counter()
                 try:
-                    def call_image(kind: str, reference_image: bytes | None = None) -> tuple[bytes | None, str | None]:
+                    def call_image(kind: str, reference_image: bytes | None = None,
+                                   companion_input: dict | None = None) -> tuple[bytes | None, str | None]:
                         call_started = time.perf_counter()
                         future = IMAGE_EXECUTOR.submit(
                             _timed_image_call, provider, kind, image_profile, request_id, reference_image,
+                            companion_input,
                         )
                         try:
                             image_bytes, image_timings[kind], error_code = future.result(timeout=timeout_seconds + 10)
@@ -246,9 +284,23 @@ def _build_handoff_run(payload: object) -> dict:
                     product_bytes, product_error = call_image("product")
                     record_visual("product", product_bytes, product_error)
                     if visuals["product"]["status"] == "generated":
-                        outfit_bytes, outfit_error = call_image("outfit", product_bytes)
+                        # The outfit pairs the new product with one stock item (VOGUE decision 2026-11-17).
+                        companion_image, companion_media_type = _companion_photo(
+                            normalized.source_inputs.get("inventory_product_result"), companion)
+                        companion_input = None if companion is None else {
+                            "specification": companion.specification(), "role": companion.role,
+                            "image": companion_image, "media_type": companion_media_type,
+                        }
+                        outfit_bytes, outfit_error = call_image("outfit", product_bytes, companion_input)
                         record_visual("outfit", outfit_bytes, outfit_error)
                         visuals["outfit"]["reference_image_sha256"] = visuals["product"]["artifact"]["sha256"]
+                        visuals["outfit"]["companion"] = None if companion is None else {
+                            "stock_product_id": companion.style_id, "category": companion.category,
+                            "trend_style_id": companion.trend_style_id, "rank": companion.rank,
+                            "role": companion.role, "selection_rule": companion.selection_rule,
+                            "image_sha256": hashlib.sha256(companion_image).hexdigest() if companion_image else None,
+                            "image_media_type": companion_media_type,
+                        }
                     else:
                         visuals["outfit"] = {"status": "skipped", "artifact": None, "provider_calls": 0,
                                              "model": image_model, "prompt_version": provider.prompt_version,

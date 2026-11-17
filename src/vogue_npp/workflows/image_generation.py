@@ -475,10 +475,11 @@ class OpenAIImageProvider:
 
 @dataclass
 class OpenAIImageEditProvider:
-    """OpenAI Images Edit API adapter: one new image from a prompt plus one reference image.
+    """OpenAI Images Edit API adapter: one new image from a prompt plus reference images.
 
-    The reference travels as a base64 data URL in the JSON body (``images[].image_url``). ``input_fidelity`` is
-    not sent: the API reference says to omit it for the gpt-image-2 family, which processes image inputs at high
+    Each reference travels as a base64 data URL in the JSON body (``images[].image_url``), in order: the main
+    reference first (input image 1), then ``extra_images`` (input image 2, ...). ``input_fidelity`` is not sent:
+    the API reference says to omit it for the gpt-image-2 family, which processes image inputs at high
     fidelity. Never logs credentials or response bodies.
     """
 
@@ -489,17 +490,20 @@ class OpenAIImageEditProvider:
     provider_name: str = "OpenAI Images Edit API"
 
     def edit(self, request: ImageGenerationRequest, reference_image: bytes, *,
-             mime_type: str = "image/png") -> GeneratedImage:
+             mime_type: str = "image/png",
+             extra_images: tuple[tuple[bytes, str], ...] = ()) -> GeneratedImage:
         if not self.api_key.strip():
             raise ImageProviderError("IMAGE_API_KEY_MISSING")
-        if not reference_image:
-            raise ImageProviderError("IMAGE_API_REFERENCE_MISSING")
-        if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
-            raise ImageProviderError("IMAGE_API_REFERENCE_FORMAT_UNSUPPORTED")
-        data_url = f"data:{mime_type};base64," + base64.b64encode(reference_image).decode("ascii")
+        images = []
+        for data, media_type in ((reference_image, mime_type), *extra_images):
+            if not data:
+                raise ImageProviderError("IMAGE_API_REFERENCE_MISSING")
+            if media_type not in {"image/png", "image/jpeg", "image/webp"}:
+                raise ImageProviderError("IMAGE_API_REFERENCE_FORMAT_UNSUPPORTED")
+            images.append({"image_url": f"data:{media_type};base64," + base64.b64encode(data).decode("ascii")})
         payload = _post_images_api(self.endpoint, self.api_key, {
             "model": self.model,
-            "images": [{"image_url": data_url}],
+            "images": images,
             "prompt": _full_image_prompt(request),
             "n": 1,
         }, self.timeout_seconds)
