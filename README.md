@@ -81,7 +81,7 @@ P06은 업무용 Trend·Stock 데이터베이스에 직접 접속하지 않습�
 
 실제 이미지 생성은 `VOGUE_DRAFT_IMAGE_PROVIDER=openai`와 이미지 API 키가 함께 설정된 경우에만 실행됩니다. provider를 지정하지 않으면 두 visual이 `skipped`로 반환됩니다. 지원하지 않는 provider 이름은 `IMAGE_PROVIDER_UNSUPPORTED` 오류로 나타납니다. 실제 생성 또는 artifact 저장에 실패하면 해당 visual은 `failed`가 되고 전체 결과는 `partial`입니다.
 
-P06은 이미지 두 장을 최대 2개 동시 작업으로 생성합니다. 동일 상품 프로필의 hash를 각 visual에 기록하지만 이미지 픽셀의 디자인 일치는 자동 검증하지 않습니다. P08은 공유 artifact 저장소에서 `artifact://p06/images/<sha256>.<ext>`를 해석하고, 소유권·크기·SHA-256을 검증해야 합니다. 이미지 바이트 자체는 Draft JSON에 넣지 않습니다.
+P06은 이미지 두 장을 순차로 만듭니다. 먼저 상품 프로필(디테일 포함)로 product 이미지를 생성하고, 저장된 product 이미지를 참조 입력으로 OpenAI Images Edit API(`/v1/images/edits`)에 넣어 같은 옷의 착장(outfit) 이미지를 만듭니다. product 이미지가 없으면 outfit은 텍스트만으로 만들지 않고 `skipped`(`OUTFIT_REFERENCE_UNAVAILABLE`)로 둡니다. outfit visual의 `reference_image_sha256`은 참조한 product 이미지의 SHA-256입니다. 동일 상품 프로필의 hash를 각 visual에 기록하지만 이미지 픽셀의 디자인 일치는 자동 검증하지 않습니다. P08은 공유 artifact 저장소에서 `artifact://p06/images/<sha256>.<ext>`를 해석하고, 소유권·크기·SHA-256을 검증해야 합니다. 이미지 바이트 자체는 Draft JSON에 넣지 않습니다.
 
 완료 응답은 동일 request ID와 동일 요청 본문에 재사용됩니다. 같은 입력의 동시 요청도 최초 저장된 응답으로 수렴합니다. 다른 본문에 같은 request ID를 사용하면 `409 REQUEST_ID_REUSED`입니다. 유료 이미지 요청의 처리 결과가 불확실하면 중복 과금을 막기 위해 같은 ID의 재호출을 거부할 수 있습니다. 실패 이미지를 의도적으로 다시 요청하려면 새 request ID를 사용하세요. 자동 재시도는 하지 않습니다.
 
