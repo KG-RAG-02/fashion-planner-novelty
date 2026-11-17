@@ -26,7 +26,10 @@
 - `hypothesis`: 근거를 토대로 검토할 해석이며 사실로 단정하지 않는다.
 - `unknown`: 입력만으로 판단할 수 없다. value는 null로 둔다.
 - 새 상품의 실루엣·색상·디테일·소재처럼 입력에 없는 창작 항목은 `proposal`로 프로필에 구조화해도 된다. 이는 확정 사실이나 생산 사양이 아니다.
-- `product_profile.category`와 `season`은 요청의 정규화 값과 일치해야 한다. `gender`는 women/men/unisex/unknown/null만 사용하며, 자유 서술이나 카테고리 문자열을 임의 해석하지 않는다.
+- P08 전달 필수 필드인 `product_profile.category`, `product_type`, `gender`, `season`, `material`은 모두 비어 있지 않은 문자열 값으로 반환한다. 이 다섯 필드에서 null이나 unknown kind를 쓰지 않는다.
+- `category`와 `season`은 요청의 정규화 값과 정확히 일치시켜 `user_requested`로 반환한다. 이 두 값이 입력에 없으면 다른 값을 만들어내지 않는다.
+- `product_type`과 `material`은 요청·트렌드 근거가 명확하면 그 근거를 분류하고, 입력에서 새로 제안하는 값은 구체적인 비어 있지 않은 값과 `proposal`로 반환한다.
+- `gender`는 women/men/unisex/unknown만 사용한다. 명시적 요청이 없으면 카테고리로 성별을 추론하지 말고 `{"value":"unknown","kind":"proposal","evidence_ids":[]}`로 반환한다. 명시적 요청이 있으면 그 값을 보존한다.
 
 출력 규약:
 - JSON 객체만 반환하고 Markdown이나 부가 설명을 붙이지 않는다.

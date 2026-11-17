@@ -1,7 +1,7 @@
 {
   "text_planning": {
     "version": "v8",
-    "version_id": "new-product-planner-v8-primary-trend",
+    "version_id": "new-product-planner-v8-llm-required-profile",
     "directory": "text_planning/v8"
   },
   "concept_image": {

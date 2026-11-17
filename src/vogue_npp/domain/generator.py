@@ -7,6 +7,7 @@ market demand, rank products, or make feasibility decisions.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Protocol
 
 from .concept import (
@@ -229,6 +230,32 @@ def _profile_from_planning_attributes(
     )
     return ProductProfile(category=profile.category, season=profile.season,
                           **result, details=tuple(details))
+
+
+def _complete_product_profile_with_proposals(profile: ProductProfile) -> ProductProfile:
+    """Fill missing P07-facing profile fields with deterministic review proposals.
+
+    Gender uses the explicit "unknown" enum sentinel; it does not infer a
+    demographic from category or other product attributes.
+    """
+    category = (profile.category.value or "").strip().casefold()
+    if any(term in category for term in ("블라우스", "blouse")):
+        defaults = {"product_type": "블라우스", "material": "코튼 혼방",
+                    "silhouette": "레귤러 핏", "color": "오프화이트"}
+    elif any(term in category for term in ("아우터", "outerwear", "재킷", "자켓", "jacket")):
+        defaults = {"product_type": "가벼운 아우터", "material": "나일론 혼방",
+                    "silhouette": "레귤러 핏", "color": "뉴트럴 톤"}
+    else:
+        defaults = {"product_type": "기본형 상품", "material": "혼방 소재",
+                    "silhouette": "레귤러 핏", "color": "뉴트럴 톤"}
+
+    defaults["gender"] = "unknown"
+    updates = {}
+    for field_name, value in defaults.items():
+        claim = getattr(profile, field_name)
+        if claim.value is None or not str(claim.value).strip():
+            updates[field_name] = SourcedClaim(value=value, kind="proposal")
+    return replace(profile, **updates) if updates else profile
 
 
 def _inventory_relationships(context: ProductPlanningContext) -> tuple[SourcedClaim, ...]:
@@ -513,7 +540,9 @@ def generate_concept_draft(
         item for item in proposed_attributes
         if (item.name.strip().casefold(), str(item.value)) in profile_signal_keys
     )
-    product_profile = _profile_from_planning_attributes(base_product_profile(context), profile_attributes)
+    product_profile = _complete_product_profile_with_proposals(
+        _profile_from_planning_attributes(base_product_profile(context), profile_attributes)
+    )
     draft = ProductConceptDraft(
         request_id=context.request_id,
         season=context.request.season if _input_usable(context, "planning_request") else None,

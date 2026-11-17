@@ -31,13 +31,21 @@ _CLAIM_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+_REQUIRED_PROFILE_CLAIM_SCHEMA: dict[str, Any] = {
+    **_CLAIM_SCHEMA,
+    "properties": {
+        **_CLAIM_SCHEMA["properties"],
+        "value": {"type": "string", "minLength": 1},
+    },
+}
+
 _PRODUCT_PROFILE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        name: _CLAIM_SCHEMA for name in (
+        **{name: _REQUIRED_PROFILE_CLAIM_SCHEMA for name in (
             "category", "product_type", "gender", "season", "material",
-            "silhouette", "color",
-        )
+        )},
+        **{name: _CLAIM_SCHEMA for name in ("silhouette", "color")},
     } | {"details": {
         "type": "array",
         "items": {
