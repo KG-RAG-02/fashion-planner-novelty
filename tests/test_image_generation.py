@@ -303,5 +303,73 @@ class ImageGenerationWorkflowTests(unittest.TestCase):
         self.assertNotIn("secret-test-key", repr(OpenAIImageProvider(api_key="secret-test-key")))
         self.assertEqual(open_url.call_count, 1)
 
+
+def _edit_request():
+    from vogue_npp.workflows.image_generation import ImageGenerationRequest
+    return ImageGenerationRequest(
+        request_id="req-1:outfit", season="2026FW", category="재킷", prompt="brief", prompt_version="v",
+        prompt_sha256="0" * 64, evidence_ids=(), proposal_fields=(), limitations=(), conflicts=(),
+        system_prompt="system",
+    )
+
+
+class ImageEditAdapterTests(unittest.TestCase):
+    def test_edit_adapter_sends_the_reference_as_a_data_url_without_network(self) -> None:
+        from vogue_npp.workflows.image_generation import OpenAIImageEditProvider
+        captured = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return json.dumps({"data": [{"b64_json": base64.b64encode(b"edited").decode("ascii")}]}).encode()
+
+        def open_request(http_request, timeout):
+            captured.update(url=http_request.full_url, body=json.loads(http_request.data), timeout=timeout,
+                            auth=http_request.get_header("Authorization"))
+            return FakeResponse()
+
+        with patch("urllib.request.urlopen", side_effect=open_request):
+            generated = OpenAIImageEditProvider(api_key="secret-test-key", timeout_seconds=42).edit(
+                _edit_request(), b"reference-png")
+        self.assertEqual(generated.image_bytes, b"edited")
+        self.assertEqual(captured["url"], "https://api.openai.com/v1/images/edits")
+        self.assertEqual(captured["body"]["images"], [
+            {"image_url": "data:image/png;base64," + base64.b64encode(b"reference-png").decode("ascii")}])
+        self.assertEqual((captured["body"]["model"], captured["body"]["n"]), ("gpt-image-2.5-sunburst", 1))
+        self.assertNotIn("input_fidelity", captured["body"])  # omitted for the gpt-image-2 family per the API reference
+        self.assertEqual(captured["body"]["prompt"],
+                         "SYSTEM INSTRUCTIONS (follow throughout):\nsystem\n\nUSER DESIGN BRIEF:\nbrief")
+        self.assertEqual((captured["timeout"], captured["auth"]), (42, "Bearer secret-test-key"))
+        self.assertNotIn("secret-test-key", repr(OpenAIImageEditProvider(api_key="secret-test-key")))
+
+    def test_edit_adapter_maps_failures_to_safe_codes(self) -> None:
+        import urllib.error
+        from vogue_npp.workflows.image_generation import ImageProviderError, OpenAIImageEditProvider
+        error = urllib.error.HTTPError("https://api.openai.com/v1/images/edits", 400, "bad request", {}, None)
+        with patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(ImageProviderError) as raised:
+                OpenAIImageEditProvider(api_key="k").edit(_edit_request(), b"png")
+        self.assertEqual(raised.exception.code, "IMAGE_API_HTTP_400")
+        with patch("urllib.request.urlopen") as open_url:
+            with self.assertRaises(ImageProviderError) as missing:
+                OpenAIImageEditProvider(api_key="k").edit(_edit_request(), b"")
+        self.assertEqual(missing.exception.code, "IMAGE_API_REFERENCE_MISSING")
+        self.assertFalse(open_url.called)
+
+    def test_draft_outfit_is_never_generated_without_the_product_reference(self) -> None:
+        from vogue_npp.workflows.draft_artifacts import OpenAIDraftImageProvider
+        from vogue_npp.workflows.image_generation import ImageProviderError
+        with patch("urllib.request.urlopen") as open_url:
+            with self.assertRaises(ImageProviderError) as raised:
+                OpenAIDraftImageProvider("k", "gpt-image-2.5-sunburst").generate("outfit", {"category": "재킷"}, "req-1")
+        self.assertEqual(raised.exception.code, "OUTFIT_REFERENCE_UNAVAILABLE")
+        self.assertFalse(open_url.called)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -66,12 +66,18 @@ def _requested_values(request: PlanningRequest) -> dict[str, set[str]]:
     return values
 
 
-def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysis:
+def analyze_opportunities(
+    context: ProductPlanningContext,
+    primary_trend: TrendCandidate | None = None,
+) -> OpportunityAnalysis:
     """Compare trend and own-catalog evidence without inferring a market gap.
 
     Only evidence-backed values on dimension-compatible inputs are compared.
     Missing catalog attributes are not treated as absent products because the
     shared contract has not defined query coverage or catalog completeness.
+    With ``primary_trend`` (one of ``context.trends.candidates``) only that
+    trend yields trend findings, value questions and comparisons; the notes on
+    excluded, mismatched or unnamed candidates stay as without it.
     """
 
     findings: list[OpportunityFinding] = []
@@ -124,6 +130,8 @@ def analyze_opportunities(context: ProductPlanningContext) -> OpportunityAnalysi
         if not candidate.name.strip() or not candidate.evidence_ids:
             questions.append("이름 또는 Evidence가 부족한 트렌드 후보는 비교에서 제외했습니다.")
             continue
+        if primary_trend is not None and candidate is not primary_trend:
+            continue  # the Draft is planned around the primary trend only
         eligible_candidates.append(candidate)
         for attribute in _evidence_attributes(candidate.attributes):
             trend_findings.append(

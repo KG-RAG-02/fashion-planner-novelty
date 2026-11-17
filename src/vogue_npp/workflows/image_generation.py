@@ -21,6 +21,7 @@ from ..domain.generator import RuleBasedConceptGenerator
 from ..domain.analysis import dimension_mismatches
 from ..domain.prompt_safety import serialize_untrusted_prompt_data
 from ..domain.prompt_registry import load_prompt, prompt_version_id, render_prompt
+from ..domain.trend_basis import DESIGN_ATTRIBUTE_NAMES
 
 
 ImageStatus = Literal["not_requested", "ready", "generated", "blocked", "failed"]
@@ -28,12 +29,8 @@ PROMPT_VERSION = prompt_version_id("concept_image")
 DEFAULT_IMAGE_MODEL = "gpt-image-2.5-sunburst"
 DEFAULT_IMAGE_DIR = Path("data/local/generated_images")
 IMAGE_DESIGNER_SYSTEM_PROMPT = load_prompt("concept_image", "system")
-_DESIGN_ATTRIBUTE_NAMES = {
-    "color", "colour", "color_group", "colour_group", "색상", "컬러",
-    "pattern", "print", "패턴", "프린트", "silhouette", "shape", "실루엣",
-    "material", "fabric", "소재", "원단", "fit", "핏", "디테일", "detail",
-    "decoration", "장식", "texture", "조직감", "length", "기장",
-}
+# Shared with the trend selection rule (domain/trend_basis.py): one set, not two lists.
+_DESIGN_ATTRIBUTE_NAMES = DESIGN_ATTRIBUTE_NAMES
 
 @dataclass(frozen=True)
 class ImageGenerationRequest:
@@ -413,6 +410,49 @@ class ImageProviderError(RuntimeError):
         self.code = code
 
 
+def _full_image_prompt(request: ImageGenerationRequest) -> str:
+    return (
+        "SYSTEM INSTRUCTIONS (follow throughout):\n"
+        + request.system_prompt
+        + "\n\nUSER DESIGN BRIEF:\n"
+        + request.prompt
+    )
+
+
+def _post_images_api(endpoint: str, api_key: str, body: dict, timeout_seconds: int) -> dict:
+    """POST one JSON body to an OpenAI Images endpoint; failures become safe codes without bodies or secrets."""
+    http_request = urllib.request.Request(
+        endpoint, data=json.dumps(body, ensure_ascii=False).encode("utf-8"), method="POST",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(http_request, timeout=timeout_seconds) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise ImageProviderError(f"IMAGE_API_HTTP_{exc.code}") from None
+    except urllib.error.URLError as exc:
+        reason = exc.reason
+        if isinstance(reason, TimeoutError):
+            raise ImageProviderError("IMAGE_API_TIMEOUT") from None
+        if isinstance(reason, OSError) and getattr(reason, "errno", None) in {-2, 8}:
+            raise ImageProviderError("IMAGE_API_DNS_FAILURE") from None
+        if isinstance(reason, ssl.SSLError):
+            raise ImageProviderError("IMAGE_API_TLS_FAILURE") from None
+        raise ImageProviderError("IMAGE_API_UNAVAILABLE") from None
+    except TimeoutError:
+        raise ImageProviderError("IMAGE_API_TIMEOUT") from None
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ImageProviderError("IMAGE_API_INVALID_RESPONSE") from None
+
+
+def _first_image_bytes(payload: dict) -> bytes:
+    try:
+        encoded = payload["data"][0]["b64_json"]
+        return base64.b64decode(encoded, validate=True)
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise ImageProviderError("IMAGE_API_IMAGE_MISSING") from None
+
+
 @dataclass
 class OpenAIImageProvider:
     """Minimal OpenAI Images API adapter; never logs credentials or response bodies."""
@@ -426,38 +466,46 @@ class OpenAIImageProvider:
     def generate(self, request: ImageGenerationRequest) -> GeneratedImage:
         if not self.api_key.strip():
             raise ImageProviderError("IMAGE_API_KEY_MISSING")
-        full_prompt = (
-            "SYSTEM INSTRUCTIONS (follow throughout):\n"
-            + request.system_prompt
-            + "\n\nUSER DESIGN BRIEF:\n"
-            + request.prompt
-        )
-        body = json.dumps({"model": self.model, "prompt": full_prompt, "n": 1}, ensure_ascii=False).encode("utf-8")
-        http_request = urllib.request.Request(
-            self.endpoint, data=body, method="POST",
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-        )
-        try:
-            with urllib.request.urlopen(http_request, timeout=self.timeout_seconds) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raise ImageProviderError(f"IMAGE_API_HTTP_{exc.code}") from None
-        except urllib.error.URLError as exc:
-            reason = exc.reason
-            if isinstance(reason, TimeoutError):
-                raise ImageProviderError("IMAGE_API_TIMEOUT") from None
-            if isinstance(reason, OSError) and getattr(reason, "errno", None) in {-2, 8}:
-                raise ImageProviderError("IMAGE_API_DNS_FAILURE") from None
-            if isinstance(reason, ssl.SSLError):
-                raise ImageProviderError("IMAGE_API_TLS_FAILURE") from None
-            raise ImageProviderError("IMAGE_API_UNAVAILABLE") from None
-        except TimeoutError:
-            raise ImageProviderError("IMAGE_API_TIMEOUT") from None
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            raise ImageProviderError("IMAGE_API_INVALID_RESPONSE") from None
-        try:
-            encoded = payload["data"][0]["b64_json"]
-            image_bytes = base64.b64decode(encoded, validate=True)
-        except (KeyError, IndexError, TypeError, ValueError):
-            raise ImageProviderError("IMAGE_API_IMAGE_MISSING") from None
-        return GeneratedImage(image_bytes=image_bytes, mime_type="image/png", provider=self.provider_name, model=self.model)
+        payload = _post_images_api(self.endpoint, self.api_key,
+                                   {"model": self.model, "prompt": _full_image_prompt(request), "n": 1},
+                                   self.timeout_seconds)
+        return GeneratedImage(image_bytes=_first_image_bytes(payload), mime_type="image/png",
+                              provider=self.provider_name, model=self.model)
+
+
+@dataclass
+class OpenAIImageEditProvider:
+    """OpenAI Images Edit API adapter: one new image from a prompt plus reference images.
+
+    Each reference travels as a base64 data URL in the JSON body (``images[].image_url``), in order: the main
+    reference first (input image 1), then ``extra_images`` (input image 2, ...). ``input_fidelity`` is not sent:
+    the API reference says to omit it for the gpt-image-2 family, which processes image inputs at high
+    fidelity. Never logs credentials or response bodies.
+    """
+
+    api_key: str = field(repr=False)
+    model: str = DEFAULT_IMAGE_MODEL
+    timeout_seconds: int = 180
+    endpoint: str = "https://api.openai.com/v1/images/edits"
+    provider_name: str = "OpenAI Images Edit API"
+
+    def edit(self, request: ImageGenerationRequest, reference_image: bytes, *,
+             mime_type: str = "image/png",
+             extra_images: tuple[tuple[bytes, str], ...] = ()) -> GeneratedImage:
+        if not self.api_key.strip():
+            raise ImageProviderError("IMAGE_API_KEY_MISSING")
+        images = []
+        for data, media_type in ((reference_image, mime_type), *extra_images):
+            if not data:
+                raise ImageProviderError("IMAGE_API_REFERENCE_MISSING")
+            if media_type not in {"image/png", "image/jpeg", "image/webp"}:
+                raise ImageProviderError("IMAGE_API_REFERENCE_FORMAT_UNSUPPORTED")
+            images.append({"image_url": f"data:{media_type};base64," + base64.b64encode(data).decode("ascii")})
+        payload = _post_images_api(self.endpoint, self.api_key, {
+            "model": self.model,
+            "images": images,
+            "prompt": _full_image_prompt(request),
+            "n": 1,
+        }, self.timeout_seconds)
+        return GeneratedImage(image_bytes=_first_image_bytes(payload), mime_type="image/png",
+                              provider=self.provider_name, model=self.model)

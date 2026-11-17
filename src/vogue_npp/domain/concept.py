@@ -129,6 +129,33 @@ def base_product_profile(context: ProductPlanningContext) -> ProductProfile:
 
 
 @dataclass(frozen=True)
+class TrendBasisAttribute:
+    """One evidence-linked design attribute of the trend a Draft is based on."""
+
+    name: str
+    value: str | int | float | bool | None
+    evidence_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class TrendBasis:
+    """The one trend a Draft is planned around, chosen by P06's selection rule.
+
+    Serialized as ``draft.trend_basis``. ``design_attributes`` are the
+    attributes the rule counted (first key) and ``evidence_ids`` the IDs it
+    counted (second key), so the selection can be re-checked from the record.
+    ``candidates_considered`` is the number of usable candidates it chose from.
+    """
+
+    source_style_id: str | None
+    name: str
+    selection_rule: str
+    evidence_ids: tuple[str, ...] = ()
+    design_attributes: tuple[TrendBasisAttribute, ...] = ()
+    candidates_considered: int = 0
+
+
+@dataclass(frozen=True)
 class ProductConceptDraft:
     """Internal candidate shape for human review before wire serialization."""
 
@@ -153,6 +180,8 @@ class ProductConceptDraft:
     differentiation: tuple[SourcedClaim, ...] = ()
     risks: tuple[SourcedClaim, ...] = ()
     questions_for_validation: tuple[str, ...] = ()
+    # None when the inputs hold no usable trend; the Draft then uses no trend.
+    trend_basis: TrendBasis | None = None
 
 
 @dataclass(frozen=True)

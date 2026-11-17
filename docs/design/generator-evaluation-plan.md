@@ -68,6 +68,7 @@
 | 잘못된 구조화 모델 응답 | JSON 오류, 중복 key, 추가 필드, 다른 request ID, 미등록 Evidence ID | 모델 결과를 폐기하고 규칙 기반 초안 fallback과 `TEXT_GENERATION_FALLBACK` 검증 이슈를 반환 |
 | Project_07 opaque payload | 합의되지 않은 세부 필드가 포함된 판매·시장 handoff | 모델 프롬프트에는 상태만 전달; 원본 전체 payload는 결과에 보존하고 모델이 해석·재집계하지 않음 |
 | 모델 미연결/비활성 | 승인된 텍스트 제공자 없음 또는 기능 비활성 | 규칙 기반 기준선 사용; 외부 텍스트 모델 호출 없음 |
+| 입력 데이터 한도 초과 | 직렬화한 기획 입력이 24,000자를 넘음 | T1–T5 결정적 축약 뒤 호출하고 `generation_metadata.prompt_reduction`에 기록; 축약 후에도 넘으면 호출 없이 규칙 기반 fallback(`TEXT_INPUT_OVER_BUDGET`) |
 
 ## 기존 결정적 초안 시나리오의 활용
 
@@ -88,4 +89,4 @@
 
 모델이 응답에 적은 출처나 Evidence ID 자체는 근거로 인정하지 않습니다. 각 출력 claim의 ID는 입력 Evidence allowlist와 대조하고, 근거가 실제 주장을 지지하는지 평가합니다. 모델 호출 전 자료 전송 권한을 확인하며, API key 및 민감한 원문은 로그나 Git에 남기지 않습니다.
 
-현재 manifest의 구조화 프롬프트 버전은 `new-product-planner-v7-current-inputs-only`입니다. active `/runs` 경로는 `VOGUE_TEXT_GENERATION_ENABLED=true`일 때만 이 text generator를 선택하고, 기본값에서는 규칙 기반 generator를 사용합니다. 응답의 `generation_metadata`에는 engine/status/prompt version/model 식별자가 포함되며 프롬프트나 모델 원문은 포함되지 않습니다. 실행 기록을 별도 저장하지 않습니다. 합성 mock 테스트는 파싱·요청 격리·Evidence allowlist·fallback을 검증합니다. 별도 OpenAI Responses API 어댑터는 도구를 비활성화하고 `store=false`를 지정합니다. provider 실패나 구조화 응답 검증 실패 시 HTTP 경로도 규칙 기반 초안으로 fallback합니다. 실 API 호출 1회의 성공은 프롬프트 품질이나 프롬프트 인젝션 저항성을 입증하지 않으며, 계속적인 합성 평가와 MD 검토가 필요합니다.
+현재 manifest의 구조화 프롬프트 버전은 `new-product-planner-v8-primary-trend`입니다. 입력 데이터의 트렌드는 P06이 규칙으로 고른 기준 트렌드 하나뿐이며(`primary_trend`, `trend_candidates`), 모델은 트렌드를 고르지 않습니다. active `/runs` 경로는 `VOGUE_TEXT_GENERATION_ENABLED=true`일 때만 이 text generator를 선택하고, 기본값에서는 규칙 기반 generator를 사용합니다. 응답의 `generation_metadata`에는 engine/status/prompt version/model 식별자가 포함되며 프롬프트나 모델 원문은 포함되지 않습니다. 실행 기록을 별도 저장하지 않습니다. 합성 mock 테스트는 파싱·요청 격리·Evidence allowlist·fallback을 검증합니다. 별도 OpenAI Responses API 어댑터는 도구를 비활성화하고 `store=false`를 지정합니다. provider 실패나 구조화 응답 검증 실패 시 HTTP 경로도 규칙 기반 초안으로 fallback합니다. 실 API 호출 1회의 성공은 프롬프트 품질이나 프롬프트 인젝션 저항성을 입증하지 않으며, 계속적인 합성 평가와 MD 검토가 필요합니다.

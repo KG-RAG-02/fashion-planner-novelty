@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import hmac
 import hashlib
@@ -67,12 +68,50 @@ def _safe_image_error_code(exc: Exception) -> str:
     return "IMAGE_GENERATION_FAILED"
 
 
-def _timed_image_call(provider, kind: str, profile: dict, request_id: str) -> tuple[bytes | None, int, str | None]:
+def _timed_image_call(provider, kind: str, profile: dict, request_id: str,
+                      reference_image: bytes | None = None,
+                      companion: dict | None = None) -> tuple[bytes | None, int, str | None]:
     started = time.perf_counter()
     try:
-        return provider.generate(kind, profile, request_id), round((time.perf_counter() - started) * 1000), None
+        if reference_image is None:
+            image_bytes = provider.generate(kind, profile, request_id)
+        elif companion is None:
+            image_bytes = provider.generate(kind, profile, request_id, reference_image=reference_image)
+        else:
+            image_bytes = provider.generate(kind, profile, request_id, reference_image=reference_image,
+                                            companion=companion)
+        return image_bytes, round((time.perf_counter() - started) * 1000), None
     except Exception as exc:
         return None, round((time.perf_counter() - started) * 1000), _safe_image_error_code(exc)
+
+
+_COMPANION_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp"}
+_COMPANION_IMAGE_MAX_BYTES = 4 * 1024 * 1024
+
+
+def _companion_photo(stock_payload: object, companion) -> tuple[bytes | None, str | None]:
+    """The stock item's photo from the received stock result: its own entry first, else the first entry of the
+    same style_id that still carries one (P08's p06-input/2 view sends each product's photo once)."""
+    products = stock_payload.get("products") if isinstance(stock_payload, dict) else None
+    if companion is None or not isinstance(products, list):
+        return None, None
+    own = [products[companion.product_index]] if 0 <= companion.product_index < len(products) else []
+    same_style = [item for item in products
+                  if isinstance(item, dict) and companion.style_id and item.get("style_id") == companion.style_id]
+    for item in (*own, *same_style):
+        image = item.get("image") if isinstance(item, dict) else None
+        if not isinstance(image, dict) or not isinstance(image.get("data"), str):
+            continue
+        media_type = image.get("media_type")
+        if media_type not in _COMPANION_IMAGE_TYPES or image.get("encoding", "base64") != "base64":
+            continue
+        try:
+            data = base64.b64decode(image["data"], validate=True)
+        except (ValueError, TypeError):
+            continue
+        if data and len(data) <= _COMPANION_IMAGE_MAX_BYTES:
+            return data, media_type
+    return None, None
 
 
 def _safe_completion_log(request_id: str, status: str, issues: list[dict], visuals: dict, timings: dict) -> None:
@@ -109,14 +148,18 @@ def _image_profile_from_draft(draft: dict) -> dict[str, object]:
         and claim["value"].strip()
     }
     details = profile.get("details")
-    if isinstance(details, list):
-        image_profile["details"] = [
+    # The analyzed Draft is built with dataclasses.asdict, which keeps ProductProfile.details a tuple; only the
+    # later JSON round trip turns it into a list. Accept both so details always reach the image specification.
+    if isinstance(details, (list, tuple)):
+        usable_details = [
             item["value"] for item in details
             if isinstance(item, dict)
             and item.get("kind") in allowed_kinds
             and isinstance(item.get("value"), str)
             and item["value"].strip()
         ]
+        if usable_details:  # no empty key: a profile without usable details keeps its previous specification
+            image_profile["details"] = usable_details
     return image_profile
 
 
@@ -142,7 +185,9 @@ def _build_handoff_run(payload: object) -> dict:
 
     analysis_input = {"request_id": request_id, **normalized.normalized_inputs}
     analysis_started = time.perf_counter()
-    result = _analyze_planning_inputs(analysis_input, concept_generator=_build_concept_generator())
+    result = _analyze_planning_inputs(analysis_input, concept_generator=_build_concept_generator(),
+                                      include_outfit_companion=True)
+    companion = result.pop("outfit_companion", None)
     timings["planning_draft_analysis"] = round((time.perf_counter() - analysis_started) * 1000)
     source_limitations = tuple(result["limitations"])
     # Keep exact received upstream bytes and schema versions beside the internal normalized model.
@@ -201,33 +246,27 @@ def _build_handoff_run(payload: object) -> dict:
                     raise
                 image_started = time.perf_counter()
                 try:
-                    futures = {}
-                    image_call_started = {}
-                    for kind in ("product", "outfit"):
-                        image_call_started[kind] = time.perf_counter()
-                        futures[kind] = IMAGE_EXECUTOR.submit(
-                            _timed_image_call, provider, kind, image_profile, request_id,
+                    def call_image(kind: str, reference_image: bytes | None = None,
+                                   companion_input: dict | None = None) -> tuple[bytes | None, str | None]:
+                        call_started = time.perf_counter()
+                        future = IMAGE_EXECUTOR.submit(
+                            _timed_image_call, provider, kind, image_profile, request_id, reference_image,
+                            companion_input,
                         )
-                    image_deadline = image_started + timeout_seconds + 10
-                    generated: dict[str, tuple[bytes | None, str | None]] = {}
-                    for kind, future in futures.items():
                         try:
-                            remaining = max(0.0, image_deadline - time.perf_counter())
-                            image_bytes, elapsed_ms, error_code = future.result(timeout=remaining)
+                            image_bytes, image_timings[kind], error_code = future.result(timeout=timeout_seconds + 10)
                         except FutureTimeoutError:
-                            image_bytes = None
-                            elapsed_ms = round((time.perf_counter() - image_call_started[kind]) * 1000)
-                            error_code = "IMAGE_API_TIMEOUT"
                             future.cancel()
-                        image_timings[kind] = elapsed_ms
-                        generated[kind] = (image_bytes, error_code)
-                    timings["image_generation_wall"] = round((time.perf_counter() - image_started) * 1000)
-                    for kind, (image_bytes, error_code) in generated.items():
+                            image_bytes, error_code = None, "IMAGE_API_TIMEOUT"
+                            image_timings[kind] = round((time.perf_counter() - call_started) * 1000)
+                        return image_bytes, error_code
+
+                    def record_visual(kind: str, image_bytes: bytes | None, error_code: str | None) -> None:
                         if image_bytes is None:
                             visuals[kind] = {"status": "failed", "artifact": None, "provider_calls": 1,
                                              "model": image_model, "prompt_version": provider.prompt_version,
                                              "reason": error_code or "IMAGE_GENERATION_FAILED", "error_code": error_code or "IMAGE_GENERATION_FAILED"}
-                            continue
+                            return
                         artifact_started = time.perf_counter()
                         try:
                             artifact = store.put(request_id, kind, image_bytes)
@@ -238,6 +277,36 @@ def _build_handoff_run(payload: object) -> dict:
                                              "model": image_model, "prompt_version": provider.prompt_version,
                                              "reason": "ARTIFACT_PERSISTENCE_FAILED", "error_code": "ARTIFACT_PERSISTENCE_FAILED"}
                         artifact_timings[kind] = round((time.perf_counter() - artifact_started) * 1000)
+
+                    # Sequential, never concurrent (VOGUE decision 2026-11-17): the outfit edits the generated product
+                    # image, so it starts only after that image exists and is stored. Without it the outfit could show
+                    # a different garment, so it is skipped instead of being generated from text alone.
+                    product_bytes, product_error = call_image("product")
+                    record_visual("product", product_bytes, product_error)
+                    if visuals["product"]["status"] == "generated":
+                        # The outfit pairs the new product with one stock item (VOGUE decision 2026-11-17).
+                        companion_image, companion_media_type = _companion_photo(
+                            normalized.source_inputs.get("inventory_product_result"), companion)
+                        companion_input = None if companion is None else {
+                            "specification": companion.specification(), "role": companion.role,
+                            "image": companion_image, "media_type": companion_media_type,
+                        }
+                        outfit_bytes, outfit_error = call_image("outfit", product_bytes, companion_input)
+                        record_visual("outfit", outfit_bytes, outfit_error)
+                        visuals["outfit"]["reference_image_sha256"] = visuals["product"]["artifact"]["sha256"]
+                        visuals["outfit"]["companion"] = None if companion is None else {
+                            "stock_product_id": companion.style_id, "category": companion.category,
+                            "trend_style_id": companion.trend_style_id, "rank": companion.rank,
+                            "role": companion.role, "selection_rule": companion.selection_rule,
+                            "image_sha256": hashlib.sha256(companion_image).hexdigest() if companion_image else None,
+                            "image_media_type": companion_media_type,
+                        }
+                    else:
+                        visuals["outfit"] = {"status": "skipped", "artifact": None, "provider_calls": 0,
+                                             "model": image_model, "prompt_version": provider.prompt_version,
+                                             "reason": "the product image was not generated, so its outfit edit was not requested",
+                                             "error_code": "OUTFIT_REFERENCE_UNAVAILABLE"}
+                    timings["image_generation_wall"] = round((time.perf_counter() - image_started) * 1000)
                 finally:
                     IMAGE_REQUEST_SLOT.release()
         else:
@@ -264,11 +333,16 @@ def _build_handoff_run(payload: object) -> dict:
     visual_limitations = []
     if any(item["status"] != "generated" for item in visuals.values()):
         visual_limitations.append("product/outfit 시각자료를 모두 실제 이미지 provider로 생성하지 못했습니다.")
-    visual_limitations.append("product와 outfit 이미지의 사양은 같은 상품 프로필에서 생성되지만, 이미지 간 시각적 동일성은 자동 보증되지 않습니다.")
+    visual_limitations.append("outfit 이미지는 먼저 생성한 product 이미지를 참조 입력으로 편집해 같은 상품을 착장으로 표현하지만, 두 이미지의 시각적 동일성은 자동 검증하지 않습니다.")
     draft["limitations"] = list(dict.fromkeys([*draft["limitations"], *visual_limitations]))
     result["limitations"] = draft["limitations"]
-    if any(item["status"] != "generated" for item in visuals.values()):
-        result["status"] = "partial"
+    # Deliverable-based status (VOGUE integration decision 2026-11-13, reapplied 2026-11-16): ok when the Draft and
+    # both visuals were produced and every upstream input was ok. Analysis gaps and upstream limitation notes stay
+    # in limitations and validation_issues; they no longer turn a complete deliverable into partial.
+    if result["status"] in {"ok", "partial"}:
+        produced = all(item["status"] == "generated" for item in visuals.values())
+        upstream_ok = all(status == "ok" for status in result["input_statuses"].values())
+        result["status"] = "ok" if produced and upstream_ok else "partial"
 
     issues = result["validation_issues"]
     for input_name, input_status in result["input_statuses"].items():
@@ -304,7 +378,8 @@ def _build_handoff_run(payload: object) -> dict:
     result["generation_metadata"]["image_provider"] = provider_name or "none"
     result["generation_metadata"]["image_model"] = image_model if provider_name == "openai" else None
     result["generation_metadata"]["image_specification_sha256"] = image_specification_sha256
-    result["generation_metadata"]["image_call_policy"] = "two concurrent calls; no automatic retry"
+    result["generation_metadata"]["image_call_policy"] = (
+        "sequential: product generation, then outfit edit of the product image; no automatic retry")
     result["generation_metadata"]["timings_ms"] = {
         **timings,
         "product_image_generation": image_timings.get("product", 0),

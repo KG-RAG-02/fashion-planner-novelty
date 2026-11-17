@@ -6,6 +6,7 @@ use fake providers; disabled or failed model calls retain the rule baseline.
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 from dataclasses import dataclass, field, replace
@@ -22,14 +23,24 @@ from ..domain.concept import (
 )
 from ..domain.context import ProductPlanningContext
 from ..domain.generator import ConceptGenerator, RuleBasedConceptGenerator
+from ..domain.prompt_budget import (
+    PromptReduction,
+    reduce_prompt_data,
+    resolve_output_aliases,
+    restore_model_text,
+)
 from ..domain.prompt_safety import serialize_untrusted_prompt_data
 from ..domain.prompt_registry import load_prompt, prompt_version_id, render_prompt
+from ..domain.trend_basis import TREND_SELECTION_RULE, build_trend_basis, select_primary_trend
 
 
 PROMPT_VERSION = prompt_version_id("text_planning")
 MAX_MODEL_OUTPUT_CHARS = 64_000
 CLAIM_KINDS = {"user_requested", "evidence_observation", "proposal", "hypothesis", "unknown"}
 PLANNING_SYSTEM_PROMPT = load_prompt("text_planning", "system")
+INPUT_OVER_BUDGET_LIMITATION = (
+    "텍스트 LLM 입력 데이터가 축약 후에도 한도를 넘어 LLM을 호출하지 않고 결정적 규칙 기반 초안을 사용했습니다."
+)
 
 
 class ConceptOutputValidationError(ValueError):
@@ -55,10 +66,28 @@ class PlanningPrompt:
     system_prompt: str
     user_prompt: str
     allowed_evidence_ids: frozenset[str]
+    # Set only when the data exceeded PROMPT_DATA_MAX_CHARS and was reduced.
+    reduction: PromptReduction | None = None
+    # True when even the reduced data does not fit. user_prompt is then empty:
+    # sending it would mean sending the serializer's ID-less preview.
+    over_budget: bool = False
 
 
 def _usable(context: ProductPlanningContext, slot: str) -> bool:
     return context.input_statuses.get(slot) in {"ok", "partial"}
+
+
+def _decode_bounded(serialized_data: str) -> object:
+    try:
+        return json.loads(serialized_data)
+    except json.JSONDecodeError:
+        return {}
+
+
+def _is_preview_collapse(bounded_prompt_data: object) -> bool:
+    """True for the serializer's over-budget form, a string preview without the data."""
+    return (isinstance(bounded_prompt_data, dict) and bounded_prompt_data.get("truncated") is True
+            and "data_preview" in bounded_prompt_data)
 
 
 def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
@@ -67,24 +96,27 @@ def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
     trend_usable = _usable(context, "trend_result") and request_usable
     inventory_usable = _usable(context, "inventory_product_result")
     request = context.request
+    # The model sees only the primary trend chosen by P06's rule (the same trend the
+    # rule-based Draft uses); it does not choose among trends. None: no usable trend.
+    primary = select_primary_trend(context)
     trend_candidates = []
-    if trend_usable:
+    if primary is not None:
         trend_candidates = [{
-            "name": item.name,
-            "qualification": item.qualification,
-            "season": item.season,
-            "market": list(item.market),
-            "channel": list(item.channel),
-            "category": item.category,
-            "description": item.description,
-            "evidence_ids": list(item.evidence_ids),
-            "description_evidence_ids": list(item.description_evidence_ids),
+            "name": primary.name,
+            "qualification": primary.qualification,
+            "season": primary.season,
+            "market": list(primary.market),
+            "channel": list(primary.channel),
+            "category": primary.category,
+            "description": primary.description,
+            "evidence_ids": list(primary.evidence_ids),
+            "description_evidence_ids": list(primary.description_evidence_ids),
             "attributes": [
                 {"name": attr.name, "value": attr.value, "origin": attr.origin,
                  "evidence_ids": list(attr.evidence_ids)}
-                for attr in item.attributes
+                for attr in primary.attributes
             ],
-        } for item in context.trends.candidates]
+        }]
     products = []
     if inventory_usable:
         products = [{
@@ -123,6 +155,8 @@ def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
             ],
             "evidence_ids": list(request.result.evidence_ids),
         } if request_usable else None),
+        "primary_trend": ({"name": primary.name, "selection_rule": TREND_SELECTION_RULE}
+                          if primary is not None else None),
         "trend_candidates": trend_candidates,
         "trend_limitations": list(context.trends.result.limitations) if trend_usable else [],
         "inventory_products": products,
@@ -133,10 +167,19 @@ def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
         "questions_for_validation": list(context.questions_for_validation),
     }
     serialized_data = serialize_untrusted_prompt_data(prompt_data)
-    try:
-        bounded_prompt_data = json.loads(serialized_data)
-    except json.JSONDecodeError:
-        bounded_prompt_data = {}
+    bounded_prompt_data = _decode_bounded(serialized_data)
+    reduction = None
+    if _is_preview_collapse(bounded_prompt_data):
+        # The preview has no Evidence IDs, so every citation would be rejected
+        # after a paid call. Reduce the data deterministically instead; data
+        # under the budget never reaches this branch and stays byte-identical.
+        reduction = reduce_prompt_data(prompt_data, request_season=request.season if request_usable else None)
+        if reduction.fits:
+            serialized_data = serialize_untrusted_prompt_data(reduction.data)
+            bounded_prompt_data = _decode_bounded(serialized_data)
+        if not reduction.fits or _is_preview_collapse(bounded_prompt_data):
+            return PlanningPrompt(PROMPT_VERSION, PLANNING_SYSTEM_PROMPT, "", frozenset(),
+                                  reduction=reduction, over_budget=True)
 
     evidence_ids: set[str] = set()
 
@@ -155,10 +198,14 @@ def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
                 collect_ids(child)
 
     collect_ids(bounded_prompt_data)
+    allowed_ids = frozenset(evidence_ids)
+    if reduction is not None:
+        # Allowed IDs are what the model was shown, mapped back to real IDs.
+        allowed_ids = frozenset(reduction.alias_to_real.get(item, item) for item in evidence_ids)
     user_prompt = render_prompt(
         "text_planning", "user", {"UNTRUSTED_PLANNING_INPUT_JSON": serialized_data},
     )
-    return PlanningPrompt(PROMPT_VERSION, PLANNING_SYSTEM_PROMPT, user_prompt, frozenset(evidence_ids))
+    return PlanningPrompt(PROMPT_VERSION, PLANNING_SYSTEM_PROMPT, user_prompt, allowed_ids, reduction=reduction)
 
 
 def _parse_json_object(value: str | dict[str, Any]) -> dict[str, Any]:
@@ -335,6 +382,8 @@ def parse_concept_output(
             *context.questions_for_validation,
             *text_list("questions_for_validation"),
         ))),
+        # The rule's record, never the model's: the output has no trend field to choose with.
+        trend_basis=build_trend_basis(context),
     )
     issues = validate_concept_draft(context, draft)
     if issues:
@@ -352,11 +401,12 @@ class PromptedConceptGenerator:
     generation_status: str = field(default="not_requested", init=False)
     generation_error_code: str | None = field(default=None, init=False)
     llm_empty_fields: tuple[str, ...] = field(default=(), init=False)
+    prompt_reduction: dict[str, object] | None = field(default=None, init=False)
 
     @property
     def generation_metadata(self) -> dict[str, object]:
         attempted = self.enabled
-        return {
+        metadata = {
             "engine": "structured_text" if self.generation_status == "generated" else "rule_based",
             "status": self.generation_status,
             "prompt_version": PROMPT_VERSION if attempted else None,
@@ -364,9 +414,35 @@ class PromptedConceptGenerator:
             "error_code": self.generation_error_code,
             "llm_empty_fields": list(self.llm_empty_fields),
         }
+        if self.prompt_reduction is not None:
+            # Only runs whose LLM input had to be reduced carry this key, so the
+            # metadata of every run under the budget stays exactly as before.
+            metadata["prompt_reduction"] = copy.deepcopy(self.prompt_reduction)
+        return metadata
+
+    def _rule_fallback(
+        self,
+        context: ProductPlanningContext,
+        fallback: ConceptGenerator,
+        *,
+        error_code: str,
+        limitation: str,
+        message: str,
+    ) -> tuple[ProductConceptDraft, tuple[ValidationIssue, ...]]:
+        self.generation_status = "fallback"
+        self.generation_error_code = error_code
+        self.llm_empty_fields = ()
+        safe_draft, base_issues = fallback.generate(context)
+        safe_draft = replace(
+            safe_draft,
+            limitations=tuple(dict.fromkeys((*safe_draft.limitations, limitation))),
+        )
+        issue = ValidationIssue(path="generation", code="TEXT_GENERATION_FALLBACK", message=message)
+        return safe_draft, (*base_issues, issue)
 
     def generate(self, context: ProductPlanningContext) -> tuple[ProductConceptDraft, tuple[ValidationIssue, ...]]:
         fallback = self.fallback or RuleBasedConceptGenerator()
+        self.prompt_reduction = None
         if not self.enabled:
             self.generation_status = "disabled"
             self.generation_error_code = None
@@ -391,36 +467,49 @@ class PromptedConceptGenerator:
             )
             return safe_draft, (*base_issues, issue)
         prompt = build_planning_prompt(context)
+        reduction = prompt.reduction
+        if reduction is not None:
+            self.prompt_reduction = reduction.metadata(allowed_evidence_ids=len(prompt.allowed_evidence_ids))
+        if prompt.over_budget:
+            # No provider call: the only sendable form would be the ID-less preview.
+            return self._rule_fallback(
+                context,
+                fallback,
+                error_code="TEXT_INPUT_OVER_BUDGET",
+                limitation=INPUT_OVER_BUDGET_LIMITATION,
+                message="텍스트 생성 입력이 한도를 넘어 LLM을 호출하지 않고 규칙 기반 초안으로 대체했습니다.",
+            )
         try:
             raw = self.provider.generate_json(
                 system_prompt=prompt.system_prompt,
                 user_prompt=prompt.user_prompt,
             )
+            if reduction is not None:
+                # The model saw the reduced data: map aliases back to real IDs and
+                # drop copied grouping notes before the usual strict validation.
+                raw = restore_model_text(
+                    resolve_output_aliases(_parse_json_object(raw), reduction.alias_to_real),
+                    reduction.alias_to_real,
+                )
             draft = parse_concept_output(raw, context, prompt.allowed_evidence_ids)
             self.llm_empty_fields = _empty_poster_fields(draft)
             rule_draft, _ = fallback.generate(context)
             draft = _fill_empty_non_differentiation_fields(draft, rule_draft)
+            draft = _apply_first_evidence_colour(draft, rule_draft, context)
+            trimmed = reduction.trimmed_limitation() if reduction is not None else None
+            if trimmed is not None:
+                draft = replace(draft, limitations=tuple(dict.fromkeys((*draft.limitations, trimmed))))
             self.generation_status = "generated"
             self.generation_error_code = None
             return draft, ()
         except Exception as exc:
-            self.generation_status = "fallback"
-            self.generation_error_code = getattr(exc, "code", "TEXT_OUTPUT_INVALID")
-            self.llm_empty_fields = ()
-            safe_draft, base_issues = fallback.generate(context)
-            safe_draft = replace(
-                safe_draft,
-                limitations=tuple(dict.fromkeys((
-                    *safe_draft.limitations,
-                    "텍스트 생성 응답을 검증하지 못해 결정적 규칙 기반 초안을 사용했습니다.",
-                ))),
-            )
-            issue = ValidationIssue(
-                path="generation",
-                code="TEXT_GENERATION_FALLBACK",
+            return self._rule_fallback(
+                context,
+                fallback,
+                error_code=getattr(exc, "code", "TEXT_OUTPUT_INVALID"),
+                limitation="텍스트 생성 응답을 검증하지 못해 결정적 규칙 기반 초안을 사용했습니다.",
                 message="텍스트 생성 결과를 검증하지 못해 규칙 기반 초안으로 대체했습니다.",
             )
-            return safe_draft, (*base_issues, issue)
 
 
 def _empty_poster_fields(draft: ProductConceptDraft) -> tuple[str, ...]:
@@ -443,6 +532,39 @@ def _empty_poster_fields(draft: ProductConceptDraft) -> tuple[str, ...]:
     if not draft.differentiation:
         empty.append("differentiation")
     return tuple(empty)
+
+
+_COLOUR_NAMES = frozenset({"color", "colour", "color_group", "colour_group", "색상", "컬러"})
+
+
+def _apply_first_evidence_colour(
+    draft: ProductConceptDraft,
+    rule_draft: ProductConceptDraft,
+    context: ProductPlanningContext,
+) -> ProductConceptDraft:
+    """Apply the colour rule on the model path too (VOGUE decision 2026-11-17).
+
+    When the primary trend has two or more evidence-linked colours and the request fixes none,
+    the profile colour is the rule's first evidence colour, whatever colour the model chose.
+    """
+    basis = rule_draft.trend_basis
+    if basis is None or base_product_profile(context).color.value is not None:
+        return draft
+    colours = {
+        item.value.strip() for item in basis.design_attributes
+        if item.name.strip().casefold() in _COLOUR_NAMES and isinstance(item.value, str) and item.value.strip()
+    }
+    rule_colour = rule_draft.product_profile.color
+    if len(colours) < 2 or rule_colour.value is None or draft.product_profile.color == rule_colour:
+        return draft
+    attributes = draft.attributes
+    # Keep the Draft consistent (validate_concept_draft: the profile colour is one of the colour attributes).
+    if not any(item.name.strip().casefold() in _COLOUR_NAMES and str(item.value).strip() == rule_colour.value
+               for item in attributes):
+        attributes = (*attributes, ProposedAttribute("color", rule_colour.value, rule_colour.kind,
+                                                     rule_colour.evidence_ids))
+    return replace(draft, attributes=attributes,
+                   product_profile=replace(draft.product_profile, color=rule_colour))
 
 
 def _fill_empty_non_differentiation_fields(
