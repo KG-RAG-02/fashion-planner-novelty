@@ -68,6 +68,7 @@
 | 잘못된 구조화 모델 응답 | JSON 오류, 중복 key, 추가 필드, 다른 request ID, 미등록 Evidence ID | 모델 결과를 폐기하고 규칙 기반 초안 fallback과 `TEXT_GENERATION_FALLBACK` 검증 이슈를 반환 |
 | Project_07 opaque payload | 합의되지 않은 세부 필드가 포함된 판매·시장 handoff | 모델 프롬프트에는 상태만 전달; 원본 전체 payload는 결과에 보존하고 모델이 해석·재집계하지 않음 |
 | 모델 미연결/비활성 | 승인된 텍스트 제공자 없음 또는 기능 비활성 | 규칙 기반 기준선 사용; 외부 텍스트 모델 호출 없음 |
+| 입력 데이터 한도 초과 | 직렬화한 기획 입력이 24,000자를 넘음 | T1–T5 결정적 축약 뒤 호출하고 `generation_metadata.prompt_reduction`에 기록; 축약 후에도 넘으면 호출 없이 규칙 기반 fallback(`TEXT_INPUT_OVER_BUDGET`) |
 
 ## 기존 결정적 초안 시나리오의 활용
 

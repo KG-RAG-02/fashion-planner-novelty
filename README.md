@@ -131,6 +131,8 @@ LLM_API_KEY=<승인된 secret 저장소에서 주입>
 
 LLM 기획 생성기는 기본적으로 켜져 있습니다. 키가 없거나 호출·응답 검증에 실패하면 규칙 기반 Draft를 반환하며, 최상위 응답은 유효한 Draft인 경우 `ok`를 유지합니다. `generation_metadata`의 `status`, `engine`, `model`, `prompt_version`, `error_code`로 생성 경로를 확인할 수 있습니다.
 
+텍스트 LLM 입력 데이터(`UNTRUSTED_PLANNING_INPUT_JSON`)가 24,000자를 넘으면, 직렬화기가 Evidence ID 없는 6,000자 미리보기로 바꾸기 전에 P06이 모델 호출 없이 결정적으로 축약합니다(`src/vogue_npp/domain/prompt_budget.py`). 순서는 T1 중복 한계 문구 제거 → T2 참조 ID·수치만 다른 문구 묶기 → T3 구조 압축 → T4 Evidence ID 별칭(E1…, 응답에서 실제 ID로 복원) → T5 손실 축소이며, 단계마다 길이를 다시 재고 한도 안에 들면 멈춥니다. 축약한 런에만 `generation_metadata.prompt_reduction`(`version`, `cap`, `chars_before`, `chars_after`, `steps`, `aliased`, `allowed_evidence_ids`, `trimmed`)이 붙고, T5가 입력을 뺐다면 Draft limitation에 그 내용을 한 줄 남깁니다. 축약 후에도 한도를 넘으면 LLM을 호출하지 않고 규칙 기반 Draft를 쓰며 `error_code`는 `TEXT_INPUT_OVER_BUDGET`입니다. 한도 이하 입력의 프롬프트와 결과는 바뀌지 않습니다.
+
 timeout 기본값은 180초이며 허용 범위는 5–300초입니다. 이미지 API 호출은 비용이 발생할 수 있습니다. 테스트는 합성 입력과 mock provider를 사용하며 실제 모델을 호출하지 않습니다. **합성 fixture 이미지 생성 모드는 제공하지 않습니다.**
 
 ## 지연·부분 상태 진단
