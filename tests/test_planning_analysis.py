@@ -42,6 +42,65 @@ class PlanningAnalysisTests(unittest.TestCase):
         self.assertIn(warning, response["limitations"])
         self.assertEqual(response["validation_issues"], [])
 
+    def test_missing_design_profile_fields_are_populated_as_proposals(self):
+        request_id = "proposal-profile-1"
+        response = _analyze_planning_inputs({
+            "request_id": request_id,
+            "planning_request": {
+                "schema_version": "1.0", "request_id": request_id, "status": "ok",
+                "context": {"category": "블라우스", "season": "2027SS"},
+            },
+            "trend_result": {"schema_version": "1.0", "request_id": request_id, "status": "no_results"},
+            "inventory_product_result": {
+                "schema_version": "1.0", "request_id": request_id,
+                "agent_id": "stock-agent", "status": "no_results",
+            },
+        })
+
+        profile = response["draft"]["product_profile"]
+        expected = {
+            "product_type": "블라우스",
+            "material": "코튼 혼방",
+            "silhouette": "레귤러 핏",
+            "color": "오프화이트",
+        }
+        for field, value in expected.items():
+            with self.subTest(field=field):
+                self.assertEqual(profile[field]["value"], value)
+                self.assertEqual(profile[field]["kind"], "proposal")
+
+    def test_explicit_or_evidence_profile_values_are_preserved(self):
+        request_id = "profile-provenance-1"
+        response = _analyze_planning_inputs({
+            "request_id": request_id,
+            "planning_request": {
+                "schema_version": "1.0", "request_id": request_id, "status": "ok",
+                "query": "면 소재 재킷",
+                "context": {"category": "아우터", "season": "2027SS"},
+            },
+            "trend_result": {
+                "schema_version": "1.0", "request_id": request_id, "status": "ok",
+                "candidates": [{
+                    "name": "utility", "qualification": "candidate",
+                    "season": "2027SS", "category": "아우터", "evidence_ids": ["trend-1"],
+                    "attributes": [{"name": "color", "value": "olive",
+                                    "origin": "evidence_observation",
+                                    "evidence_ids": ["trend-1"]}],
+                }],
+            },
+            "inventory_product_result": {
+                "schema_version": "1.0", "request_id": request_id,
+                "agent_id": "stock-agent", "status": "no_results",
+            },
+        })
+
+        profile = response["draft"]["product_profile"]
+        self.assertEqual(profile["product_type"]["kind"], "proposal")
+        self.assertEqual(profile["material"]["value"], "면")
+        self.assertEqual(profile["material"]["kind"], "user_requested")
+        self.assertEqual(profile["color"]["value"], "olive")
+        self.assertEqual(profile["color"]["kind"], "evidence_observation")
+
     def test_unresolved_reliability_limitation_remains_partial(self):
         payload = {
             "request_id": "coverage-1",
