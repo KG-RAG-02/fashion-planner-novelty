@@ -233,7 +233,11 @@ def _profile_from_planning_attributes(
 
 
 def _complete_product_profile_with_proposals(profile: ProductProfile) -> ProductProfile:
-    """Fill missing design fields with deterministic, clearly labeled review proposals."""
+    """Fill missing P07-facing profile fields with deterministic review proposals.
+
+    Gender uses the explicit "unknown" enum sentinel; it does not infer a
+    demographic from category or other product attributes.
+    """
     category = (profile.category.value or "").strip().casefold()
     if any(term in category for term in ("블라우스", "blouse")):
         defaults = {"product_type": "블라우스", "material": "코튼 혼방",
@@ -245,6 +249,7 @@ def _complete_product_profile_with_proposals(profile: ProductProfile) -> Product
         defaults = {"product_type": "기본형 상품", "material": "혼방 소재",
                     "silhouette": "레귤러 핏", "color": "뉴트럴 톤"}
 
+    defaults["gender"] = "unknown"
     updates = {}
     for field_name, value in defaults.items():
         claim = getattr(profile, field_name)

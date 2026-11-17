@@ -60,6 +60,7 @@ class PlanningAnalysisTests(unittest.TestCase):
         profile = response["draft"]["product_profile"]
         expected = {
             "product_type": "블라우스",
+            "gender": "unknown",
             "material": "코튼 혼방",
             "silhouette": "레귤러 핏",
             "color": "오프화이트",
