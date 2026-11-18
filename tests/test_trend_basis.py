@@ -390,9 +390,9 @@ class TextPathTests(unittest.TestCase):
         self.assertIsNone(data["primary_trend"])
         self.assertEqual(data["trend_candidates"], [])
 
-    def test_prompt_v8_tells_the_model_to_plan_around_the_primary_trend(self):
+    def test_prompt_tells_the_model_to_plan_around_the_primary_trend(self):
         manifest = json.loads((PROMPT_ROOT / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["text_planning"]["version"], "v8")
+        self.assertEqual(manifest["text_planning"]["directory"], "text_planning")
         self.assertEqual(PROMPT_VERSION, "new-product-planner-v8-llm-required-profile")
         self.assertIn("기준 트렌드를 중심으로 기획하고, 다른 트렌드를 새로 들여오거나 섞지 않는다", PLANNING_SYSTEM_PROMPT)
         self.assertIn("`primary_trend`", PLANNING_SYSTEM_PROMPT)

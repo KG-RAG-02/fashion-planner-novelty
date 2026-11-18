@@ -1,4 +1,4 @@
-"""Refresh human-reviewable rendered prompt copies from versioned templates."""
+"""템플릿에서 사람이 검토할 rendered_system.md 사본을 다시 만든다."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def main() -> None:
         source = directory / "system_template.md"
         rendered = directory / "rendered_system.md"
         rendered.write_text(source.read_text(encoding="utf-8").rstrip("\n") + "\n", encoding="utf-8")
-        print(f"Rendered {component} {entry['version']} -> {rendered.relative_to(ROOT)}")
+        print(f"렌더 완료: {component} -> {rendered.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
