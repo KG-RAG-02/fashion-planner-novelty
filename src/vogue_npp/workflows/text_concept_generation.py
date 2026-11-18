@@ -536,7 +536,9 @@ def _empty_poster_fields(draft: ProductConceptDraft) -> tuple[str, ...]:
     for name in ("opportunity", "product_definition"):
         if claim_empty(getattr(draft, name)):
             empty.append(name)
-    for name in ("category", "product_type", "gender", "season", "material"):
+    # 필수 필드는 비어 있으면 parse_concept_output이 먼저 거부한다. 규칙 Draft로 채운 필드가
+    # 메타데이터에 드러나도록 프로필 7개 필드를 모두 확인한다.
+    for name in ("category", "product_type", "gender", "season", "material", "silhouette", "color"):
         if claim_empty(getattr(draft.product_profile, name)):
             empty.append(f"product_profile.{name}")
     if not draft.product_profile.details:
