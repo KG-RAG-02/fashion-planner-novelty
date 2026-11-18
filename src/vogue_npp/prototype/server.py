@@ -466,8 +466,7 @@ class PrototypeHandler(BaseHTTPRequestHandler):
                     return False
             except (AttributeError, IndexError):
                 return False
-        expected = (os.getenv("VOGUE_AGENT_SERVICE_BEARER_TOKEN", "")
-                    or os.getenv("VOGUE_SERVICE_BEARER_TOKEN", ""))
+        expected = os.getenv("VOGUE_AGENT_SERVICE_BEARER_TOKEN", "")
         supplied = self.headers.get("Authorization", "")
         return bool(expected) and hmac.compare_digest(supplied, f"Bearer {expected}")
 
@@ -531,7 +530,7 @@ def main() -> None:
         if host not in {"127.0.0.1", "localhost", "::1"}:
             raise RuntimeError("VOGUE_HTTP_MODE=local은 loopback host만 허용합니다.")
     elif mode in {"service", "private"}:
-        if not (os.getenv("VOGUE_AGENT_SERVICE_BEARER_TOKEN") or os.getenv("VOGUE_SERVICE_BEARER_TOKEN")):
+        if not os.getenv("VOGUE_AGENT_SERVICE_BEARER_TOKEN"):
             raise RuntimeError(f"{mode} mode requires VOGUE_AGENT_SERVICE_BEARER_TOKEN.")
     if mode == "service":
         cert_file = os.getenv("VOGUE_TLS_CERT_FILE")
