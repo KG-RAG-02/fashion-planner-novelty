@@ -78,6 +78,8 @@ class PlanningAnalysisTests(unittest.TestCase):
                 "schema_version": "1.0", "request_id": request_id, "status": "ok",
                 "query": "면 소재 재킷",
                 "context": {"category": "아우터", "season": "2027SS"},
+                # 자유 질의문은 프로필 필드로 파싱하지 않는다. 명시적 요청 속성만 반영한다.
+                "requested_attributes": [{"name": "material", "value": "면", "source": "user"}],
             },
             "trend_result": {
                 "schema_version": "1.0", "request_id": request_id, "status": "ok",

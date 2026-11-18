@@ -27,6 +27,10 @@ from vogue_npp.workflows.image_generation import ImageProviderError, OpenAIImage
 SEQUENTIAL_IMAGE_POLICY = "sequential: product generation, then outfit edit of the product image; no automatic retry"
 
 FIXTURE = Path(__file__).parent / "fixtures/workflow-inputs/success.json"
+# 규칙 기반 Draft는 픽스처의 빈 디자인 필드를 표시된 검토 제안값으로 채운다
+# (generator._complete_product_profile_with_proposals). 이 값도 이미지 사양에 들어간다.
+FIXTURE_PROPOSALS = {"color": "뉴트럴 톤", "gender": "unknown", "material": "나일론 혼방",
+                     "product_type": "가벼운 아우터", "silhouette": "레귤러 핏"}
 
 
 def request():
@@ -311,7 +315,7 @@ class HandoffRunTests(unittest.TestCase):
         self.assertEqual(edit["images"], [{"image_url": "data:image/png;base64," + base64.b64encode(product_png).decode("ascii")}])
         self.assertEqual((edit["model"], edit["n"]), (generation["model"], 1))
         self.assertNotIn("input_fidelity", edit)
-        specification = json.dumps({"category": "Outerwear", "season": "spring/summer 2027"},
+        specification = json.dumps({"category": "Outerwear", "season": "spring/summer 2027", **FIXTURE_PROPOSALS},
                                    sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         self.assertIn(specification, generation["prompt"])
         self.assertIn(specification, edit["prompt"])
@@ -359,7 +363,7 @@ class HandoffRunTests(unittest.TestCase):
              patch.object(OpenAIImageEditProvider, "edit", side_effect=capture_edit):
             response = _build_handoff_run(request())
 
-        expected = {"category": "Outerwear", "details": ["프린지", "체크"], "season": "spring/summer 2027"}
+        expected = {"category": "Outerwear", "details": ["프린지", "체크"], "season": "spring/summer 2027", **FIXTURE_PROPOSALS}
         specification = json.dumps(expected, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         self.assertEqual(len(prompts), 2)
         self.assertTrue(all(specification in prompt for prompt in prompts))

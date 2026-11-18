@@ -140,8 +140,8 @@ def answer(context, cite, *, opportunity="트렌드 관찰을 바탕으로 검�
         "target_customer": claim(None, "unknown"),
         "product_definition": claim("올리브 색상 아우터 콘셉트 제안", "proposal"),
         "product_profile": {
-            "category": same(base.category), "season": same(base.season), "gender": claim(None, "unknown"),
-            "product_type": claim(None, "unknown"), "material": claim(None, "unknown"),
+            "category": same(base.category), "season": same(base.season), "gender": claim("unknown", "proposal"),
+            "product_type": claim("lightweight jacket", "proposal"), "material": claim("cotton blend", "proposal"),
             "silhouette": claim("relaxed", "proposal"), "color": claim("olive", "evidence_observation", cite),
             "details": [],
         },

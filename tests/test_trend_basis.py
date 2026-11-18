@@ -138,8 +138,8 @@ def valid_output(context, cite):
         "target_customer": claim(None, "unknown"),
         "product_definition": claim("파스텔 드레스 콘셉트 제안", "proposal"),
         "product_profile": {
-            "category": same(base.category), "season": same(base.season), "gender": claim(None, "unknown"),
-            "product_type": claim(None, "unknown"), "material": claim(None, "unknown"),
+            "category": same(base.category), "season": same(base.season), "gender": claim("unknown", "proposal"),
+            "product_type": claim("lightweight jacket", "proposal"), "material": claim("cotton blend", "proposal"),
             "silhouette": claim("A라인", "proposal"), "color": claim("옐로우", "evidence_observation", cite),
             "details": [],
         },
@@ -285,6 +285,8 @@ class RuleDraftTests(unittest.TestCase):
         # The images follow the profile: only the primary trend's attributes reach the image specification.
         self.assertEqual(_image_profile_from_draft(asdict(draft)), {
             "category": "재킷", "season": "2027SS", "color": "브라운", "material": "스웨이드", "details": ["프린지"],
+            # 빈 필드는 정해진 검토 제안값을 받고, 다른 트렌드의 값은 받지 않는다.
+            "product_type": "가벼운 아우터", "gender": "unknown", "silhouette": "레귤러 핏",
         })
 
     def test_without_a_primary_trend_the_analysis_keeps_every_eligible_trend(self):
@@ -328,8 +330,10 @@ class FirstEvidenceColourTests(unittest.TestCase):
                       ids=("mx:0",), style="mx-s0")
         profile = RuleBasedConceptGenerator().generate(context_of(mixed))[0].product_profile
         self.assertEqual(profile.color.value, "네이비")
-        self.assertIsNone(profile.material.value)
-        self.assertIsNone(profile.silhouette.value)
+        # 근거 소재가 둘이면 어느 쪽도 올리지 않는다. 빈 필드는 대신 표시된 검토 제안값을 받는다.
+        self.assertNotIn(profile.material.value, {"린넨", "코튼"})
+        self.assertEqual((profile.material.kind, profile.material.evidence_ids), ("proposal", ()))
+        self.assertEqual((profile.silhouette.kind, profile.silhouette.evidence_ids), ("proposal", ()))
 
     def test_a_requested_colour_is_kept(self):
         context = build_planning_context(PlanningInputs(
