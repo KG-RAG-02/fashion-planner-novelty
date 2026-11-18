@@ -31,6 +31,7 @@ from ..workflows.draft_artifacts import (
     OpenAIDraftImageProvider,
     RequestReplayConflict,
 )
+from ..workflows.synthetic_images import SyntheticDraftImageProvider
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 MAX_RUN_BODY_BYTES = 1_000_000
@@ -211,6 +212,55 @@ def _build_handoff_run(payload: object) -> dict:
     artifact_timings: dict[str, int] = {}
     image_model = os.getenv("NOVELTY_DRAFT_IMAGE_MODEL", "gpt-image-2.5-sunburst").strip() or "gpt-image-2.5-sunburst"
     image_specification_sha256 = _canonical_sha(image_profile)
+
+    def run_visual_sequence(call_image, *, model: str, prompt_version: str, calls_per_visual: int) -> None:
+        """Product first, then the outfit from the stored product image; shared by the openai and synthetic paths."""
+        def record_visual(kind: str, image_bytes: bytes | None, error_code: str | None) -> None:
+            if image_bytes is None:
+                visuals[kind] = {"status": "failed", "artifact": None, "provider_calls": calls_per_visual,
+                                 "model": model, "prompt_version": prompt_version,
+                                 "reason": error_code or "IMAGE_GENERATION_FAILED", "error_code": error_code or "IMAGE_GENERATION_FAILED"}
+                return
+            artifact_started = time.perf_counter()
+            try:
+                artifact = store.put(request_id, kind, image_bytes)
+                visuals[kind] = {"status": "generated", "artifact": artifact, "provider_calls": calls_per_visual,
+                                 "model": model, "prompt_version": prompt_version, "reason": None}
+            except Exception:
+                visuals[kind] = {"status": "failed", "artifact": None, "provider_calls": calls_per_visual,
+                                 "model": model, "prompt_version": prompt_version,
+                                 "reason": "ARTIFACT_PERSISTENCE_FAILED", "error_code": "ARTIFACT_PERSISTENCE_FAILED"}
+            artifact_timings[kind] = round((time.perf_counter() - artifact_started) * 1000)
+
+        # Sequential, never concurrent: the outfit is made from the generated product
+        # image, so it starts only after that image exists and is stored. Without it the outfit could show
+        # a different garment, so it is skipped instead of being generated from text alone.
+        product_bytes, product_error = call_image("product")
+        record_visual("product", product_bytes, product_error)
+        if visuals["product"]["status"] == "generated":
+            # The outfit pairs the new product with one stock item.
+            companion_image, companion_media_type = _companion_photo(
+                normalized.source_inputs.get("inventory_product_result"), companion)
+            companion_input = None if companion is None else {
+                "specification": companion.specification(), "role": companion.role,
+                "image": companion_image, "media_type": companion_media_type,
+            }
+            outfit_bytes, outfit_error = call_image("outfit", product_bytes, companion_input)
+            record_visual("outfit", outfit_bytes, outfit_error)
+            visuals["outfit"]["reference_image_sha256"] = visuals["product"]["artifact"]["sha256"]
+            visuals["outfit"]["companion"] = None if companion is None else {
+                "stock_product_id": companion.style_id, "category": companion.category,
+                "trend_style_id": companion.trend_style_id, "rank": companion.rank,
+                "role": companion.role, "selection_rule": companion.selection_rule,
+                "image_sha256": hashlib.sha256(companion_image).hexdigest() if companion_image else None,
+                "image_media_type": companion_media_type,
+            }
+        else:
+            visuals["outfit"] = {"status": "skipped", "artifact": None, "provider_calls": 0,
+                                 "model": model, "prompt_version": prompt_version,
+                                 "reason": "the product image was not generated, so its outfit edit was not requested",
+                                 "error_code": "OUTFIT_REFERENCE_UNAVAILABLE"}
+
     if not image_profile.get("category"):
         visuals = {kind: {"status": "skipped", "artifact": None, "provider_calls": 0,
                           "model": None, "prompt_version": OpenAIDraftImageProvider.prompt_version,
@@ -261,51 +311,8 @@ def _build_handoff_run(payload: object) -> dict:
                             image_timings[kind] = round((time.perf_counter() - call_started) * 1000)
                         return image_bytes, error_code
 
-                    def record_visual(kind: str, image_bytes: bytes | None, error_code: str | None) -> None:
-                        if image_bytes is None:
-                            visuals[kind] = {"status": "failed", "artifact": None, "provider_calls": 1,
-                                             "model": image_model, "prompt_version": provider.prompt_version,
-                                             "reason": error_code or "IMAGE_GENERATION_FAILED", "error_code": error_code or "IMAGE_GENERATION_FAILED"}
-                            return
-                        artifact_started = time.perf_counter()
-                        try:
-                            artifact = store.put(request_id, kind, image_bytes)
-                            visuals[kind] = {"status": "generated", "artifact": artifact, "provider_calls": 1,
-                                             "model": image_model, "prompt_version": provider.prompt_version, "reason": None}
-                        except Exception:
-                            visuals[kind] = {"status": "failed", "artifact": None, "provider_calls": 1,
-                                             "model": image_model, "prompt_version": provider.prompt_version,
-                                             "reason": "ARTIFACT_PERSISTENCE_FAILED", "error_code": "ARTIFACT_PERSISTENCE_FAILED"}
-                        artifact_timings[kind] = round((time.perf_counter() - artifact_started) * 1000)
-
-                    # Sequential, never concurrent: the outfit edits the generated product
-                    # image, so it starts only after that image exists and is stored. Without it the outfit could show
-                    # a different garment, so it is skipped instead of being generated from text alone.
-                    product_bytes, product_error = call_image("product")
-                    record_visual("product", product_bytes, product_error)
-                    if visuals["product"]["status"] == "generated":
-                        # The outfit pairs the new product with one stock item.
-                        companion_image, companion_media_type = _companion_photo(
-                            normalized.source_inputs.get("inventory_product_result"), companion)
-                        companion_input = None if companion is None else {
-                            "specification": companion.specification(), "role": companion.role,
-                            "image": companion_image, "media_type": companion_media_type,
-                        }
-                        outfit_bytes, outfit_error = call_image("outfit", product_bytes, companion_input)
-                        record_visual("outfit", outfit_bytes, outfit_error)
-                        visuals["outfit"]["reference_image_sha256"] = visuals["product"]["artifact"]["sha256"]
-                        visuals["outfit"]["companion"] = None if companion is None else {
-                            "stock_product_id": companion.style_id, "category": companion.category,
-                            "trend_style_id": companion.trend_style_id, "rank": companion.rank,
-                            "role": companion.role, "selection_rule": companion.selection_rule,
-                            "image_sha256": hashlib.sha256(companion_image).hexdigest() if companion_image else None,
-                            "image_media_type": companion_media_type,
-                        }
-                    else:
-                        visuals["outfit"] = {"status": "skipped", "artifact": None, "provider_calls": 0,
-                                             "model": image_model, "prompt_version": provider.prompt_version,
-                                             "reason": "the product image was not generated, so its outfit edit was not requested",
-                                             "error_code": "OUTFIT_REFERENCE_UNAVAILABLE"}
+                    run_visual_sequence(call_image, model=image_model, prompt_version=provider.prompt_version,
+                                        calls_per_visual=1)
                     timings["image_generation_wall"] = round((time.perf_counter() - image_started) * 1000)
                 finally:
                     IMAGE_REQUEST_SLOT.release()
@@ -314,6 +321,21 @@ def _build_handoff_run(payload: object) -> dict:
                               "model": image_model, "prompt_version": OpenAIDraftImageProvider.prompt_version,
                               "reason": "image provider credentials are unavailable", "error_code": "IMAGE_API_KEY_MISSING"}
                        for kind in ("product", "outfit")}
+    elif provider_name == "synthetic":
+        # Offline placeholder PNGs: no network, no key, no paid call. They go through the same store and
+        # response ledger as real images. No paid-work claim or capacity slot: a repeat makes the same bytes.
+        synthetic_provider = SyntheticDraftImageProvider()
+
+        def call_synthetic(kind: str, reference_image: bytes | None = None,
+                           companion_input: dict | None = None) -> tuple[bytes | None, str | None]:
+            image_bytes, image_timings[kind], error_code = _timed_image_call(
+                synthetic_provider, kind, image_profile, request_id, reference_image, companion_input)
+            return image_bytes, error_code
+
+        image_started = time.perf_counter()
+        run_visual_sequence(call_synthetic, model=synthetic_provider.model,
+                            prompt_version=synthetic_provider.prompt_version, calls_per_visual=0)
+        timings["image_generation_wall"] = round((time.perf_counter() - image_started) * 1000)
     else:
         not_configured = not provider_name
         visuals = {kind: {
@@ -334,7 +356,10 @@ def _build_handoff_run(payload: object) -> dict:
     visual_limitations = []
     if any(item["status"] != "generated" for item in visuals.values()):
         visual_limitations.append("product/outfit 시각자료를 모두 실제 이미지 provider로 생성하지 못했습니다.")
-    visual_limitations.append("outfit 이미지는 먼저 생성한 product 이미지를 참조 입력으로 편집해 같은 상품을 착장으로 표현하지만, 두 이미지의 시각적 동일성은 자동 검증하지 않습니다.")
+    if provider_name == "synthetic":
+        visual_limitations.append("product/outfit 이미지는 실제 이미지 provider가 아니라 오프라인 합성 제공자가 만든 SYNTHETIC 자리표시 그림입니다. 상품 디자인을 표현하지 않습니다.")
+    else:
+        visual_limitations.append("outfit 이미지는 먼저 생성한 product 이미지를 참조 입력으로 편집해 같은 상품을 착장으로 표현하지만, 두 이미지의 시각적 동일성은 자동 검증하지 않습니다.")
     draft["limitations"] = list(dict.fromkeys([*draft["limitations"], *visual_limitations]))
     result["limitations"] = draft["limitations"]
     # Deliverable-based status: ok when the Draft and
@@ -377,9 +402,13 @@ def _build_handoff_run(payload: object) -> dict:
     result["limitations"] = list(dict.fromkeys(result["limitations"]))
     draft["limitations"] = result["limitations"]
     result["generation_metadata"]["image_provider"] = provider_name or "none"
-    result["generation_metadata"]["image_model"] = image_model if provider_name == "openai" else None
+    result["generation_metadata"]["image_model"] = (
+        image_model if provider_name == "openai"
+        else SyntheticDraftImageProvider.model if provider_name == "synthetic" else None)
     result["generation_metadata"]["image_specification_sha256"] = image_specification_sha256
     result["generation_metadata"]["image_call_policy"] = (
+        "synthetic: offline placeholder PNGs, product then outfit from the stored product image; no provider call"
+        if provider_name == "synthetic" else
         "sequential: product generation, then outfit edit of the product image; no automatic retry")
     result["generation_metadata"]["timings_ms"] = {
         **timings,
