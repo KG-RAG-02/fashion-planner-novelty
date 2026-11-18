@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from vogue_npp.domain.context import (
+from fashion_planner_novelty.domain.context import (
     AgentResult,
     AttributeSignal,
     InventoryProductResult,
@@ -11,7 +11,7 @@ from vogue_npp.domain.context import (
     TrendResult,
     build_planning_context,
 )
-from vogue_npp.workflows.text_concept_generation import (
+from fashion_planner_novelty.workflows.text_concept_generation import (
     PROMPT_VERSION,
     PromptedConceptGenerator,
     build_planning_prompt,
@@ -152,7 +152,7 @@ class TextConceptGenerationTests(unittest.TestCase):
         self.assertEqual(draft.product_profile.product_type.value, "lightweight jacket")
 
     def test_api_generation_boundary_accepts_injected_generator(self):
-        from vogue_npp.prototype.server import _analyze_planning_inputs
+        from fashion_planner_novelty.prototype.server import _analyze_planning_inputs
 
         provider = FakeStructuredProvider(valid_output())
         response = _analyze_planning_inputs({

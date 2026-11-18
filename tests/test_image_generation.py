@@ -7,7 +7,7 @@ import unittest
 from dataclasses import replace
 from unittest.mock import patch
 
-from vogue_npp import (
+from fashion_planner_novelty import (
     AgentResult,
     AttributeSignal,
     PlanningInputs,
@@ -15,11 +15,11 @@ from vogue_npp import (
     TrendCandidate,
     build_planning_context,
 )
-from vogue_npp.domain.context import InventoryProductResult, TrendResult
-from vogue_npp.domain.generator import RuleBasedConceptGenerator
-from vogue_npp.domain.prompt_safety import serialize_untrusted_prompt_data
-from vogue_npp.workflows.image_generation import ImageGenerationRequest, OpenAIImageProvider
-from vogue_npp.domain.concept import validate_concept_draft
+from fashion_planner_novelty.domain.context import InventoryProductResult, TrendResult
+from fashion_planner_novelty.domain.generator import RuleBasedConceptGenerator
+from fashion_planner_novelty.domain.prompt_safety import serialize_untrusted_prompt_data
+from fashion_planner_novelty.workflows.image_generation import ImageGenerationRequest, OpenAIImageProvider
+from fashion_planner_novelty.domain.concept import validate_concept_draft
 
 
 def make_context(
@@ -54,7 +54,7 @@ def make_context(
         products=(),
     )
     if inventory_category or inventory_note:
-        from vogue_npp.domain.context import InventoryProduct
+        from fashion_planner_novelty.domain.context import InventoryProduct
         inventory = InventoryProductResult(
             result=inventory.result,
             products=(InventoryProduct(
@@ -185,7 +185,7 @@ def _edit_request():
 
 class ImageEditAdapterTests(unittest.TestCase):
     def test_edit_adapter_sends_the_reference_as_a_data_url_without_network(self) -> None:
-        from vogue_npp.workflows.image_generation import OpenAIImageEditProvider
+        from fashion_planner_novelty.workflows.image_generation import OpenAIImageEditProvider
         captured = {}
 
         class FakeResponse:
@@ -219,7 +219,7 @@ class ImageEditAdapterTests(unittest.TestCase):
 
     def test_edit_adapter_maps_failures_to_safe_codes(self) -> None:
         import urllib.error
-        from vogue_npp.workflows.image_generation import ImageProviderError, OpenAIImageEditProvider
+        from fashion_planner_novelty.workflows.image_generation import ImageProviderError, OpenAIImageEditProvider
         error = urllib.error.HTTPError("https://api.openai.com/v1/images/edits", 400, "bad request", {}, None)
         with patch("urllib.request.urlopen", side_effect=error):
             with self.assertRaises(ImageProviderError) as raised:
@@ -232,8 +232,8 @@ class ImageEditAdapterTests(unittest.TestCase):
         self.assertFalse(open_url.called)
 
     def test_draft_outfit_is_never_generated_without_the_product_reference(self) -> None:
-        from vogue_npp.workflows.draft_artifacts import OpenAIDraftImageProvider
-        from vogue_npp.workflows.image_generation import ImageProviderError
+        from fashion_planner_novelty.workflows.draft_artifacts import OpenAIDraftImageProvider
+        from fashion_planner_novelty.workflows.image_generation import ImageProviderError
         with patch("urllib.request.urlopen") as open_url:
             with self.assertRaises(ImageProviderError) as raised:
                 OpenAIDraftImageProvider("k", "gpt-image-2.5-sunburst").generate("outfit", {"category": "재킷"}, "req-1")

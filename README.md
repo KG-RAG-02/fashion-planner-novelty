@@ -67,7 +67,7 @@ Project_06(P06)은 P08이 전달한 사용자 요청, Trend 결과, Stock 결과
 - 처리 완료 후 같은 `request_id`를 다른 입력에 재사용하면 `409 REQUEST_ID_REUSED`를 반환합니다. 같은 입력의 동시 요청은 최초 저장된 응답으로 수렴합니다.
 - 유료 이미지 요청이 처리 중이거나 결과가 불확실하면 중복 호출을 막기 위해 `409 IMAGE_REQUEST_IN_PROGRESS_OR_OUTCOME_UNKNOWN`을 반환할 수 있습니다.
 
-기획 초안은 트렌드 하나를 기준으로 만듭니다. P06은 사용 가능한 트렌드 후보(이름·Evidence가 있고 요청 시즌·카테고리·시장·채널과 어긋나지 않는 후보) 중에서 Evidence가 연결된 디자인 속성(색상·패턴·디테일·소재·핏·실루엣·기장 등)이 가장 많은 후보를, 같으면 Evidence ID가 더 많은 후보를, 그래도 같으면 먼저 입력된 후보를 고릅니다(`src/vogue_npp/domain/trend_basis.py`). 규칙 기반 Draft의 콘셉트 문장·기회 문장·속성·상품 프로필과 텍스트 LLM 입력은 이 기준 트렌드만 사용하며, 다른 트렌드를 섞지 않습니다. 선택 결과는 `result.draft.trend_basis`(`source_style_id`, `name`, `selection_rule`=`most_evidence_linked_design_attributes/1`, `evidence_ids`, `design_attributes`, `candidates_considered`)에 남고, 사용할 수 있는 트렌드가 없으면 `null`입니다. LLM 경로에서도 이 값은 규칙이 정하며 모델이 바꾸지 않습니다. 기준 트렌드에 Evidence가 연결된 색이 2개 이상이면 상품 프로필 색상은 입력 순서상 첫 번째 근거 색 하나로 정합니다(요청에 색상이 있으면 요청값 유지). LLM 경로도 같은 규칙을 적용하며, 이미지와 P07 검토 입력은 이 색을 받습니다. 소재·실루엣은 값이 하나일 때만 프로필에 올립니다.
+기획 초안은 트렌드 하나를 기준으로 만듭니다. P06은 사용 가능한 트렌드 후보(이름·Evidence가 있고 요청 시즌·카테고리·시장·채널과 어긋나지 않는 후보) 중에서 Evidence가 연결된 디자인 속성(색상·패턴·디테일·소재·핏·실루엣·기장 등)이 가장 많은 후보를, 같으면 Evidence ID가 더 많은 후보를, 그래도 같으면 먼저 입력된 후보를 고릅니다(`src/fashion_planner_novelty/domain/trend_basis.py`). 규칙 기반 Draft의 콘셉트 문장·기회 문장·속성·상품 프로필과 텍스트 LLM 입력은 이 기준 트렌드만 사용하며, 다른 트렌드를 섞지 않습니다. 선택 결과는 `result.draft.trend_basis`(`source_style_id`, `name`, `selection_rule`=`most_evidence_linked_design_attributes/1`, `evidence_ids`, `design_attributes`, `candidates_considered`)에 남고, 사용할 수 있는 트렌드가 없으면 `null`입니다. LLM 경로에서도 이 값은 규칙이 정하며 모델이 바꾸지 않습니다. 기준 트렌드에 Evidence가 연결된 색이 2개 이상이면 상품 프로필 색상은 입력 순서상 첫 번째 근거 색 하나로 정합니다(요청에 색상이 있으면 요청값 유지). LLM 경로도 같은 규칙을 적용하며, 이미지와 P07 검토 입력은 이 색을 받습니다. 소재·실루엣은 값이 하나일 때만 프로필에 올립니다.
 
 P06은 P07을 호출하지 않습니다. P08은 P06의 `product_profile`에서 P07 허용 필드를 구성해 review를 호출하고, review와 Draft를 통합합니다.
 
@@ -85,7 +85,7 @@ P06은 업무용 Trend·Stock 데이터베이스에 직접 접속하지 않습�
 
 P06은 이미지 두 장을 순차로 만듭니다. 먼저 상품 프로필(디테일 포함)로 product 이미지를 생성하고, 저장된 product 이미지를 참조 입력으로 OpenAI Images Edit API(`/v1/images/edits`)에 넣어 같은 옷의 착장(outfit) 이미지를 만듭니다. product 이미지가 없으면 outfit은 텍스트만으로 만들지 않고 `skipped`(`OUTFIT_REFERENCE_UNAVAILABLE`)로 둡니다. outfit visual의 `reference_image_sha256`은 참조한 product 이미지의 SHA-256입니다. 동일 상품 프로필의 hash를 각 visual에 기록하지만 이미지 픽셀의 디자인 일치는 자동 검증하지 않습니다. P08은 공유 artifact 저장소에서 `artifact://p06/images/<sha256>.<ext>`를 해석하고, 소유권·크기·SHA-256을 검증해야 합니다. 이미지 바이트 자체는 Draft JSON에 넣지 않습니다.
 
-착장 이미지는 신상품을 재고 상품 하나와 함께 입힌 모습입니다(2026-11-17 결정). 재고 상품은 규칙으로 하나를 고릅니다: 기준 트렌드(`draft.trend_basis`)의 재고 결과(stock `trend_results`에서 같은 style_id) 중 순위가 가장 높은 상품이며, P08 기획서의 재고 카드와 같은 상품입니다. 다만 코디 역할 규칙(outfit-role-pairing-v1)상 신상품과 같은 역할(예: 상의와 상의)이면 건너뜁니다(`src/vogue_npp/domain/outfit_companion.py`). 그 상품의 사진(stock 결과 `products[].image.data`)이 있으면 edit 호출의 두 번째 입력 이미지로 넣고, 카테고리·색상·소재·핏은 프롬프트의 `STOCK ITEM` JSON으로 함께 전달합니다. 사진이 없으면 JSON 설명만 쓰고, 고를 재고가 없으면 신상품만 입힌 착장을 만듭니다. 어떤 재고를 썼는지는 `outfit_image.companion`(`stock_product_id`, `category`, `trend_style_id`, `rank`, `role`, `selection_rule`, `image_sha256`, `image_media_type`)에 남고, 재고를 쓰지 않았으면 `null`입니다. 프롬프트 버전은 `p06-draft-visuals/4`입니다.
+착장 이미지는 신상품을 재고 상품 하나와 함께 입힌 모습입니다(2026-11-17 결정). 재고 상품은 규칙으로 하나를 고릅니다: 기준 트렌드(`draft.trend_basis`)의 재고 결과(stock `trend_results`에서 같은 style_id) 중 순위가 가장 높은 상품이며, P08 기획서의 재고 카드와 같은 상품입니다. 다만 코디 역할 규칙(outfit-role-pairing-v1)상 신상품과 같은 역할(예: 상의와 상의)이면 건너뜁니다(`src/fashion_planner_novelty/domain/outfit_companion.py`). 그 상품의 사진(stock 결과 `products[].image.data`)이 있으면 edit 호출의 두 번째 입력 이미지로 넣고, 카테고리·색상·소재·핏은 프롬프트의 `STOCK ITEM` JSON으로 함께 전달합니다. 사진이 없으면 JSON 설명만 쓰고, 고를 재고가 없으면 신상품만 입힌 착장을 만듭니다. 어떤 재고를 썼는지는 `outfit_image.companion`(`stock_product_id`, `category`, `trend_style_id`, `rank`, `role`, `selection_rule`, `image_sha256`, `image_media_type`)에 남고, 재고를 쓰지 않았으면 `null`입니다. 프롬프트 버전은 `p06-draft-visuals/4`입니다.
 
 완료 응답은 동일 request ID와 동일 요청 본문에 재사용됩니다. 같은 입력의 동시 요청도 최초 저장된 응답으로 수렴합니다. 다른 본문에 같은 request ID를 사용하면 `409 REQUEST_ID_REUSED`입니다. 유료 이미지 요청의 처리 결과가 불확실하면 중복 과금을 막기 위해 같은 ID의 재호출을 거부할 수 있습니다. 실패 이미지를 의도적으로 다시 요청하려면 새 request ID를 사용하세요. 자동 재시도는 하지 않습니다.
 
@@ -99,7 +99,7 @@ source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 VOGUE_HTTP_MODE=local \
 VOGUE_DRAFT_ARTIFACT_DIR=data/local/p06-artifacts \
-PYTHONPATH=src python3 -m vogue_npp.prototype.server
+PYTHONPATH=src python3 -m fashion_planner_novelty.prototype.server
 ```
 
 기본 주소는 `http://127.0.0.1:8767`이고 health check는 `GET /api/health`입니다. `local` 모드는 loopback 연결만 허용합니다. 서비스 간 격리 네트워크의 `private` 모드는 bearer 인증을 사용하고, `service` 모드는 bearer 인증과 TLS가 필요합니다.
@@ -135,7 +135,7 @@ LLM_API_KEY=<승인된 secret 저장소에서 주입>
 
 LLM 기획 생성기는 기본적으로 켜져 있습니다. 키가 없거나 호출·응답 검증에 실패하면 규칙 기반 Draft를 반환하며, 최상위 응답은 유효한 Draft인 경우 `ok`를 유지합니다. `generation_metadata`의 `status`, `engine`, `model`, `prompt_version`, `error_code`로 생성 경로를 확인할 수 있습니다.
 
-텍스트 LLM 입력 데이터(`UNTRUSTED_PLANNING_INPUT_JSON`)가 24,000자를 넘으면, 직렬화기가 Evidence ID 없는 6,000자 미리보기로 바꾸기 전에 P06이 모델 호출 없이 결정적으로 축약합니다(`src/vogue_npp/domain/prompt_budget.py`). 순서는 T1 중복 한계 문구 제거 → T2 참조 ID·수치만 다른 문구 묶기 → T3 구조 압축 → T4 Evidence ID 별칭(E1…, 응답에서 실제 ID로 복원) → T5 손실 축소이며, 단계마다 길이를 다시 재고 한도 안에 들면 멈춥니다. 축약한 런에만 `generation_metadata.prompt_reduction`(`version`, `cap`, `chars_before`, `chars_after`, `steps`, `aliased`, `allowed_evidence_ids`, `trimmed`)이 붙고, T5가 입력을 뺐다면 Draft limitation에 그 내용을 한 줄 남깁니다. 축약 후에도 한도를 넘으면 LLM을 호출하지 않고 규칙 기반 Draft를 쓰며 `error_code`는 `TEXT_INPUT_OVER_BUDGET`입니다. 한도 이하 입력의 프롬프트와 결과는 바뀌지 않습니다.
+텍스트 LLM 입력 데이터(`UNTRUSTED_PLANNING_INPUT_JSON`)가 24,000자를 넘으면, 직렬화기가 Evidence ID 없는 6,000자 미리보기로 바꾸기 전에 P06이 모델 호출 없이 결정적으로 축약합니다(`src/fashion_planner_novelty/domain/prompt_budget.py`). 순서는 T1 중복 한계 문구 제거 → T2 참조 ID·수치만 다른 문구 묶기 → T3 구조 압축 → T4 Evidence ID 별칭(E1…, 응답에서 실제 ID로 복원) → T5 손실 축소이며, 단계마다 길이를 다시 재고 한도 안에 들면 멈춥니다. 축약한 런에만 `generation_metadata.prompt_reduction`(`version`, `cap`, `chars_before`, `chars_after`, `steps`, `aliased`, `allowed_evidence_ids`, `trimmed`)이 붙고, T5가 입력을 뺐다면 Draft limitation에 그 내용을 한 줄 남깁니다. 축약 후에도 한도를 넘으면 LLM을 호출하지 않고 규칙 기반 Draft를 쓰며 `error_code`는 `TEXT_INPUT_OVER_BUDGET`입니다. 한도 이하 입력의 프롬프트와 결과는 바뀌지 않습니다.
 
 timeout 기본값은 180초이며 허용 범위는 5–300초입니다. 이미지 API 호출은 비용이 발생할 수 있습니다. 테스트는 합성 입력과 mock provider를 사용하며 실제 모델을 호출하지 않습니다. **합성 fixture 이미지 생성 모드는 제공하지 않습니다.**
 

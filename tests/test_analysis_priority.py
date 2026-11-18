@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from vogue_npp import (
+from fashion_planner_novelty import (
     AgentResult,
     InventoryProductResult,
     PlanningInputs,

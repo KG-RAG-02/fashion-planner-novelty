@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from vogue_npp import (
+from fashion_planner_novelty import (
     AgentResult,
     AttributeSignal,
     InventoryProduct,
@@ -12,7 +12,7 @@ from vogue_npp import (
     build_planning_context,
     generate_concept_draft,
 )
-from vogue_npp.domain.context import InventoryProductResult, TrendResult
+from fashion_planner_novelty.domain.context import InventoryProductResult, TrendResult
 
 
 class TrendNameInputTests(unittest.TestCase):

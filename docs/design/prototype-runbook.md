@@ -5,7 +5,7 @@
 ```bash
 VOGUE_HTTP_MODE=local \
 VOGUE_DRAFT_ARTIFACT_DIR=data/local/p06-artifacts \
-PYTHONPATH=src python3 -m vogue_npp.prototype.server
+PYTHONPATH=src python3 -m fashion_planner_novelty.prototype.server
 ```
 
 The server binds to `127.0.0.1:8767`. `GET /api/health` returns service health. Local mode is loopback-only. For container-to-container plain HTTP, use `VOGUE_HTTP_MODE=private` with bearer authentication on an isolated network. `service` mode requires TLS and bearer authentication.

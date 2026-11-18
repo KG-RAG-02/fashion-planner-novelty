@@ -3,7 +3,7 @@ import json
 import unittest
 from pathlib import Path
 
-from vogue_npp.adapters.draft_inputs import WorkflowInputError, normalize_workflow_inputs
+from fashion_planner_novelty.adapters.draft_inputs import WorkflowInputError, normalize_workflow_inputs
 
 
 FIXTURE = Path(__file__).parent / "fixtures/workflow-inputs/success.json"

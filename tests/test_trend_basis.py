@@ -14,9 +14,9 @@ import urllib.error
 from dataclasses import asdict
 from unittest.mock import patch
 
-from vogue_npp.domain.analysis import analyze_opportunities
-from vogue_npp.domain.concept import base_product_profile, validate_concept_draft
-from vogue_npp.domain.context import (
+from fashion_planner_novelty.domain.analysis import analyze_opportunities
+from fashion_planner_novelty.domain.concept import base_product_profile, validate_concept_draft
+from fashion_planner_novelty.domain.context import (
     AgentResult,
     AttributeSignal,
     InventoryProductResult,
@@ -26,17 +26,17 @@ from vogue_npp.domain.context import (
     TrendResult,
     build_planning_context,
 )
-from vogue_npp.domain.generator import RuleBasedConceptGenerator
-from vogue_npp.domain.prompt_registry import PROMPT_ROOT
-from vogue_npp.domain.trend_basis import (
+from fashion_planner_novelty.domain.generator import RuleBasedConceptGenerator
+from fashion_planner_novelty.domain.prompt_registry import PROMPT_ROOT
+from fashion_planner_novelty.domain.trend_basis import (
     DESIGN_ATTRIBUTE_NAMES,
     TREND_SELECTION_RULE,
     build_trend_basis,
     select_primary_trend,
 )
-from vogue_npp.prototype.server import _build_handoff_run, _image_profile_from_draft
-from vogue_npp.workflows.planning_draft import _analyze_planning_inputs
-from vogue_npp.workflows.text_concept_generation import (
+from fashion_planner_novelty.prototype.server import _build_handoff_run, _image_profile_from_draft
+from fashion_planner_novelty.workflows.planning_draft import _analyze_planning_inputs
+from fashion_planner_novelty.workflows.text_concept_generation import (
     PLANNING_SYSTEM_PROMPT,
     PROMPT_VERSION,
     PromptedConceptGenerator,

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 import unittest
-from vogue_npp.prototype.server import (
+from fashion_planner_novelty.prototype.server import (
     _analyze_planning_inputs,
     _stock_article_id,
 )

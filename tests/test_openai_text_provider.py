@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from vogue_npp.sources.openai_text_provider import (
+from fashion_planner_novelty.sources.openai_text_provider import (
     OpenAIResponsesTextProvider,
     OpenAITextProviderError,
 )

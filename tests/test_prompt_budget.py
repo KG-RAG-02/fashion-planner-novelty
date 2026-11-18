@@ -8,9 +8,9 @@ import unittest
 from decimal import Decimal
 from unittest import mock
 
-from vogue_npp.domain import prompt_budget as pb
-from vogue_npp.domain.concept import base_product_profile
-from vogue_npp.domain.context import (
+from fashion_planner_novelty.domain import prompt_budget as pb
+from fashion_planner_novelty.domain.concept import base_product_profile
+from fashion_planner_novelty.domain.context import (
     AgentResult,
     AttributeSignal,
     InventoryProduct,
@@ -21,9 +21,9 @@ from vogue_npp.domain.context import (
     TrendResult,
     build_planning_context,
 )
-from vogue_npp.domain.prompt_registry import render_prompt
-from vogue_npp.domain.prompt_safety import PROMPT_DATA_MAX_CHARS, serialize_untrusted_prompt_data
-from vogue_npp.workflows import text_concept_generation as tcg
+from fashion_planner_novelty.domain.prompt_registry import render_prompt
+from fashion_planner_novelty.domain.prompt_safety import PROMPT_DATA_MAX_CHARS, serialize_untrusted_prompt_data
+from fashion_planner_novelty.workflows import text_concept_generation as tcg
 
 
 RID = "budget-1"

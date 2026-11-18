@@ -7,7 +7,7 @@ from email.message import Message
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from vogue_npp.prototype.server import PrototypeHandler
+from fashion_planner_novelty.prototype.server import PrototypeHandler
 
 
 class LegacyRouteRemovalTests(unittest.TestCase):

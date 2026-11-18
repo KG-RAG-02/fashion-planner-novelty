@@ -2,9 +2,9 @@ import json
 import unittest
 from pathlib import Path
 
-from vogue_npp.domain.prompt_registry import PROMPT_ROOT, load_prompt, prompt_version_id, render_prompt
-from vogue_npp.workflows.image_generation import IMAGE_DESIGNER_SYSTEM_PROMPT
-from vogue_npp.workflows.text_concept_generation import PLANNING_SYSTEM_PROMPT, PROMPT_VERSION as TEXT_PROMPT_VERSION
+from fashion_planner_novelty.domain.prompt_registry import PROMPT_ROOT, load_prompt, prompt_version_id, render_prompt
+from fashion_planner_novelty.workflows.image_generation import IMAGE_DESIGNER_SYSTEM_PROMPT
+from fashion_planner_novelty.workflows.text_concept_generation import PLANNING_SYSTEM_PROMPT, PROMPT_VERSION as TEXT_PROMPT_VERSION
 
 
 class PromptRegistryTests(unittest.TestCase):

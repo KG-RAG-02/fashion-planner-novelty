@@ -2,7 +2,7 @@
 
 This directory contains versioned prompt templates used by P06 workflows. The active `/runs` endpoint currently builds the planning Draft with deterministic rules; it does not call the text-planning model. It does use the concept-image prompt when a real image provider is configured to create the product and outfit visuals from the same product profile.
 
-Runtime code loads prompts through `vogue_npp.domain.prompt_registry`. `manifest.json` selects each component's current version and stable ID. Retired templates are removed from the repository; older result metadata may still refer to their version IDs.
+Runtime code loads prompts through `fashion_planner_novelty.domain.prompt_registry`. `manifest.json` selects each component's current version and stable ID. Retired templates are removed from the repository; older result metadata may still refer to their version IDs.
 
 | Component | Current version | Stable prompt ID | Purpose |
 |---|---|---|---|
