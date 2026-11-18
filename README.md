@@ -6,7 +6,7 @@ Project_06(P06)은 P08이 전달한 사용자 요청, Trend 결과, Stock 결과
 
 ```text
 입력
-  P08 → P06 POST /v1/agents/new-product-agent/runs
+  P08 → P06 POST /v1/agents/novelty/runs
        ├─ planning_request (schema 1.0)
        ├─ trend_result (schema 1.1)
        └─ inventory_product_result (schema 1.0)
@@ -28,11 +28,11 @@ Project_06(P06)은 P08이 전달한 사용자 요청, Trend 결과, Stock 결과
 
 ## 입력 계약
 
-현재 P08 연동은 `vogue-handoff/0.3`을 사용합니다. `input`에는 아래 세 객체만 허용합니다.
+현재 P08 연동은 `novelty-handoff`을 사용합니다. `input`에는 아래 세 객체만 허용합니다.
 
 ```json
 {
-  "contract_version": "vogue-handoff/0.3",
+  "contract_version": "novelty-handoff",
   "request_id": "planning-001",
   "input": {
     "planning_request": {
@@ -48,7 +48,7 @@ Project_06(P06)은 P08이 전달한 사용자 요청, Trend 결과, Stock 결과
     "inventory_product_result": {
       "schema_version": "1.0",
       "request_id": "planning-001",
-      "agent_id": "stock-agent",
+      "agent_id": "inventory",
       "status": "ok"
     }
   }
@@ -67,25 +67,25 @@ Project_06(P06)은 P08이 전달한 사용자 요청, Trend 결과, Stock 결과
 - 처리 완료 후 같은 `request_id`를 다른 입력에 재사용하면 `409 REQUEST_ID_REUSED`를 반환합니다. 같은 입력의 동시 요청은 최초 저장된 응답으로 수렴합니다.
 - 유료 이미지 요청이 처리 중이거나 결과가 불확실하면 중복 호출을 막기 위해 `409 IMAGE_REQUEST_IN_PROGRESS_OR_OUTCOME_UNKNOWN`을 반환할 수 있습니다.
 
-기획 초안은 트렌드 하나를 기준으로 만듭니다. P06은 사용 가능한 트렌드 후보(이름·Evidence가 있고 요청 시즌·카테고리·시장·채널과 어긋나지 않는 후보) 중에서 Evidence가 연결된 디자인 속성(색상·패턴·디테일·소재·핏·실루엣·기장 등)이 가장 많은 후보를, 같으면 Evidence ID가 더 많은 후보를, 그래도 같으면 먼저 입력된 후보를 고릅니다(`src/fashion_planner_novelty/domain/trend_basis.py`). 규칙 기반 Draft의 콘셉트 문장·기회 문장·속성·상품 프로필과 텍스트 LLM 입력은 이 기준 트렌드만 사용하며, 다른 트렌드를 섞지 않습니다. 선택 결과는 `result.draft.trend_basis`(`source_style_id`, `name`, `selection_rule`=`most_evidence_linked_design_attributes/1`, `evidence_ids`, `design_attributes`, `candidates_considered`)에 남고, 사용할 수 있는 트렌드가 없으면 `null`입니다. LLM 경로에서도 이 값은 규칙이 정하며 모델이 바꾸지 않습니다. 기준 트렌드에 Evidence가 연결된 색이 2개 이상이면 상품 프로필 색상은 입력 순서상 첫 번째 근거 색 하나로 정합니다(요청에 색상이 있으면 요청값 유지). LLM 경로도 같은 규칙을 적용하며, 이미지와 P07 검토 입력은 이 색을 받습니다. 소재·실루엣은 값이 하나일 때만 프로필에 올립니다.
+기획 초안은 트렌드 하나를 기준으로 만듭니다. P06은 사용 가능한 트렌드 후보(이름·Evidence가 있고 요청 시즌·카테고리·시장·채널과 어긋나지 않는 후보) 중에서 Evidence가 연결된 디자인 속성(색상·패턴·디테일·소재·핏·실루엣·기장 등)이 가장 많은 후보를, 같으면 Evidence ID가 더 많은 후보를, 그래도 같으면 먼저 입력된 후보를 고릅니다(`src/fashion_planner_novelty/domain/trend_basis.py`). 규칙 기반 Draft의 콘셉트 문장·기회 문장·속성·상품 프로필과 텍스트 LLM 입력은 이 기준 트렌드만 사용하며, 다른 트렌드를 섞지 않습니다. 선택 결과는 `result.draft.trend_basis`(`source_style_id`, `name`, `selection_rule`=`most_evidence_linked_design_attributes`, `evidence_ids`, `design_attributes`, `candidates_considered`)에 남고, 사용할 수 있는 트렌드가 없으면 `null`입니다. LLM 경로에서도 이 값은 규칙이 정하며 모델이 바꾸지 않습니다. 기준 트렌드에 Evidence가 연결된 색이 2개 이상이면 상품 프로필 색상은 입력 순서상 첫 번째 근거 색 하나로 정합니다(요청에 색상이 있으면 요청값 유지). LLM 경로도 같은 규칙을 적용하며, 이미지와 P07 검토 입력은 이 색을 받습니다. 소재·실루엣은 값이 하나일 때만 프로필에 올립니다.
 
 P06은 P07을 호출하지 않습니다. P08은 P06의 `product_profile`에서 P07 허용 필드를 구성해 review를 호출하고, review와 Draft를 통합합니다.
 
 ## 환경 변수와 데이터 연결
 
-P06은 업무용 Trend·Stock 데이터베이스에 직접 접속하지 않습니다. P08이 해당 데이터를 조회해 `trend_result`와 `inventory_product_result`로 전달합니다. 따라서 P06 `.env`에는 Trend·Stock DB 키가 필요하지 않으며, P06의 로컬 SQLite는 artifact 소유권과 요청 재생 처리만 기록합니다. `/runs`의 텍스트 기획 생성기는 `VOGUE_TEXT_GENERATION_ENABLED=true`일 때만 호출되며 이미지 생성과 같은 `LLM_API_KEY`를 사용합니다. 비활성화 상태에서는 규칙 기반 결과를 반환합니다.
+P06은 업무용 Trend·Stock 데이터베이스에 직접 접속하지 않습니다. P08이 해당 데이터를 조회해 `trend_result`와 `inventory_product_result`로 전달합니다. 따라서 P06 `.env`에는 Trend·Stock DB 키가 필요하지 않으며, P06의 로컬 SQLite는 artifact 소유권과 요청 재생 처리만 기록합니다. `/runs`의 텍스트 기획 생성기는 `NOVELTY_TEXT_GENERATION_ENABLED=true`일 때만 호출되며 이미지 생성과 같은 `LLM_API_KEY`를 사용합니다. 비활성화 상태에서는 규칙 기반 결과를 반환합니다.
 
 향후 데이터 조회를 통합할 때는 키를 P06에 복사하는 대신, 데이터베이스 소유 서비스(P08 또는 별도 upstream)가 하나의 credential로 필요한 데이터셋을 묶어 조회하고 현재 입력 계약에 맞는 결과를 P06에 전달하도록 설계합니다. `.env`와 `.envrc`는 각 저장소·실행 컴퓨터의 로컬 설정이므로 저장소 사이에 공유되지 않습니다.
 
-`/runs`는 `VOGUE_TEXT_GENERATION_ENABLED` 설정에 따라 규칙 기반 또는 `PromptedConceptGenerator` 경로를 사용하며, 저장소 기본 설정은 활성화(`true`)입니다. 텍스트 생성이 활성화되면 근거 ID를 검증한 구조화 응답을 생성하고, 호출·응답 검증에 실패하면 규칙 기반 결과로 fallback합니다. LLM이 성공해도 `opportunity`, `product_definition`, `product_profile`, `relation_to_own_products` 등 일반 포스터 필드를 비워 둔 경우에는 해당 필드만 규칙 기반 결과로 보충합니다. 단, `differentiation`은 LLM이 비워 둔 상태를 유지하고 `generation_metadata.llm_empty_fields`에 기록합니다. 유효한 규칙 기반 Draft로 fallback한 경우 최상위 `status`는 `ok`로 유지하고, `generation_metadata.status`, `engine`, `error_code`로 LLM 실패를 구분합니다. `find_categories` 도구나 외부 agent 도구는 호출하지 않으며, 입력에 전달된 도구 진단 문구는 provenance와 limitation에 보존합니다. 상류 status가 `ok`이고 필수 Draft·시각자료가 생성됐으며 오류·누락·충돌이 없다면, 복구된 규칙 경고 문구만으로 결과를 `partial`로 바꾸지 않습니다.
+`/runs`는 `NOVELTY_TEXT_GENERATION_ENABLED` 설정에 따라 규칙 기반 또는 `PromptedConceptGenerator` 경로를 사용하며, 저장소 기본 설정은 활성화(`true`)입니다. 텍스트 생성이 활성화되면 근거 ID를 검증한 구조화 응답을 생성하고, 호출·응답 검증에 실패하면 규칙 기반 결과로 fallback합니다. LLM이 성공해도 `opportunity`, `product_definition`, `product_profile`, `relation_to_own_products` 등 일반 포스터 필드를 비워 둔 경우에는 해당 필드만 규칙 기반 결과로 보충합니다. 단, `differentiation`은 LLM이 비워 둔 상태를 유지하고 `generation_metadata.llm_empty_fields`에 기록합니다. 유효한 규칙 기반 Draft로 fallback한 경우 최상위 `status`는 `ok`로 유지하고, `generation_metadata.status`, `engine`, `error_code`로 LLM 실패를 구분합니다. `find_categories` 도구나 외부 agent 도구는 호출하지 않으며, 입력에 전달된 도구 진단 문구는 provenance와 limitation에 보존합니다. 상류 status가 `ok`이고 필수 Draft·시각자료가 생성됐으며 오류·누락·충돌이 없다면, 복구된 규칙 경고 문구만으로 결과를 `partial`로 바꾸지 않습니다.
 
 ## 상품·착장 이미지
 
-실제 이미지 생성은 `VOGUE_DRAFT_IMAGE_PROVIDER=openai`와 이미지 API 키가 함께 설정된 경우에만 실행됩니다. provider를 지정하지 않으면 두 visual이 `skipped`로 반환됩니다. 지원하지 않는 provider 이름은 `IMAGE_PROVIDER_UNSUPPORTED` 오류로 나타납니다. 실제 생성 또는 artifact 저장에 실패하면 해당 visual은 `failed`가 되고 전체 결과는 `partial`입니다.
+실제 이미지 생성은 `NOVELTY_DRAFT_IMAGE_PROVIDER=openai`와 이미지 API 키가 함께 설정된 경우에만 실행됩니다. provider를 지정하지 않으면 두 visual이 `skipped`로 반환됩니다. 지원하지 않는 provider 이름은 `IMAGE_PROVIDER_UNSUPPORTED` 오류로 나타납니다. 실제 생성 또는 artifact 저장에 실패하면 해당 visual은 `failed`가 되고 전체 결과는 `partial`입니다.
 
-P06은 이미지 두 장을 순차로 만듭니다. 먼저 상품 프로필(디테일 포함)로 product 이미지를 생성하고, 저장된 product 이미지를 참조 입력으로 OpenAI Images Edit API(`/v1/images/edits`)에 넣어 같은 옷의 착장(outfit) 이미지를 만듭니다. product 이미지가 없으면 outfit은 텍스트만으로 만들지 않고 `skipped`(`OUTFIT_REFERENCE_UNAVAILABLE`)로 둡니다. outfit visual의 `reference_image_sha256`은 참조한 product 이미지의 SHA-256입니다. 동일 상품 프로필의 hash를 각 visual에 기록하지만 이미지 픽셀의 디자인 일치는 자동 검증하지 않습니다. P08은 공유 artifact 저장소에서 `artifact://p06/images/<sha256>.<ext>`를 해석하고, 소유권·크기·SHA-256을 검증해야 합니다. 이미지 바이트 자체는 Draft JSON에 넣지 않습니다.
+P06은 이미지 두 장을 순차로 만듭니다. 먼저 상품 프로필(디테일 포함)로 product 이미지를 생성하고, 저장된 product 이미지를 참조 입력으로 OpenAI Images Edit API(`/v1/images/edits`)에 넣어 같은 옷의 착장(outfit) 이미지를 만듭니다. product 이미지가 없으면 outfit은 텍스트만으로 만들지 않고 `skipped`(`OUTFIT_REFERENCE_UNAVAILABLE`)로 둡니다. outfit visual의 `reference_image_sha256`은 참조한 product 이미지의 SHA-256입니다. 동일 상품 프로필의 hash를 각 visual에 기록하지만 이미지 픽셀의 디자인 일치는 자동 검증하지 않습니다. P08은 공유 artifact 저장소에서 `artifact://novelty/images/<sha256>.<ext>`를 해석하고, 소유권·크기·SHA-256을 검증해야 합니다. 이미지 바이트 자체는 Draft JSON에 넣지 않습니다.
 
-착장 이미지는 신상품을 재고 상품 하나와 함께 입힌 모습입니다(2026-11-17 결정). 재고 상품은 규칙으로 하나를 고릅니다: 기준 트렌드(`draft.trend_basis`)의 재고 결과(stock `trend_results`에서 같은 style_id) 중 순위가 가장 높은 상품이며, P08 기획서의 재고 카드와 같은 상품입니다. 다만 코디 역할 규칙(outfit-role-pairing-v1)상 신상품과 같은 역할(예: 상의와 상의)이면 건너뜁니다(`src/fashion_planner_novelty/domain/outfit_companion.py`). 그 상품의 사진(stock 결과 `products[].image.data`)이 있으면 edit 호출의 두 번째 입력 이미지로 넣고, 카테고리·색상·소재·핏은 프롬프트의 `STOCK ITEM` JSON으로 함께 전달합니다. 사진이 없으면 JSON 설명만 쓰고, 고를 재고가 없으면 신상품만 입힌 착장을 만듭니다. 어떤 재고를 썼는지는 `outfit_image.companion`(`stock_product_id`, `category`, `trend_style_id`, `rank`, `role`, `selection_rule`, `image_sha256`, `image_media_type`)에 남고, 재고를 쓰지 않았으면 `null`입니다. 프롬프트 버전은 `p06-draft-visuals/4`입니다.
+착장 이미지는 신상품을 재고 상품 하나와 함께 입힌 모습입니다(2026-11-17 결정). 재고 상품은 규칙으로 하나를 고릅니다: 기준 트렌드(`draft.trend_basis`)의 재고 결과(stock `trend_results`에서 같은 style_id) 중 순위가 가장 높은 상품이며, P08 기획서의 재고 카드와 같은 상품입니다. 다만 코디 역할 규칙(outfit-role-pairing)상 신상품과 같은 역할(예: 상의와 상의)이면 건너뜁니다(`src/fashion_planner_novelty/domain/outfit_companion.py`). 그 상품의 사진(stock 결과 `products[].image.data`)이 있으면 edit 호출의 두 번째 입력 이미지로 넣고, 카테고리·색상·소재·핏은 프롬프트의 `STOCK ITEM` JSON으로 함께 전달합니다. 사진이 없으면 JSON 설명만 쓰고, 고를 재고가 없으면 신상품만 입힌 착장을 만듭니다. 어떤 재고를 썼는지는 `outfit_image.companion`(`stock_product_id`, `category`, `trend_style_id`, `rank`, `role`, `selection_rule`, `image_sha256`, `image_media_type`)에 남고, 재고를 쓰지 않았으면 `null`입니다. 프롬프트 버전은 `novelty-draft-visuals`입니다.
 
 완료 응답은 동일 request ID와 동일 요청 본문에 재사용됩니다. 같은 입력의 동시 요청도 최초 저장된 응답으로 수렴합니다. 다른 본문에 같은 request ID를 사용하면 `409 REQUEST_ID_REUSED`입니다. 유료 이미지 요청의 처리 결과가 불확실하면 중복 과금을 막기 위해 같은 ID의 재호출을 거부할 수 있습니다. 실패 이미지를 의도적으로 다시 요청하려면 새 request ID를 사용하세요. 자동 재시도는 하지 않습니다.
 
@@ -97,8 +97,8 @@ P06은 이미지 두 장을 순차로 만듭니다. 먼저 상품 프로필(디�
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -r requirements.txt
-VOGUE_HTTP_MODE=local \
-VOGUE_DRAFT_ARTIFACT_DIR=data/local/p06-artifacts \
+NOVELTY_HTTP_MODE=local \
+NOVELTY_DRAFT_ARTIFACT_DIR=data/local/novelty-artifacts \
 PYTHONPATH=src python3 -m fashion_planner_novelty.server
 ```
 
@@ -112,24 +112,24 @@ PYTHONPATH=src python3 -m fashion_planner_novelty.server
 docker compose up --build
 ```
 
-Docker 설정은 `VOGUE_HTTP_MODE=service`와 TLS 인증서를 사용합니다. P08과 함께 실행할 때는 두 서비스가 같은 artifact volume을 보도록 배포 설정을 맞춰야 합니다. 키나 인증 토큰을 Git, 채팅, 로그에 기록하지 마세요.
+Docker 설정은 `NOVELTY_HTTP_MODE=service`와 TLS 인증서를 사용합니다. P08과 함께 실행할 때는 두 서비스가 같은 artifact volume을 보도록 배포 설정을 맞춰야 합니다. 키나 인증 토큰을 Git, 채팅, 로그에 기록하지 마세요.
 
 ### 실제 이미지 provider 설정
 
 ```bash
-VOGUE_DRAFT_IMAGE_PROVIDER=openai
-VOGUE_DRAFT_IMAGE_MODEL=gpt-image-2.5-sunburst
-VOGUE_DRAFT_IMAGE_TIMEOUT_SECONDS=180
+NOVELTY_DRAFT_IMAGE_PROVIDER=openai
+NOVELTY_DRAFT_IMAGE_MODEL=gpt-image-2.5-sunburst
+NOVELTY_DRAFT_IMAGE_TIMEOUT_SECONDS=180
 LLM_API_KEY=<승인된 secret 저장소에서 주입>
 ```
 
 ### LLM 기획 생성기 설정
 
 ```bash
-VOGUE_TEXT_GENERATION_ENABLED=true
-VOGUE_TEXT_GENERATION_MODEL=gpt-6-luna
-VOGUE_TEXT_GENERATION_TIMEOUT_SECONDS=60
-VOGUE_TEXT_GENERATION_MAX_OUTPUT_TOKENS=3000
+NOVELTY_TEXT_GENERATION_ENABLED=true
+NOVELTY_TEXT_GENERATION_MODEL=gpt-6-luna
+NOVELTY_TEXT_GENERATION_TIMEOUT_SECONDS=60
+NOVELTY_TEXT_GENERATION_MAX_OUTPUT_TOKENS=3000
 LLM_API_KEY=<승인된 secret 저장소에서 주입>
 ```
 

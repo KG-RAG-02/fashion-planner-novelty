@@ -2,7 +2,7 @@
 
 ## Current runtime
 
-P06 exposes `POST /v1/agents/new-product-agent/runs` using `vogue-handoff/0.3`. P08 sends a PlanningRequest 1.0, Trend 1.1, and Stock 1.0 result. P06 validates and normalizes inputs, runs its evidence-aware planning analysis, and returns `draft.product_profile` with a narrative concept and two visual statuses at `draft.visuals.product` and `draft.visuals.outfit`.
+P06 exposes `POST /v1/agents/novelty/runs` using `novelty-handoff`. P08 sends a PlanningRequest 1.0, Trend 1.1, and Stock 1.0 result. P06 validates and normalizes inputs, runs its evidence-aware planning analysis, and returns `draft.product_profile` with a narrative concept and two visual statuses at `draft.visuals.product` and `draft.visuals.outfit`.
 
 P06 uses an explicitly configured real provider for actual concept images. Offline tests use a mock provider and do not create synthetic image artifacts. If no provider is configured, image statuses are `skipped`; an unsupported provider or generation/storage error is `failed` and makes the overall result partial.
 

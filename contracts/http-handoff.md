@@ -1,17 +1,17 @@
-# P06 ↔ P08 handoff compatibility: `vogue-handoff/0.3`
+# P06 ↔ P08 handoff compatibility: `novelty-handoff`
 
-P06 implements this request on `POST /v1/agents/new-product-agent/runs`, aligned against the local P08 `orchestrator-integration-branch` contract snapshot. P08 remains the owner of orchestration and P07 review calls. This file is a compatibility note, not a separately frozen cross-repository schema.
+P06 implements this request on `POST /v1/agents/novelty/runs`, aligned against the local P08 `orchestrator-integration-branch` contract snapshot. P08 remains the owner of orchestration and P07 review calls. This file is a compatibility note, not a separately frozen cross-repository schema.
 
 ## Request
 
 ```json
 {
-  "contract_version": "vogue-handoff/0.3",
+  "contract_version": "novelty-handoff",
   "request_id": "planning-001",
   "input": {
     "planning_request": {"schema_version": "1.0", "request_id": "planning-001"},
     "trend_result": {"schema_version": "1.1", "request_id": "planning-001", "status": "ok"},
-    "inventory_product_result": {"schema_version": "1.0", "request_id": "planning-001", "agent_id": "stock-agent", "status": "ok"}
+    "inventory_product_result": {"schema_version": "1.0", "request_id": "planning-001", "agent_id": "inventory", "status": "ok"}
   }
 }
 ```
@@ -22,9 +22,9 @@ The input object has exactly the three shown keys. Every input `request_id` must
 
 ```json
 {
-  "contract_version": "vogue-handoff/0.3",
+  "contract_version": "novelty-handoff",
   "request_id": "planning-001",
-  "producer": {"agent_id": "new-product-agent", "schema_version": "1.0"},
+  "producer": {"agent_id": "novelty", "schema_version": "1.0"},
   "status": "partial",
   "result": {
     "schema_version": "1.0",

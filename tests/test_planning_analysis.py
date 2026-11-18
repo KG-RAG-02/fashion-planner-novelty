@@ -23,7 +23,7 @@ class PlanningAnalysisTests(unittest.TestCase):
             },
             "inventory_product_result": {
                 "schema_version": "1.0", "request_id": "synthetic-live-run",
-                "agent_id": "stock-agent", "status": "ok", "products": [],
+                "agent_id": "inventory", "status": "ok", "products": [],
             },
         }
 
@@ -53,7 +53,7 @@ class PlanningAnalysisTests(unittest.TestCase):
             "trend_result": {"schema_version": "1.0", "request_id": request_id, "status": "no_results"},
             "inventory_product_result": {
                 "schema_version": "1.0", "request_id": request_id,
-                "agent_id": "stock-agent", "status": "no_results",
+                "agent_id": "inventory", "status": "no_results",
             },
         })
 
@@ -93,7 +93,7 @@ class PlanningAnalysisTests(unittest.TestCase):
             },
             "inventory_product_result": {
                 "schema_version": "1.0", "request_id": request_id,
-                "agent_id": "stock-agent", "status": "no_results",
+                "agent_id": "inventory", "status": "no_results",
             },
         })
 
@@ -117,7 +117,7 @@ class PlanningAnalysisTests(unittest.TestCase):
             },
             "inventory_product_result": {
                 "schema_version": "1.0", "request_id": "coverage-1",
-                "agent_id": "stock-agent", "status": "ok", "products": [],
+                "agent_id": "inventory", "status": "ok", "products": [],
             },
         }
 
@@ -271,7 +271,7 @@ class PlanningAnalysisTests(unittest.TestCase):
         }
         stock_output = {
             "schema_version": "1.0", "request_id": "repo-output-1",
-            "agent_id": "stock-agent", "status": "partial", "summary": "상품 1건",
+            "agent_id": "inventory", "status": "partial", "summary": "상품 1건",
             "products": [{
                 "style_id": "ST-2041", "sku_ids": ["SKU-1"], "category": "점퍼",
                 "season": "27SS", "attributes": {"color": "올리브", "material": "나일론"},
@@ -301,7 +301,7 @@ class PlanningAnalysisTests(unittest.TestCase):
         self.assertEqual(response["input_evidence"]["inventory_product_result"]["payload"], stock_output)
 
     def test_maps_stock_multi_trend_results_without_losing_source_indexes(self):
-        fixture_path = Path(__file__).parent / "fixtures/upstream/stock-agent-multi-result.synthetic.json"
+        fixture_path = Path(__file__).parent / "fixtures/upstream/inventory-multi-result.synthetic.json"
         stock_output = json.loads(fixture_path.read_text())
         trend_output = {
             "request_id": stock_output["request_id"], "status": "partial",
@@ -323,7 +323,7 @@ class PlanningAnalysisTests(unittest.TestCase):
         self.assertEqual([row["mapping_status"] for row in rows], ["linked", "no_product", "linked"])
         normalized = response["input_evidence"]["inventory_product_result"]["payload"]
         self.assertEqual(normalized, stock_output)
-        self.assertEqual(response["input_evidence"]["inventory_product_result"]["producer_id"], "stock-agent")
+        self.assertEqual(response["input_evidence"]["inventory_product_result"]["producer_id"], "inventory")
         self.assertEqual(response["input_evidence"]["inventory_product_result"]["source_schema_version"], "1.0")
         self.assertIsNone(response["input_evidence"]["trend_result"]["source_schema_version"])
         self.assertEqual(response["input_evidence"]["trend_result"]["producer_id_origin"], "adapter_assumption")
@@ -377,7 +377,7 @@ class PlanningAnalysisTests(unittest.TestCase):
         request = {"request_id": "injection-1", "query": attack, "season": "27SS", "category": "outerwear"}
         trend = {"request_id": "injection-1", "agent_id": "query-trend-agent", "schema_version": "1.0",
                  "status": "partial", "summary": attack, "trends": [], "evidence": [], "limitations": []}
-        inventory = {"request_id": "injection-1", "agent_id": "stock-agent", "schema_version": "1.0",
+        inventory = {"request_id": "injection-1", "agent_id": "inventory", "schema_version": "1.0",
                      "status": "no_results", "products": [], "evidence": []}
         response = _analyze_planning_inputs({
             "planning_request": request, "trend_result": trend, "inventory_product_result": inventory,

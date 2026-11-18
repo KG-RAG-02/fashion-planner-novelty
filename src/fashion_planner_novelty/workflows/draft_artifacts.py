@@ -62,7 +62,7 @@ class OpenAIDraftImageProvider:
     (domain/outfit_companion.py): its photograph is input image 2 when the stock result carried one, and its
     stock attributes are described in the prompt either way.
     """
-    prompt_version = "p06-draft-visuals/4"
+    prompt_version = "novelty-draft-visuals"
 
     def __init__(self, api_key: str, model: str, timeout_seconds: int = 180):
         from .image_generation import OpenAIImageEditProvider, OpenAIImageProvider
@@ -196,7 +196,7 @@ class DraftArtifactStore:
             raise ValueError("content-address collision")
         if not target.exists():
             target.write_bytes(data)
-        uri = f"artifact://p06/images/{digest}.{suffix}"
+        uri = f"artifact://novelty/images/{digest}.{suffix}"
         with self._connect() as conn:
             existing = conn.execute("SELECT sha256,uri,size_bytes FROM issued WHERE request_id=? AND kind=?", (request_id, kind)).fetchone()
             if existing and existing != (digest, uri, len(data)):
@@ -213,7 +213,7 @@ class DraftArtifactStore:
     def resolve(self, request_id: str, kind: str, artifact: dict) -> Path:
         if not self.owns(request_id, kind, artifact):
             raise PermissionError("artifact is not owned by this request")
-        name = Path(str(artifact.get("uri", "")).removeprefix("artifact://p06/images/")).name
+        name = Path(str(artifact.get("uri", "")).removeprefix("artifact://novelty/images/")).name
         target = (self.images / name).resolve()
         if self.images not in target.parents or not target.is_file():
             raise FileNotFoundError("artifact unavailable")

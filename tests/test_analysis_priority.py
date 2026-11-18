@@ -19,7 +19,7 @@ class AnalysisPriorityTests(unittest.TestCase):
         context = build_planning_context(PlanningInputs(
             PlanningRequest(AgentResult("query-agent", request_id, "1.0", "ok")),
             TrendResult(AgentResult("trend-agent", request_id, "1.0", "partial")),
-            InventoryProductResult(AgentResult("stock-agent", request_id, "1.0", "partial")),
+            InventoryProductResult(AgentResult("inventory", request_id, "1.0", "partial")),
         ))
         draft, issues = generate_concept_draft(context)
         self.assertEqual(set(context.input_statuses), {

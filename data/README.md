@@ -4,7 +4,7 @@ P06 analyzes the user's planning request together with Trend and Stock results s
 
 ## Runtime data
 
-Generated drafts, image artifacts, and local replay/ownership state belong under `data/local/` and are ignored by Git. The active `POST /v1/agents/new-product-agent/runs` endpoint stores generated product and outfit images below `VOGUE_DRAFT_ARTIFACT_DIR`. A local SQLite ledger binds request IDs to their artifacts and saved responses so duplicate requests do not repeat completed image work.
+Generated drafts, image artifacts, and local replay/ownership state belong under `data/local/` and are ignored by Git. The active `POST /v1/agents/novelty/runs` endpoint stores generated product and outfit images below `NOVELTY_DRAFT_ARTIFACT_DIR`. A local SQLite ledger binds request IDs to their artifacts and saved responses so duplicate requests do not repeat completed image work.
 
 P08 reads the shared artifact volume and verifies each artifact's ownership, byte size, and SHA-256. P06 returns artifact metadata, not image bytes embedded in the Draft JSON. Do not commit generated artifacts, credentials, source databases, or customer records.
 

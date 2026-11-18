@@ -51,11 +51,11 @@ def make_context(*, trends=3, description="올리브 유틸리티 아우터가 �
                         candidates=candidates)
     stock = tuple(InventoryProduct(
         style_id=f"{i:07d}", sku_ids=(), season="27SS", category="outerwear", quantity=10 + i, unit="pieces",
-        inventory_definition="virtual_stock_v1", as_of="2020-09-22",
-        evidence_ids=tuple(f"stock-agent:{i}-s0:E-00{k}" for k in range(1, 7)),
+        inventory_definition="virtual_stock_from_hm_sales", as_of="2020-09-22",
+        evidence_ids=tuple(f"inventory:{i}-s0:E-00{k}" for k in range(1, 7)),
         attributes=(AttributeSignal("color", "블랙", "unknown"), AttributeSignal("fit", None, "unknown")),
     ) for i in range(products))
-    inventory = InventoryProductResult(AgentResult("stock-agent", RID, schema, "ok" if stock else "no_results",
+    inventory = InventoryProductResult(AgentResult("inventory", RID, schema, "ok" if stock else "no_results",
                                                    limitations=tuple(inventory_lines)), products=stock)
     return build_planning_context(PlanningInputs(request, trend, inventory))
 
@@ -72,8 +72,8 @@ def sample_data(*, trends=3, products=3, same_style=False, description="설명" 
     } for i in range(trends)]
     stock = [{
         "style_id": "0001" if same_style else f"{i:04d}", "category": "드레스", "season": "2026FW", "quantity": 10,
-        "unit": "pieces", "inventory_definition": "virtual_stock_v1", "as_of": "2020-09-22",
-        "evidence_ids": [f"stock-agent:{i}-s0:E-00{k}" for k in range(1, 7)],
+        "unit": "pieces", "inventory_definition": "virtual_stock_from_hm_sales", "as_of": "2020-09-22",
+        "evidence_ids": [f"inventory:{i}-s0:E-00{k}" for k in range(1, 7)],
         "attributes": [{"name": "color", "value": "블랙", "origin": "unknown", "evidence_ids": []},
                        {"name": "fit", "value": None, "origin": "unknown", "evidence_ids": []}],
     } for i in range(products)]
@@ -86,7 +86,7 @@ def sample_data(*, trends=3, products=3, same_style=False, description="설명" 
         "request": {"query": "q", "season": "2026FW", "evidence_ids": []},
         "trend_candidates": candidates, "trend_limitations": trend_lines,
         "inventory_products": stock, "inventory_limitations": inventory_lines, "conflicts": [],
-        "limitations": [*trend_lines, *inventory_lines, "Upstream result from stock-agent has status 'partial'.",
+        "limitations": [*trend_lines, *inventory_lines, "Upstream result from inventory has status 'partial'.",
                         "X 매핑 문제", "Stock trend mapping: X 매핑 문제", "Stock trend mapping: 다른 문제"],
         "questions_for_validation": [],
     }
@@ -210,7 +210,7 @@ class LadderStepTests(unittest.TestCase):
         data = sample_data()
         self.assertEqual(pb.drop_duplicate_limitations(data), 7)
         self.assertEqual(data["limitations"], [
-            "Upstream result from stock-agent has status 'partial'.", "X 매핑 문제", "Stock trend mapping: 다른 문제",
+            "Upstream result from inventory has status 'partial'.", "X 매핑 문제", "Stock trend mapping: 다른 문제",
         ])
         self.assertEqual(len(data["inventory_limitations"]), 5)
 
@@ -231,7 +231,7 @@ class LadderStepTests(unittest.TestCase):
         self.assertEqual(pb.compact_structure(data), [3])
         (product,) = data["inventory_products"]
         self.assertEqual(product["evidence_ids"],
-                         [f"stock-agent:{i}-s0:E-00{k}" for i in range(3) for k in range(1, 7)])
+                         [f"inventory:{i}-s0:E-00{k}" for i in range(3) for k in range(1, 7)])
         self.assertEqual(product["attributes"], [{"name": "color", "value": "블랙"}])
         self.assertEqual(data["inventory_common"], {"attribute_origin": "unknown"})
         keys = list(data)
@@ -256,14 +256,14 @@ class LadderStepTests(unittest.TestCase):
 
     def test_t3_hoists_common_inventory_scalars_and_keeps_evidenced_null_attributes(self):
         data = sample_data(products=3)
-        data["inventory_products"][0]["attributes"][1]["evidence_ids"] = ["stock-agent:fit-evidence"]
+        data["inventory_products"][0]["attributes"][1]["evidence_ids"] = ["inventory:fit-evidence"]
         pb.compact_structure(data)
         self.assertEqual(data["inventory_common"], {
             "category": "드레스", "season": "2026FW", "quantity": 10, "unit": "pieces",
-            "inventory_definition": "virtual_stock_v1", "as_of": "2020-09-22", "attribute_origin": "unknown",
+            "inventory_definition": "virtual_stock_from_hm_sales", "as_of": "2020-09-22", "attribute_origin": "unknown",
         })
         self.assertEqual(set(data["inventory_products"][1]), {"style_id", "evidence_ids", "attributes"})
-        self.assertIn({"name": "fit", "value": None, "origin": "unknown", "evidence_ids": ["stock-agent:fit-evidence"]},
+        self.assertIn({"name": "fit", "value": None, "origin": "unknown", "evidence_ids": ["inventory:fit-evidence"]},
                       data["inventory_products"][0]["attributes"])
 
     def test_t3_compacts_trends_and_hoists_only_the_qualification(self):
@@ -493,7 +493,7 @@ class GeneratorBudgetTests(unittest.TestCase):
         self.assertEqual((metadata["status"], metadata["error_code"], provider.calls), ("generated", None, 1))
         self.assertEqual(metadata["prompt_version"], tcg.PROMPT_VERSION)
         self.assertEqual(metadata["prompt_reduction"], {
-            "version": "p06-prompt-budget/1", "cap": PROMPT_DATA_MAX_CHARS,
+            "version": "novelty-prompt-budget", "cap": PROMPT_DATA_MAX_CHARS,
             "chars_before": pb.prompt_data_chars(data), "chars_after": len(sent), "steps": ["T1"],
             "aliased": False, "allowed_evidence_ids": len(prompt.allowed_evidence_ids),
             "trimmed": {"inventory": 0, "descriptions": 0, "trends": 0},

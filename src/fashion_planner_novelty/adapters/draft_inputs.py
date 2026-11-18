@@ -9,18 +9,20 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 
-ADAPTER_VERSION = "project06-input-normalizer/1.3"
+ADAPTER_VERSION = "novelty-input-normalizer"
 INPUT_KEYS = frozenset({
     "planning_request", "trend_result", "inventory_product_result",
 })
+# 내부 분석은 세 입력의 schema_version이 같다고 가정한다. 정규화 사본에는 이 값을 쓴다.
+INTERNAL_SCHEMA_VERSION = "1.0.0"
 SUPPORTED_VERSIONS = {
-    "planning_request": frozenset({"1.0"}),
-    "trend_result": frozenset({"1.1"}),
-    "inventory_product_result": frozenset({"1.0"}),
+    "planning_request": frozenset({"1.0.0"}),
+    "trend_result": frozenset({"1.0.0"}),
+    "inventory_product_result": frozenset({"1.0.0"}),
 }
 EXPECTED_PRODUCERS = {
-    "trend_result": frozenset({"trend-analysis-agent", None}),
-    "inventory_product_result": frozenset({"stock-agent"}),
+    "trend_result": frozenset({"trend", None}),
+    "inventory_product_result": frozenset({"inventory"}),
 }
 DOMAIN_STATUSES = frozenset({"ok", "partial", "no_results", "error"})
 
@@ -87,10 +89,10 @@ def normalize_workflow_inputs(request_id: str, inputs: Mapping[str, Any]) -> Nor
         schema_trace[name] = {
             "producer_id": producer_id,
             "source_schema_version": source_version,
-            "normalized_schema_version": source_version,
-            "internal_schema_version": source_version,
+            "normalized_schema_version": INTERNAL_SCHEMA_VERSION,
+            "internal_schema_version": INTERNAL_SCHEMA_VERSION,
             "adapter_version": ADAPTER_VERSION,
-            "transformed": False,
+            "transformed": source_version != INTERNAL_SCHEMA_VERSION,
             "source_payload_sha256": _fingerprint(payload),
         }
 
@@ -98,11 +100,8 @@ def normalize_workflow_inputs(request_id: str, inputs: Mapping[str, Any]) -> Nor
     if not isinstance(planning, dict) or planning.get("request_id") != request_id:
         raise WorkflowInputError("REQUEST_ID_MISMATCH", "PlanningRequest request_id가 envelope와 일치해야 합니다.")
 
-    trend = normalized_inputs["trend_result"]
-    trend["schema_version"] = "1.0"
-    schema_trace["trend_result"]["normalized_schema_version"] = "1.0"
-    schema_trace["trend_result"]["internal_schema_version"] = "1.0"
-    schema_trace["trend_result"]["transformed"] = True
+    for payload in normalized_inputs.values():
+        payload["schema_version"] = INTERNAL_SCHEMA_VERSION
 
     return NormalizedWorkflowInputs(
         request_id=request_id,

@@ -40,7 +40,7 @@ def make_context(request_id="text-plan-1", query="27SS 아우터 기획"):
         ),),
     )
     inventory = InventoryProductResult(
-        AgentResult("stock-agent", request_id, schema, "no_results"),
+        AgentResult("inventory", request_id, schema, "no_results"),
     )
     return build_planning_context(PlanningInputs(request, trend, inventory))
 

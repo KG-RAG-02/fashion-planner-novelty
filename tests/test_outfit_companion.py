@@ -71,9 +71,9 @@ def context_of(products, slots, *, query="2026FW 남성 재킷 기획"):
     return build_planning_context(PlanningInputs(
         PlanningRequest(AgentResult("user-request", RID, SCHEMA, "ok"), original_query=query, season="2026FW",
                         category="재킷", field_origins={"season": "user", "category": "user"}),
-        TrendResult(AgentResult("trend-analysis-agent", RID, SCHEMA, "ok", evidence_ids=trend_ids),
+        TrendResult(AgentResult("trend", RID, SCHEMA, "ok", evidence_ids=trend_ids),
                     candidates=candidates),
-        InventoryProductResult(AgentResult("stock-agent", RID, SCHEMA, "ok", evidence_ids=stock_ids),
+        InventoryProductResult(AgentResult("inventory", RID, SCHEMA, "ok", evidence_ids=stock_ids),
                                products=tuple(products), trend_results=tuple(slots)),
     ))
 

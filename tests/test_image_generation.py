@@ -107,7 +107,7 @@ class DraftContextFactsTests(unittest.TestCase):
         self.assertEqual(len(context.styling_relationships), 1)
         relation = context.styling_relationships[0]
         self.assertEqual((relation.requested_role, relation.inventory_role), ("upper_body", "lower_body"))
-        self.assertEqual(relation.rule_version, "outfit-role-pairing-v1")
+        self.assertEqual(relation.rule_version, "outfit-role-pairing")
         self.assertIn("상의", draft.product_definition.value or "")
         pairing_claim = next(
             claim for claim in draft.relation_to_own_products

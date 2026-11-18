@@ -13,4 +13,4 @@ src/fashion_planner_novelty/
 
 P08 owns Trend/Stock invocation, P07 review calls, workflow aggregation and planning-board images. P06 does not query operational databases or invoke sibling projects. Local images and SQLite ownership state stay under the ignored `data/local/` directory.
 
-Run with `VOGUE_HTTP_MODE=local PYTHONPATH=src python3 -m fashion_planner_novelty.server`. The planning POST route is `POST /v1/agents/new-product-agent/runs`; see [repository boundaries](../repository-boundaries.md) and [service runbook](prototype-runbook.md).
+Run with `NOVELTY_HTTP_MODE=local PYTHONPATH=src python3 -m fashion_planner_novelty.server`. The planning POST route is `POST /v1/agents/novelty/runs`; see [repository boundaries](../repository-boundaries.md) and [service runbook](prototype-runbook.md).

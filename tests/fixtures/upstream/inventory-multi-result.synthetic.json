@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "request_id": "stock-multi-synthetic-1",
-  "agent_id": "stock-agent",
+  "agent_id": "inventory",
   "status": "partial",
   "summary": "합성 multi-trend contract fixture; 운영 데이터가 아님",
   "products": [

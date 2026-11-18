@@ -9,7 +9,7 @@ from typing import Literal, Sequence
 from .context import InventoryProduct, PlanningRequest
 
 
-STYLING_RULE_VERSION = "outfit-role-pairing-v1"
+STYLING_RULE_VERSION = "outfit-role-pairing"
 ProductRole = Literal["upper_body", "lower_body"]
 
 

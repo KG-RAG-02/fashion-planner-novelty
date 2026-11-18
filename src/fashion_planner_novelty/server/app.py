@@ -48,7 +48,7 @@ def _env_flag(name: str, *, default: bool = False) -> bool:
 def _build_concept_generator() -> PromptedConceptGenerator:
     """Build the opt-in text generator used by the active /runs route."""
     fallback = RuleBasedConceptGenerator()
-    if not _env_flag("VOGUE_TEXT_GENERATION_ENABLED", default=True):
+    if not _env_flag("NOVELTY_TEXT_GENERATION_ENABLED", default=True):
         return PromptedConceptGenerator(enabled=False, fallback=fallback)
 
     settings = load_settings()
@@ -56,7 +56,7 @@ def _build_concept_generator() -> PromptedConceptGenerator:
     if settings.image_generation_api_key:
         provider = OpenAIResponsesTextProvider(
             settings.image_generation_api_key,
-            model=os.getenv("VOGUE_TEXT_GENERATION_MODEL", "gpt-6-luna"),
+            model=os.getenv("NOVELTY_TEXT_GENERATION_MODEL", "gpt-6-luna"),
         )
     return PromptedConceptGenerator(provider=provider, enabled=True, fallback=fallback)
 
@@ -170,7 +170,7 @@ def _build_handoff_run(payload: object) -> dict:
     validation_started = time.perf_counter()
     if not isinstance(payload, dict) or set(payload) != {"contract_version", "request_id", "input"}:
         raise ValueError("요청 envelope에는 contract_version, request_id, input만 있어야 합니다.")
-    if payload.get("contract_version") != "vogue-handoff/0.3":
+    if payload.get("contract_version") != "novelty-handoff":
         raise ValueError("지원하지 않는 contract_version입니다.")
     request_id = payload.get("request_id")
     if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", request_id):
@@ -178,7 +178,7 @@ def _build_handoff_run(payload: object) -> dict:
     normalized = normalize_workflow_inputs(request_id, payload.get("input"))
     timings["input_validation_and_normalization"] = round((time.perf_counter() - validation_started) * 1000)
     source_sha = _canonical_sha(payload)
-    store = DraftArtifactStore(os.getenv("VOGUE_DRAFT_ARTIFACT_DIR", str(REPOSITORY_ROOT / "data/local/p06-artifacts")))
+    store = DraftArtifactStore(os.getenv("NOVELTY_DRAFT_ARTIFACT_DIR", str(REPOSITORY_ROOT / "data/local/novelty-artifacts")))
     cached = store.replay(request_id, source_sha)
     if cached is not None:
         return cached
@@ -205,11 +205,11 @@ def _build_handoff_run(payload: object) -> dict:
     result["limitations"] = draft["limitations"]
     image_profile = _image_profile_from_draft(draft)
 
-    provider_name = os.getenv("VOGUE_DRAFT_IMAGE_PROVIDER", "").strip().lower()
+    provider_name = os.getenv("NOVELTY_DRAFT_IMAGE_PROVIDER", "").strip().lower()
     visuals: dict[str, dict] = {}
     image_timings: dict[str, int] = {}
     artifact_timings: dict[str, int] = {}
-    image_model = os.getenv("VOGUE_DRAFT_IMAGE_MODEL", "gpt-image-2.5-sunburst").strip() or "gpt-image-2.5-sunburst"
+    image_model = os.getenv("NOVELTY_DRAFT_IMAGE_MODEL", "gpt-image-2.5-sunburst").strip() or "gpt-image-2.5-sunburst"
     image_specification_sha256 = _canonical_sha(image_profile)
     if not image_profile.get("category"):
         visuals = {kind: {"status": "skipped", "artifact": None, "provider_calls": 0,
@@ -220,7 +220,7 @@ def _build_handoff_run(payload: object) -> dict:
         settings = load_settings()
         if settings.image_generation_api_key:
             try:
-                timeout_seconds = int(os.getenv("VOGUE_DRAFT_IMAGE_TIMEOUT_SECONDS", "180"))
+                timeout_seconds = int(os.getenv("NOVELTY_DRAFT_IMAGE_TIMEOUT_SECONDS", "180"))
             except ValueError:
                 timeout_seconds = 180
             timeout_seconds = max(5, min(timeout_seconds, 300))
@@ -398,8 +398,8 @@ def _build_handoff_run(payload: object) -> dict:
     result["image"] = visuals["product"]
     result["outfit_image"] = visuals["outfit"]
     result["planning_board"] = None  # Board composition belongs to the orchestrator.
-    response = {"contract_version": "vogue-handoff/0.3", "request_id": request_id,
-                "producer": {"agent_id": "new-product-agent", "schema_version": "1.0"},
+    response = {"contract_version": "novelty-handoff", "request_id": request_id,
+                "producer": {"agent_id": "novelty", "schema_version": "1.0.0"},
                 "status": result["status"], "result": result}
     serialization_started = time.perf_counter()
     # Validate serializability and measure it without materializing a second copy
@@ -420,7 +420,7 @@ def _build_handoff_run(payload: object) -> dict:
 
 
 class NoveltyRequestHandler(BaseHTTPRequestHandler):
-    server_version = "VOGUEPlanningWorkflow/1.0"
+    server_version = "FashionPlannerNovelty/1.0.0"
 
     def log_message(self, fmt: str, *args: object) -> None:
         # Keep planning requests and review content out of logs.
@@ -441,7 +441,7 @@ class NoveltyRequestHandler(BaseHTTPRequestHandler):
         content = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         serialization_ms = round((time.perf_counter() - serialization_started) * 1000)
         producer = payload.get("producer") if isinstance(payload, dict) else None
-        if (isinstance(producer, dict) and producer.get("agent_id") == "new-product-agent"
+        if (isinstance(producer, dict) and producer.get("agent_id") == "novelty"
                 and isinstance(payload.get("request_id"), str)):
             event = {
                 "event": "novelty_http_response_serialized",
@@ -457,7 +457,7 @@ class NoveltyRequestHandler(BaseHTTPRequestHandler):
         self._json(status, {"error": {"code": code, "message": message}})
 
     def _authorized_service_request(self) -> bool:
-        mode = os.getenv("VOGUE_HTTP_MODE", "")
+        mode = os.getenv("NOVELTY_HTTP_MODE", "")
         if mode not in {"local", "service", "private"}:
             return False
         if mode == "local":
@@ -466,28 +466,28 @@ class NoveltyRequestHandler(BaseHTTPRequestHandler):
                     return False
             except (AttributeError, IndexError):
                 return False
-        expected = os.getenv("VOGUE_AGENT_SERVICE_BEARER_TOKEN", "")
+        expected = os.getenv("FASHION_PLANNER_SERVICE_TOKEN", "")
         supplied = self.headers.get("Authorization", "")
         return bool(expected) and hmac.compare_digest(supplied, f"Bearer {expected}")
 
     def do_GET(self) -> None:
-        if os.getenv("VOGUE_HTTP_MODE") in {"service", "private"} and not self._authorized_service_request():
+        if os.getenv("NOVELTY_HTTP_MODE") in {"service", "private"} and not self._authorized_service_request():
             self._error(401, "UNAUTHORIZED", "인증이 필요합니다.")
             return
         if urlparse(self.path).path != "/api/health":
             self._error(404, "NOT_FOUND", "Not found")
             return
-        self._json(200, {"ok": True, "mode": "new-product-planning"})
+        self._json(200, {"ok": True, "mode": "novelty"})
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
-        if path == "/v1/agents/new-product-agent/runs":
+        if path == "/v1/agents/novelty/runs":
             self._handle_handoff_run()
             return
         self._error(404, "NOT_FOUND", "Not found")
 
     def _handle_handoff_run(self) -> None:
-        if os.getenv("VOGUE_HTTP_MODE") in {"service", "private"} and not self._authorized_service_request():
+        if os.getenv("NOVELTY_HTTP_MODE") in {"service", "private"} and not self._authorized_service_request():
             self._error(401, "UNAUTHORIZED", "인증이 필요합니다.")
             return
         if self.headers.get_content_type() != "application/json":
@@ -523,26 +523,26 @@ class NoveltyRequestHandler(BaseHTTPRequestHandler):
         self._json(200, response)
 
 def main() -> None:
-    host = os.getenv("VOGUE_HOST", "127.0.0.1")
-    port = int(os.getenv("VOGUE_PORT", "8767"))
-    mode = os.getenv("VOGUE_HTTP_MODE", "")
+    host = os.getenv("NOVELTY_HOST", "127.0.0.1")
+    port = int(os.getenv("NOVELTY_PORT", "8767"))
+    mode = os.getenv("NOVELTY_HTTP_MODE", "")
     if mode == "local":
         if host not in {"127.0.0.1", "localhost", "::1"}:
-            raise RuntimeError("VOGUE_HTTP_MODE=local은 loopback host만 허용합니다.")
+            raise RuntimeError("NOVELTY_HTTP_MODE=local은 loopback host만 허용합니다.")
     elif mode in {"service", "private"}:
-        if not os.getenv("VOGUE_AGENT_SERVICE_BEARER_TOKEN"):
-            raise RuntimeError(f"{mode} mode requires VOGUE_AGENT_SERVICE_BEARER_TOKEN.")
+        if not os.getenv("FASHION_PLANNER_SERVICE_TOKEN"):
+            raise RuntimeError(f"{mode} mode requires FASHION_PLANNER_SERVICE_TOKEN.")
     if mode == "service":
-        cert_file = os.getenv("VOGUE_TLS_CERT_FILE")
-        key_file = os.getenv("VOGUE_TLS_KEY_FILE")
+        cert_file = os.getenv("NOVELTY_TLS_CERT_FILE")
+        key_file = os.getenv("NOVELTY_TLS_KEY_FILE")
         if not cert_file or not key_file:
             raise RuntimeError("service mode requires TLS certificate and key files.")
     elif mode not in {"local", "private"}:
-        raise RuntimeError("Set VOGUE_HTTP_MODE=local, private, or service.")
+        raise RuntimeError("Set NOVELTY_HTTP_MODE=local, private, or service.")
     server = ThreadingHTTPServer((host, port), NoveltyRequestHandler)
     if mode == "service":
         tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        tls.load_cert_chain(os.environ["VOGUE_TLS_CERT_FILE"], os.environ["VOGUE_TLS_KEY_FILE"])
+        tls.load_cert_chain(os.environ["NOVELTY_TLS_CERT_FILE"], os.environ["NOVELTY_TLS_KEY_FILE"])
         server.socket = tls.wrap_socket(server.socket, server_side=True)
     display_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
     scheme = "https" if mode == "service" else "http"

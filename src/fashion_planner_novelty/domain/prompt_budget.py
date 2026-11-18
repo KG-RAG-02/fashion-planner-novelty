@@ -33,7 +33,7 @@ from typing import Any, Callable, Iterable, Mapping
 from . import prompt_safety
 
 
-BUDGET_VERSION = "p06-prompt-budget/1"
+BUDGET_VERSION = "novelty-prompt-budget"
 LADDER = ("T1", "T2", "T3", "T4", "T5")
 EVIDENCE_ID_KEYS = frozenset({"evidence_id", "evidence_ids", "description_evidence_ids"})
 LIMITATION_KEYS = ("trend_limitations", "inventory_limitations", "limitations")

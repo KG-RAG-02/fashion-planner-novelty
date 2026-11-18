@@ -19,7 +19,7 @@ from .concept import TrendBasis, TrendBasisAttribute
 from .context import AttributeSignal, ProductPlanningContext, TrendCandidate
 
 
-TREND_SELECTION_RULE = "most_evidence_linked_design_attributes/1"
+TREND_SELECTION_RULE = "most_evidence_linked_design_attributes"
 
 # 시각 디자인 속성으로 보는 속성 이름의 단일 집합. 주 트렌드 선택 규칙이 쓴다.
 DESIGN_ATTRIBUTE_NAMES = frozenset({

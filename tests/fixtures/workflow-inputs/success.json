@@ -2,23 +2,25 @@
   "request_id": "synthetic-handoff-001",
   "input": {
     "planning_request": {
-      "schema_version": "1.0",
+      "schema_version": "1.0.0",
       "request_id": "synthetic-handoff-001",
       "query": "합성 27SS 아우터 기획",
       "status": "ok"
     },
     "trend_result": {
-      "schema_version": "1.1",
+      "schema_version": "1.0.0",
       "request_id": "synthetic-handoff-001",
       "status": "partial",
       "trends": [],
       "evidence": [],
-      "limitations": ["합성 Trend 자료"]
+      "limitations": [
+        "합성 Trend 자료"
+      ]
     },
     "inventory_product_result": {
-      "schema_version": "1.0",
+      "schema_version": "1.0.0",
       "request_id": "synthetic-handoff-001",
-      "agent_id": "stock-agent",
+      "agent_id": "inventory",
       "status": "no_results",
       "products": [],
       "evidence": [],

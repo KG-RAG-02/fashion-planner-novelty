@@ -3,7 +3,7 @@
 One item, chosen by rule: the stock agent's per-trend result (slot) for the primary trend, best rank
 first. The stock agent already picks that item from the new product's pair categories, and the orchestrator's
 planning sheet shows the same item as the trend's stock card. An item that this service's outfit role rule
-(outfit-role-pairing-v1) places in the same role as the requested product (two tops, two bottoms) is
+(outfit-role-pairing) places in the same role as the requested product (two tops, two bottoms) is
 skipped, because the model could not wear both.
 """
 
@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from .context import InventoryProduct, ProductPlanningContext, TrendCandidate
 from .styling import _inventory_role, _request_role
 
-OUTFIT_COMPANION_RULE = "primary_trend_stock_slot/1"
+OUTFIT_COMPANION_RULE = "primary_trend_stock_slot"
 
 
 @dataclass(frozen=True)

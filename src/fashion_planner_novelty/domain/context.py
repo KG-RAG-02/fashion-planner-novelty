@@ -120,7 +120,7 @@ class InventoryProduct:
 
 @dataclass(frozen=True)
 class InventoryTrendResult:
-    """Stock-agent per-trend output with its explicit product_index relation."""
+    """Inventory per-trend output with its explicit product_index relation."""
 
     trend_result_index: int
     style_id: str | None

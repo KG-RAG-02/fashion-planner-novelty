@@ -73,9 +73,9 @@ def context_of(*candidates, trend_status="ok", request_status="ok"):
         AgentResult("user-request", RID, SCHEMA, request_status), original_query="2027SS 여성 드레스 기획",
         season="2027SS", category="드레스", field_origins={"season": "user", "category": "user"},
     )
-    trend_result = TrendResult(AgentResult("trend-analysis-agent", RID, SCHEMA, trend_status, evidence_ids=all_ids),
+    trend_result = TrendResult(AgentResult("trend", RID, SCHEMA, trend_status, evidence_ids=all_ids),
                                candidates=tuple(candidates))
-    inventory = InventoryProductResult(AgentResult("stock-agent", RID, SCHEMA, "no_results"))
+    inventory = InventoryProductResult(AgentResult("inventory", RID, SCHEMA, "no_results"))
     return build_planning_context(PlanningInputs(request, trend_result, inventory))
 
 
@@ -220,7 +220,7 @@ class SelectionRuleTests(unittest.TestCase):
         self.assertEqual(asdict(build_trend_basis(context)), {
             "source_style_id": "990104-s0",
             "name": "시럽코어",
-            "selection_rule": "most_evidence_linked_design_attributes/1",
+            "selection_rule": "most_evidence_linked_design_attributes",
             "evidence_ids": ("syr:0", "syr:1", "syr:2", "syr:4", "syr:3"),
             "design_attributes": (
                 {"name": "color", "value": "옐로우", "evidence_ids": ("syr:1",)},
@@ -228,7 +228,7 @@ class SelectionRuleTests(unittest.TestCase):
             ),
             "candidates_considered": 4,
         })
-        self.assertEqual(TREND_SELECTION_RULE, "most_evidence_linked_design_attributes/1")
+        self.assertEqual(TREND_SELECTION_RULE, "most_evidence_linked_design_attributes")
 
     def test_design_attribute_names_cover_english_and_korean_labels(self):
         for name in ("color", "colour", "pattern", "print", "detail", "details", "material", "fabric", "fit",
@@ -268,10 +268,10 @@ class RuleDraftTests(unittest.TestCase):
         context = build_planning_context(PlanningInputs(
             PlanningRequest(AgentResult("user-request", RID, SCHEMA, "ok"), season="2027SS", category="재킷",
                             field_origins={"season": "user", "category": "user"}),
-            TrendResult(AgentResult("trend-analysis-agent", RID, SCHEMA, "ok",
+            TrendResult(AgentResult("trend", RID, SCHEMA, "ok",
                                     evidence_ids=tuple(sorted(set().union(*map(ids_of, candidates))))),
                         candidates=candidates),
-            InventoryProductResult(AgentResult("stock-agent", RID, SCHEMA, "no_results")),
+            InventoryProductResult(AgentResult("inventory", RID, SCHEMA, "no_results")),
         ))
         draft, issues = RuleBasedConceptGenerator().generate(context)
         self.assertEqual(issues, ())
@@ -338,9 +338,9 @@ class FirstEvidenceColourTests(unittest.TestCase):
             PlanningRequest(AgentResult("user-request", RID, SCHEMA, "ok"), original_query="블랙 드레스 기획",
                             season="2027SS", category="드레스", field_origins={"season": "user", "category": "user"},
                             requested_attributes=(AttributeSignal("color", "블랙", "user_requested", ()),)),
-            TrendResult(AgentResult("trend-analysis-agent", RID, SCHEMA, "ok",
+            TrendResult(AgentResult("trend", RID, SCHEMA, "ok",
                                     evidence_ids=tuple(sorted(ids_of(SYRUP)))), candidates=(SYRUP,)),
-            InventoryProductResult(AgentResult("stock-agent", RID, SCHEMA, "no_results")),
+            InventoryProductResult(AgentResult("inventory", RID, SCHEMA, "no_results")),
         ))
         draft, _ = RuleBasedConceptGenerator().generate(context)
         self.assertEqual(draft.product_profile.color.value, "블랙")
@@ -393,7 +393,7 @@ class TextPathTests(unittest.TestCase):
     def test_prompt_tells_the_model_to_plan_around_the_primary_trend(self):
         manifest = json.loads((PROMPT_ROOT / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["text_planning"]["directory"], "text_planning")
-        self.assertEqual(PROMPT_VERSION, "new-product-planner-v8-llm-required-profile")
+        self.assertEqual(PROMPT_VERSION, "novelty-text-planning")
         self.assertIn("기준 트렌드를 중심으로 기획하고, 다른 트렌드를 새로 들여오거나 섞지 않는다", PLANNING_SYSTEM_PROMPT)
         self.assertIn("`primary_trend`", PLANNING_SYSTEM_PROMPT)
 
@@ -437,7 +437,7 @@ class TextPathTests(unittest.TestCase):
 def trend_payload(request_id):
     """trend_result in the orchestrator's `trends` shape (style + items)."""
     return {
-        "schema_version": "1.0", "request_id": request_id, "status": "ok",
+        "schema_version": "1.0.0", "request_id": request_id, "status": "ok",
         "trends": [
             {"style": {"id": "990102-s0", "name": "폴카 도트 패턴", "seasons": ["2027SS"], "focus_evidence_ids": ["dot:0"]},
              "items": [{"id": "990102-s0-i0", "patterns": ["도트"], "evidence_ids": ["dot:1"]}]},
@@ -453,11 +453,11 @@ class SerializationTests(unittest.TestCase):
     def payload(self, trends=True):
         rid = "trend-basis-wire-1"
         return {
-            "planning_request": {"schema_version": "1.0", "request_id": rid, "query": "2027SS 여성 드레스",
+            "planning_request": {"schema_version": "1.0.0", "request_id": rid, "query": "2027SS 여성 드레스",
                                  "context": {"category": "드레스", "season": "2027SS"}},
-            "trend_result": trend_payload(rid) if trends else {"schema_version": "1.0", "request_id": rid,
+            "trend_result": trend_payload(rid) if trends else {"schema_version": "1.0.0", "request_id": rid,
                                                               "status": "ok", "trends": []},
-            "inventory_product_result": {"schema_version": "1.0", "request_id": rid, "agent_id": "stock-agent",
+            "inventory_product_result": {"schema_version": "1.0.0", "request_id": rid, "agent_id": "inventory",
                                          "status": "ok", "products": []},
         }
 
@@ -468,7 +468,7 @@ class SerializationTests(unittest.TestCase):
                                       "design_attributes", "candidates_considered"])
         self.assertEqual(wire, {
             "source_style_id": "990104-s0", "name": "시럽코어",
-            "selection_rule": "most_evidence_linked_design_attributes/1",
+            "selection_rule": "most_evidence_linked_design_attributes",
             "evidence_ids": ["syr:0", "syr:4", "syr:1", "syr:2"],
             "design_attributes": [{"name": "color", "value": "옐로우", "evidence_ids": ["syr:1"]},
                                   {"name": "color", "value": "스카이블루", "evidence_ids": ["syr:2"]}],
@@ -483,13 +483,13 @@ class SerializationTests(unittest.TestCase):
     def test_handoff_response_carries_the_trend_basis(self):
         payload = self.payload()
         rid = payload["planning_request"]["request_id"]
-        payload["trend_result"]["schema_version"] = "1.1"
+        payload["trend_result"]["schema_version"] = "1.0.0"
         guard = patch("urllib.request.urlopen", side_effect=urllib.error.URLError(OSError("network disabled")))
         with tempfile.TemporaryDirectory() as directory, guard, patch.dict(os.environ, {
-            "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "",
-            "VOGUE_TEXT_GENERATION_ENABLED": "false",
+            "NOVELTY_DRAFT_ARTIFACT_DIR": directory, "NOVELTY_DRAFT_IMAGE_PROVIDER": "",
+            "NOVELTY_TEXT_GENERATION_ENABLED": "false",
         }), contextlib.redirect_stderr(io.StringIO()):
-            response = _build_handoff_run({"contract_version": "vogue-handoff/0.3", "request_id": rid,
+            response = _build_handoff_run({"contract_version": "novelty-handoff", "request_id": rid,
                                            "input": payload})
         basis = response["result"]["draft"]["trend_basis"]
         self.assertEqual((basis["source_style_id"], basis["name"]), ("990104-s0", "시럽코어"))

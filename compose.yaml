@@ -1,26 +1,26 @@
 services:
-  vogue-planning-api:
+  novelty:
     build:
       context: .
-    image: vogue-new-product-planning:local
+    image: fashion-planner-novelty:local
     ports:
       - "127.0.0.1:8767:8767"
     environment:
-      VOGUE_HOST: 0.0.0.0
-      VOGUE_HTTP_MODE: service
-      VOGUE_PORT: "8767"
-      VOGUE_TLS_CERT_FILE: /run/secrets/server_cert
-      VOGUE_TLS_KEY_FILE: /run/secrets/server_key
-      VOGUE_AGENT_SERVICE_BEARER_TOKEN: ${VOGUE_AGENT_SERVICE_BEARER_TOKEN:?Set the shared agent bearer token}
-      VOGUE_DRAFT_IMAGE_PROVIDER: ${VOGUE_DRAFT_IMAGE_PROVIDER:-}
-      VOGUE_TEXT_GENERATION_ENABLED: ${VOGUE_TEXT_GENERATION_ENABLED:-true}
-      VOGUE_TEXT_GENERATION_MODEL: ${VOGUE_TEXT_GENERATION_MODEL:-gpt-6-luna}
-      VOGUE_TEXT_GENERATION_TIMEOUT_SECONDS: ${VOGUE_TEXT_GENERATION_TIMEOUT_SECONDS:-60}
-      VOGUE_TEXT_GENERATION_MAX_OUTPUT_TOKENS: ${VOGUE_TEXT_GENERATION_MAX_OUTPUT_TOKENS:-3000}
+      NOVELTY_HOST: 0.0.0.0
+      NOVELTY_HTTP_MODE: service
+      NOVELTY_PORT: "8767"
+      NOVELTY_TLS_CERT_FILE: /run/secrets/server_cert
+      NOVELTY_TLS_KEY_FILE: /run/secrets/server_key
+      FASHION_PLANNER_SERVICE_TOKEN: ${FASHION_PLANNER_SERVICE_TOKEN:?Set the shared agent bearer token}
+      NOVELTY_DRAFT_IMAGE_PROVIDER: ${NOVELTY_DRAFT_IMAGE_PROVIDER:-}
+      NOVELTY_TEXT_GENERATION_ENABLED: ${NOVELTY_TEXT_GENERATION_ENABLED:-true}
+      NOVELTY_TEXT_GENERATION_MODEL: ${NOVELTY_TEXT_GENERATION_MODEL:-gpt-6-luna}
+      NOVELTY_TEXT_GENERATION_TIMEOUT_SECONDS: ${NOVELTY_TEXT_GENERATION_TIMEOUT_SECONDS:-60}
+      NOVELTY_TEXT_GENERATION_MAX_OUTPUT_TOKENS: ${NOVELTY_TEXT_GENERATION_MAX_OUTPUT_TOKENS:-3000}
       LLM_API_KEY: ${LLM_API_KEY:-}
-      VOGUE_DRAFT_ARTIFACT_DIR: /app/data/local/p06-artifacts
+      NOVELTY_DRAFT_ARTIFACT_DIR: /app/data/local/novelty-artifacts
     volumes:
-      - vogue-local-data:/app/data/local
+      - novelty-data:/app/data/local
     secrets:
       - server_cert
       - server_key
@@ -30,7 +30,7 @@ services:
         - CMD
         - python3
         - -c
-        - "import os,ssl; from urllib.request import Request,urlopen; r=Request('https://127.0.0.1:8767/api/health',headers={'Authorization':'Bearer '+os.environ['VOGUE_AGENT_SERVICE_BEARER_TOKEN']}); urlopen(r,timeout=3,context=ssl.create_default_context(cafile='/run/secrets/server_ca'))"
+        - "import os,ssl; from urllib.request import Request,urlopen; r=Request('https://127.0.0.1:8767/api/health',headers={'Authorization':'Bearer '+os.environ['FASHION_PLANNER_SERVICE_TOKEN']}); urlopen(r,timeout=3,context=ssl.create_default_context(cafile='/run/secrets/server_ca'))"
       interval: 30s
       timeout: 5s
       retries: 3
@@ -38,12 +38,12 @@ services:
     restart: unless-stopped
 
 volumes:
-  vogue-local-data:
+  novelty-data:
 
 secrets:
   server_cert:
-    file: ${VOGUE_TLS_CERT_HOST_PATH:?Set the local TLS certificate path}
+    file: ${NOVELTY_TLS_CERT_HOST_PATH:?Set the local TLS certificate path}
   server_key:
-    file: ${VOGUE_TLS_KEY_HOST_PATH:?Set the local TLS private key path}
+    file: ${NOVELTY_TLS_KEY_HOST_PATH:?Set the local TLS private key path}
   server_ca:
-    file: ${VOGUE_TLS_CA_HOST_PATH:?Set the TLS CA certificate path for healthcheck verification}
+    file: ${NOVELTY_TLS_CA_HOST_PATH:?Set the TLS CA certificate path for healthcheck verification}

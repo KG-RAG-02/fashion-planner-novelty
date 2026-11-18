@@ -1,6 +1,6 @@
 # Project_06 input and evidence boundary
 
-Project_06's `POST /v1/agents/new-product-agent/runs` endpoint accepts the PlanningRequest and P08-supplied Trend/Stock results. The supported request and response are compared with P08's local `vogue-handoff/0.3` contract; see the [service runbook](prototype-runbook.md).
+Project_06's `POST /v1/agents/novelty/runs` endpoint accepts the PlanningRequest and P08-supplied Trend/Stock results. The supported request and response are compared with P08's local `novelty-handoff` contract; see the [service runbook](prototype-runbook.md).
 
 | Input | Use |
 |---|---|

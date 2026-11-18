@@ -112,10 +112,10 @@ class OpenAIResponsesTextProvider:
 
     def __init__(self, api_key: str, *, model: str | None = None, timeout_seconds: int | None = None):
         self.api_key = api_key.strip()
-        self.model_name = (model or os.getenv("VOGUE_TEXT_GENERATION_MODEL", "gpt-6-luna")).strip()
+        self.model_name = (model or os.getenv("NOVELTY_TEXT_GENERATION_MODEL", "gpt-6-luna")).strip()
         if timeout_seconds is None:
             try:
-                timeout_seconds = int(os.getenv("VOGUE_TEXT_GENERATION_TIMEOUT_SECONDS", "60"))
+                timeout_seconds = int(os.getenv("NOVELTY_TEXT_GENERATION_TIMEOUT_SECONDS", "60"))
             except ValueError:
                 timeout_seconds = 60
         self.timeout_seconds = max(5, min(timeout_seconds, 120))
@@ -123,7 +123,7 @@ class OpenAIResponsesTextProvider:
     @staticmethod
     def _max_output_tokens() -> int:
         try:
-            configured = int(os.getenv("VOGUE_TEXT_GENERATION_MAX_OUTPUT_TOKENS", "3000"))
+            configured = int(os.getenv("NOVELTY_TEXT_GENERATION_MAX_OUTPUT_TOKENS", "3000"))
         except ValueError:
             configured = 3000
         return max(256, min(configured, 8000))

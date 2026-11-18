@@ -10,8 +10,8 @@ from fashion_planner_novelty.workflows.text_concept_generation import PLANNING_S
 class PromptRegistryTests(unittest.TestCase):
     def test_prompt_manifest_ids_and_loaded_system_assets_match_workflow_constants(self):
         manifest = json.loads((PROMPT_ROOT / "manifest.json").read_text())
-        self.assertEqual(prompt_version_id("text_planning"), "new-product-planner-v8-llm-required-profile")
-        self.assertEqual(prompt_version_id("concept_image"), "product-concept-image-prompt-v2-designer")
+        self.assertEqual(prompt_version_id("text_planning"), "novelty-text-planning")
+        self.assertEqual(prompt_version_id("concept_image"), "novelty-concept-image")
         for component, workflow_value in (
             ("text_planning", PLANNING_SYSTEM_PROMPT),
             ("concept_image", IMAGE_DESIGNER_SYSTEM_PROMPT),

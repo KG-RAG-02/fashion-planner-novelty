@@ -25,14 +25,14 @@ class LegacyRouteRemovalTests(unittest.TestCase):
         handler.send_response = lambda status: setattr(handler.wfile, "status", status)
         handler.send_header = lambda *_: None
         handler.end_headers = lambda: None
-        with patch.dict(os.environ, {"VOGUE_HTTP_MODE": "local"}):
+        with patch.dict(os.environ, {"NOVELTY_HTTP_MODE": "local"}):
             handler.do_POST()
         return handler.wfile.status, json.loads(handler.wfile.body)
 
     def test_drafts_and_removed_routes_are_not_registered(self):
         for path in (
             "/api/planning-draft",
-            "/v1/agents/new-product-agent/sales-market-reviews",
+            "/v1/agents/novelty/sales-market-reviews",
         ):
             with self.subTest(path=path):
                 status, response = self.invoke_post(path)

@@ -13,16 +13,17 @@ class WorkflowInputRegistryTests(unittest.TestCase):
     def setUp(self):
         self.envelope = json.loads(FIXTURE.read_text())
 
-    def test_trend_version_mapping_preserves_source_and_records_provenance(self):
+    def test_inputs_keep_source_payloads_and_record_provenance(self):
         original = copy.deepcopy(self.envelope["input"])
         adapted = normalize_workflow_inputs(self.envelope["request_id"], self.envelope["input"])
         self.assertEqual(self.envelope["input"], original)
-        self.assertEqual(adapted.source_inputs["trend_result"]["schema_version"], "1.1")
-        self.assertEqual(adapted.normalized_inputs["trend_result"]["schema_version"], "1.0")
+        self.assertEqual(adapted.source_inputs["trend_result"]["schema_version"], "1.0.0")
+        self.assertEqual(adapted.normalized_inputs["trend_result"]["schema_version"], "1.0.0")
         trace = adapted.provenance["input_schemas"]["trend_result"]
-        self.assertEqual(trace["source_schema_version"], "1.1")
-        self.assertEqual(trace["normalized_schema_version"], "1.0")
-        self.assertTrue(trace["transformed"])
+        self.assertEqual(trace["source_schema_version"], "1.0.0")
+        self.assertEqual(trace["normalized_schema_version"], "1.0.0")
+        self.assertFalse(trace["transformed"])
+        self.assertEqual(trace["adapter_version"], "novelty-input-normalizer")
         self.assertEqual(len(trace["source_payload_sha256"]), 64)
 
     def test_unsupported_version_and_unrecognized_input_field_are_explicit_errors(self):

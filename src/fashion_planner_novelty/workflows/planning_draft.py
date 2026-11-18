@@ -294,12 +294,12 @@ def _analyze_planning_inputs(
         return tuple(normalized)
 
     trend = TrendResult(
-        result=result_meta(trend_payload, "trend-analysis-agent"),
+        result=result_meta(trend_payload, "trend"),
         candidates=normalize_trend_candidates(trend_payload),
     )
     def normalize_inventory_product(item: dict, source_index: int, evidence_ids: tuple[str, ...]) -> InventoryProduct:
         stock = item.get("inventory") or {}
-        # Accept the stock-agent response surface, while retaining the complete
+        # Accept the inventory response surface, while retaining the complete
         # original object in input_evidence for fields outside the internal model.
         raw_sku_ids = item.get("sku_ids", ())
         sku_ids = tuple(str(value) for value in raw_sku_ids if value is not None) if isinstance(raw_sku_ids, (list, tuple)) else ()
@@ -332,7 +332,7 @@ def _analyze_planning_inputs(
     def normalize_inventory_trend_results(data: dict, product_values: list) -> tuple[tuple[InventoryTrendResult, ...], tuple[str, ...]]:
         raw_results = data.get("trend_results", ())
         if not isinstance(raw_results, (list, tuple)):
-            return (), ("stock-agent trend_results가 배열이 아니어서 per-trend 연결을 해석하지 않았습니다.",)
+            return (), ("inventory trend_results가 배열이 아니어서 per-trend 연결을 해석하지 않았습니다.",)
         root_evidence = data.get("evidence", ())
         root_evidence = root_evidence if isinstance(root_evidence, (list, tuple)) else ()
         upstream_style_ids = {item.source_style_id for item in trend.candidates if item.source_style_id}
@@ -340,7 +340,7 @@ def _analyze_planning_inputs(
         issues: list[str] = []
         for trend_index, item in enumerate(raw_results):
             if not isinstance(item, dict):
-                issues.append(f"stock-agent trend_results[{trend_index}]가 객체가 아니어서 매핑하지 않았습니다.")
+                issues.append(f"inventory trend_results[{trend_index}]가 객체가 아니어서 매핑하지 않았습니다.")
                 continue
             style = item.get("style") if isinstance(item.get("style"), dict) else {}
             style_id = str(style["id"]) if style.get("id") is not None else None
@@ -350,10 +350,10 @@ def _analyze_planning_inputs(
             matched_product = None
             if product_index is None:
                 mapping_status = "invalid_index"
-                issues.append(f"stock-agent trend_results[{trend_index}]에 유효한 product_index가 없어 상품 연결을 확인할 수 없습니다.")
+                issues.append(f"inventory trend_results[{trend_index}]에 유효한 product_index가 없어 상품 연결을 확인할 수 없습니다.")
             elif product_index < 0 or product_index >= len(product_values):
                 mapping_status = "out_of_range"
-                issues.append(f"stock-agent trend_results[{trend_index}].product_index={product_index}가 products 범위를 벗어납니다.")
+                issues.append(f"inventory trend_results[{trend_index}].product_index={product_index}가 products 범위를 벗어납니다.")
             elif not isinstance(product_values[product_index], dict):
                 mapping_status = "no_product"
             else:
@@ -376,11 +376,11 @@ def _analyze_planning_inputs(
                 "matched" if style_id in upstream_style_ids else "no_matching_trend"
             )
             if style_id and upstream_style_ids and trend_input_match == "no_matching_trend":
-                issues.append(f"stock-agent style_id '{style_id}'가 전달된 trend_result의 style ID와 일치하지 않습니다. 기존 mapping key는 다를 수 있으므로 확인이 필요합니다.")
+                issues.append(f"inventory style_id '{style_id}'가 전달된 trend_result의 style ID와 일치하지 않습니다. 기존 mapping key는 다를 수 있으므로 확인이 필요합니다.")
             if matched_product is None and evidence_ids:
-                issues.append(f"stock-agent trend_results[{trend_index}] Evidence는 보존했지만 product_index의 상품은 연결되지 않았습니다.")
+                issues.append(f"inventory trend_results[{trend_index}] Evidence는 보존했지만 product_index의 상품은 연결되지 않았습니다.")
             if matched_product is not None and not evidence_ids:
-                issues.append(f"stock-agent trend_results[{trend_index}] 상품 연결은 확인했지만 연결된 Evidence가 없습니다.")
+                issues.append(f"inventory trend_results[{trend_index}] 상품 연결은 확인했지만 연결된 Evidence가 없습니다.")
             links.append(InventoryTrendResult(
                 trend_result_index=trend_index,
                 style_id=style_id,
@@ -403,7 +403,7 @@ def _analyze_planning_inputs(
     raw_products = inventory_payload.get("products", ())
     if not isinstance(raw_products, (list, tuple)):
         raw_products = ()
-        mapping_issues = ("stock-agent products가 배열이 아니어서 상품을 정규화하지 않았습니다. 원본 payload는 보존했습니다.",)
+        mapping_issues = ("inventory products가 배열이 아니어서 상품을 정규화하지 않았습니다. 원본 payload는 보존했습니다.",)
     else:
         mapping_issues = ()
     inventory_trend_results, link_issues = normalize_inventory_trend_results(inventory_payload, list(raw_products))
@@ -418,7 +418,7 @@ def _analyze_planning_inputs(
     )
 
     inventory = InventoryProductResult(
-        result=result_meta(inventory_payload, "stock-agent"),
+        result=result_meta(inventory_payload, "inventory"),
         products=normalized_products,
         trend_results=inventory_trend_results,
         mapping_issues=mapping_issues,
@@ -492,7 +492,7 @@ def _analyze_planning_inputs(
         if not _is_recovered_category_lookup_warning(limitation)
     )
     result = {
-        "schema_version": "1.0",
+        "schema_version": "1.0.0",
         # Ignore only an explicitly recovered category-lookup warning. All
         # other limitations plus incomplete inputs, conflicts, required-field
         # gaps, and failed validation remain material partial-result reasons.
