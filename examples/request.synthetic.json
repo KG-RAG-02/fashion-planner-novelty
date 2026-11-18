@@ -1,0 +1,70 @@
+{
+  "contract_version": "novelty-handoff",
+  "request_id": "example-001",
+  "input": {
+    "planning_request": {
+      "schema_version": "1.0.0",
+      "request_id": "example-001",
+      "status": "ok",
+      "query": "Lightweight outerwear for spring/summer 2027",
+      "context": {
+        "category": "Outerwear",
+        "season": "2027SS"
+      }
+    },
+    "trend_result": {
+      "schema_version": "1.0.0",
+      "request_id": "example-001",
+      "status": "ok",
+      "trends": [
+        {
+          "style": {
+            "id": "SYN-STYLE-1",
+            "name": "Utility layering",
+            "seasons": [
+              "2027SS"
+            ],
+            "description": [
+              {
+                "text": "Synthetic example: light jackets with patch pockets in muted tones",
+                "evidence_ids": [
+                  "SYN-EVIDENCE-1"
+                ]
+              }
+            ]
+          },
+          "items": [
+            {
+              "evidence_ids": [
+                "SYN-EVIDENCE-2"
+              ],
+              "colors": [
+                "olive"
+              ],
+              "materials": [
+                "nylon"
+              ],
+              "details": [
+                {
+                  "name": "patch pockets"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "limitations": [
+        "Synthetic example data, not a real trend analysis."
+      ]
+    },
+    "inventory_product_result": {
+      "schema_version": "1.0.0",
+      "request_id": "example-001",
+      "agent_id": "inventory",
+      "status": "no_results",
+      "products": [],
+      "evidence": [],
+      "errors": []
+    }
+  }
+}

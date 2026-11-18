@@ -1,152 +1,191 @@
-# Project_06 — 신제품 기획 에이전트
+# fashion-planner-novelty
 
-Project_06(P06)은 P08이 전달한 사용자 요청, Trend 결과, Stock 결과를 분석해 **신제품 기획 초안과 상품·착장 이미지**를 반환합니다. P06은 Trend·Stock 조회, P07 review 호출, 통합 응답, 기획안 보드를 담당하지 않습니다. 그 호출과 최종 통합은 P08이 담당합니다.
+**트렌드를 바탕으로 신상품 기획안 초안과 콘셉트 이미지를 만드는 서비스.** 기획 요청과 트렌드·재고 결과를 받아, 근거가 연결된 상품 기획안(Draft)을 쓴다. 이미지 제공자를 설정하면 같은 옷의 상품 이미지와 착장 이미지도 만든다.
 
-## 입력 → 분석 → 출력
+> 이 레포는 **fashion-planner** 5개 레포 중 하나입니다. 전체 구조와 실행 방법은 [fashion-planner-orchestrator](https://github.com/KG-RAG-02/fashion-planner-orchestrator)에서 시작하세요.
+
+| 레포 | 역할 |
+|---|---|
+| [fashion-planner-orchestrator](https://github.com/KG-RAG-02/fashion-planner-orchestrator) | 기획 질의 구조화, 6단계 워크플로 실행, 웹 UI, 기획서 PNG, Docker 통합 배포 |
+| [fashion-planner-trend](https://github.com/KG-RAG-02/fashion-planner-trend) | Vogue Korea 기사에서 트렌드 추출, Neo4j 지식 그래프, 유사 상품 검색 |
+| [fashion-planner-inventory](https://github.com/KG-RAG-02/fashion-planner-inventory) | 트렌드에 맞는 과잉재고 상품 매칭(규칙 + CLIP) |
+| **[fashion-planner-novelty](https://github.com/KG-RAG-02/fashion-planner-novelty)** | **트렌드 기반 신상품(novelty) 기획안과 제품·착장 이미지 생성** |
+| [fashion-planner-research](https://github.com/KG-RAG-02/fashion-planner-research) | 기획안의 판매·시장 조사(가격, 원단 원가, 고객 연령, 타깃) |
+
+novelty는 *신상품*, 곧 아직 없는 상품을 뜻한다. 각 서비스는 혼자 실행하고 테스트할 수 있다.
+
+## 개요
+
+MD가 "2027년 봄·여름 가벼운 아우터"처럼 묻는다. orchestrator는 트렌드와 재고 결과를 모은 뒤 입력 세 개를 한 요청으로 이 서비스에 보낸다. 서비스는 다음 순서로 일한다.
+
+1. 입력을 검증하고 정규화한다. 출처를 추적할 수 있도록 원본 페이로드는 그대로 보관한다.
+2. 결정적 규칙으로 **주 트렌드 하나**를 고르고, 그 트렌드만으로 기획한다.
+3. **규칙 기반 Draft**를 만든다. 모든 값은 출처(`user_requested`, `evidence_observation`, `proposal` 등)를 밝히고, 이 요청 안의 근거 ID만 인용한다.
+4. (선택) **텍스트 LLM**에 더 풍부한 Draft를 요청한다. 응답을 엄격하게 검증하고, 하나라도 어긋나면 규칙 기반 Draft로 돌아간다.
+5. (선택) **상품 이미지**를 만든 뒤, 그 이미지를 편집해 기존 재고 상품 하나와 함께 입은 **착장 이미지**를 만든다.
+6. 이미지를 내용 해시로 저장하고 로컬 원장에 소유를 기록한 뒤, 이미지 참조와 함께 Draft를 돌려준다.
+
+이 서비스는 다른 서비스를 직접 부르지 않고, 상품이 팔릴지 판단하지 않는다. Draft는 이후 research 서비스와 MD가 검토한다(`review_status: md_review_required`).
+
+## 아키텍처
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/request-flow-dark.svg">
+  <img alt="요청 흐름: HTTP 관문, 입력 정규화, 재요청 확인, 기획 컨텍스트, 주 트렌드 선택, 규칙 기반 Draft와 선택적 텍스트 LLM 경로, 동반 재고 상품, 이미지 사양, 상품 이미지, 착장 편집, 산출물 저장소, 응답" src="docs/diagrams/request-flow.svg" width="760">
+</picture>
+
+- Draft 데이터 모델: [docs/draft-model.md](docs/draft-model.md)
+- 구조 설명: [docs/architecture.md](docs/architecture.md)
+- 그림의 상자와 화살표마다 코드 근거를 [docs/diagrams/CLAIMS.md](docs/diagrams/CLAIMS.md)에 적었다.
+
+## 기능
+
+- **HTTP 엔드포인트 하나**, 표준 라이브러리만 사용: `POST /v1/agents/novelty/runs`, `GET /api/health`
+- **출처가 있는 값**: Draft의 모든 값에 `kind`와 근거 ID가 붙는다. 입력이 뒷받침하지 않는 값은 `unknown`으로 두거나 `proposal`로 표시한다.
+- **Draft마다 주 트렌드 하나**: 규칙으로 고르고 `draft.trend_basis`에 기록한다.
+- **엄격한 대체가 있는 텍스트 LLM**: 구조화 출력, 근거 ID 허용 목록, 필수 프로필 필드, 24,000자 결정적 프롬프트 예산을 쓴다. 검증을 통과하지 못한 출력은 Draft에 들어가지 않는다.
+- **이미지 두 장, 옷 하나**: 착장 이미지는 저장된 상품 이미지를 편집해 만든다. 두 프롬프트가 같은 사양과 그 SHA-256을 쓴다.
+- **유료 호출의 재요청 안전**: 같은 request ID와 페이로드에는 저장된 응답을 돌려준다. 결과를 모르는 유료 이미지 시도는 자동으로 반복하지 않는다.
+- **기본은 오프라인**: API 키가 없어도 유효한 규칙 기반 Draft를 돌려준다. 테스트는 네트워크에 닿지 않는다.
+
+## 빠른 시작(오프라인)
+
+Python 3.11 이상이 필요하다. API 키, 데이터베이스, 다른 서비스는 필요 없다.
+
+```bash
+git clone https://github.com/KG-RAG-02/fashion-planner-novelty.git
+cd fashion-planner-novelty
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+
+# 루프백에서 서비스 시작(토큰·TLS·유료 호출 없음)
+NOVELTY_HTTP_MODE=local python -m fashion_planner_novelty.server
+```
+
+다른 터미널에서 합성 예시 요청을 보낸다.
+
+```bash
+curl -s -X POST http://127.0.0.1:8767/v1/agents/novelty/runs \
+  -H 'Content-Type: application/json' \
+  --data-binary @examples/request.synthetic.json | python3 -m json.tool | head -60
+```
+
+결과는 `partial`이고 규칙 기반 Draft가 들어 있다.
+
+- 주 트렌드: `Utility layering`
+- 근거가 연결된 값: 색 `olive`, 소재 `nylon`, 디테일 `patch pockets`
+- 입력이 다루지 않는 필드: 표시된 제안값
+- 두 이미지: `IMAGE_PROVIDER_NOT_CONFIGURED`로 `skipped`
+
+## 설정
+
+환경변수로 설정한다. 로컬 `.env` 파일이 있으면 읽는다([.env.example](.env.example) 참고).
+
+| 변수 | 기본값 | 의미 |
+|---|---|---|
+| `NOVELTY_HTTP_MODE` | (필수) | `local`: 루프백만, 토큰 없음. `private`: bearer 토큰, 격리 네트워크 안의 평문 HTTP. `service`: bearer 토큰과 TLS |
+| `NOVELTY_HOST`, `NOVELTY_PORT` | `127.0.0.1`, `8767` | 수신 주소 |
+| `FASHION_PLANNER_SERVICE_TOKEN` | – | `private`·`service` 모드에서 서비스들이 함께 쓰는 bearer 토큰 |
+| `NOVELTY_TLS_CERT_FILE`, `NOVELTY_TLS_KEY_FILE` | – | `service` 모드의 인증서와 키 |
+| `LLM_API_KEY` | – | 텍스트 LLM과 이미지에 쓰는 OpenAI API 키. 없으면 모델을 부르지 않는다 |
+| `NOVELTY_TEXT_GENERATION_ENABLED` | `true` | 키가 있을 때 텍스트 LLM을 쓴다 |
+| `NOVELTY_TEXT_GENERATION_MODEL` | `gpt-6-luna` | 텍스트 모델 |
+| `NOVELTY_TEXT_GENERATION_TIMEOUT_SECONDS` | `60` | 5–120 범위로 제한 |
+| `NOVELTY_TEXT_GENERATION_MAX_OUTPUT_TOKENS` | `3000` | 256–8000 범위로 제한 |
+| `NOVELTY_DRAFT_IMAGE_PROVIDER` | (빈 값) | `openai`로 두면 이미지를 만든다. 비우면 `skipped` |
+| `NOVELTY_DRAFT_IMAGE_MODEL` | `gpt-image-2.5-sunburst` | 이미지 모델 |
+| `NOVELTY_DRAFT_IMAGE_TIMEOUT_SECONDS` | `180` | 이미지 호출 하나의 시간 제한, 5–300 범위로 제한 |
+| `NOVELTY_DRAFT_ARTIFACT_DIR` | `data/local/novelty-artifacts` | 이미지와 SQLite 원장 |
+
+**비용**: `LLM_API_KEY`를 설정하면 실행 한 번에 텍스트 호출 최대 1회, 이미지 호출 최대 2회가 일어난다. 자동 재시도는 없다.
+
+컨테이너 실행은 [docs/operations.md](docs/operations.md)를 본다. `compose.yaml`은 TLS를 켠 `service` 모드로 서비스를 띄운다.
+
+## 데이터
+
+이 저장소는 **데이터를 담고 있지 않다.** 서비스는 요청마다 들어오는 입력 세 개만 읽는다. 트렌드·재고 결과는 다른 서비스가 만들고, 그 출처는 각 저장소가 밝힌다. 테스트는 작은 합성 픽스처를 쓴다. 실행 중 무엇을 저장하고 모델 제공자에게 무엇을 보내는지는 [docs/data.md](docs/data.md)에 있다.
+
+## API와 계약
+
+`POST /v1/agents/novelty/runs`는 정확히 `contract_version`(`novelty-handoff`), `request_id`, `input`만 있는 envelope를 받는다. `input`에는 정확히 `planning_request`, `trend_result`, `inventory_product_result`가 있어야 하고, 모든 `request_id`가 같아야 한다.
+
+응답 envelope에는 `producer`, `status`, `result`가 있다. 주요 필드는 다음과 같다.
+
+| 필드 | 내용 |
+|---|---|
+| `result.draft` | Draft: 콘셉트 문장, `product_profile`, `trend_basis`, 한계, 검토 질문 |
+| `result.draft.visuals.{product,outfit}` | 상태(`generated`, `failed`, `skipped`), 오류 코드, 산출물 참조(URI, 미디어 타입, 크기, SHA-256), 사양 해시 |
+| `result.input_evidence`, `result.compatibility` | 원본 입력, 스키마 버전, 정규화 출처 |
+| `result.generation_metadata` | 엔진(`rule_based` 또는 모델), 대체 이유, 프롬프트 축약, 처리 시간 |
+| `result.validation_issues` | `partial` 결과의 이유를 기계가 읽을 수 있는 코드로 |
+
+오류 응답은 다음과 같다.
+
+| 코드 | 경우 |
+|---|---|
+| `400` | JSON 또는 길이 헤더가 잘못됨 |
+| `401` | 토큰 없음 |
+| `404` | 알 수 없는 경로 |
+| `409` | 다른 페이로드에 request ID를 재사용함, 또는 결과를 모르는 이미지 시도가 있음 |
+| `413` | 본문이 1,000,000바이트를 넘음 |
+| `415` | JSON이 아님 |
+| `422` | 입력이 잘못됨 |
+
+전체 계약은 [contracts/http-handoff.md](contracts/http-handoff.md)에 있다.
+
+## 프로젝트 구조
 
 ```text
-입력
-  P08 → P06 POST /v1/agents/novelty/runs
-       ├─ planning_request (schema 1.0)
-       ├─ trend_result (schema 1.1)
-       └─ inventory_product_result (schema 1.0)
-       모든 request_id는 요청 envelope의 ID와 같아야 함
-
-분석
-  1. envelope·request ID·producer·schema·status 검증
-  2. 입력 원본과 provenance 보존
-  3. Trend 입력을 내부 분석 형식으로 정규화
-  4. 요청·Trend·Stock 근거, 누락, 충돌을 분석해 product_profile과 Draft 작성
-  5. 실제 이미지 provider가 설정된 경우 동일 상품 프로필로 product/outfit 이미지 생성
-  6. artifact를 저장하고 요청 ID에 소유권을 연결
-
-출력
-  P06 → P08에 Draft, product_profile, 입력 provenance,
-       validation issues, product/outfit 이미지 상태와 artifact 메타데이터 반환
-  P08 → P07 /reviews 호출, 결과 통합 및 기획안 보드 생성
+src/fashion_planner_novelty/
+├── adapters/      입력 검증과 정규화
+├── domain/        기획 컨텍스트, 주 트렌드, 규칙 기반 Draft, 프롬프트 예산, 동반 재고 상품
+├── sources/       OpenAI 텍스트 제공자
+├── workflows/     기획 분석, 텍스트 생성, 이미지 제공자, 산출물 저장소
+├── server/        표준 라이브러리 HTTP 서비스 (python -m fashion_planner_novelty.server)
+└── settings.py
+prompts/           텍스트 기획·콘셉트 이미지 프롬프트 템플릿 (manifest.json)
+contracts/         HTTP 계약 설명
+docs/              아키텍처, 데이터 모델, 운영, 데이터 카드, 트러블슈팅, 설계 결정, 다이어그램
+scripts/           프롬프트 렌더, 다이어그램 렌더, 오프라인 테스트 실행기
+tests/             합성 픽스처를 쓰는 단위 테스트
 ```
-
-## 입력 계약
-
-현재 P08 연동은 `novelty-handoff`을 사용합니다. `input`에는 아래 세 객체만 허용합니다.
-
-```json
-{
-  "contract_version": "novelty-handoff",
-  "request_id": "planning-001",
-  "input": {
-    "planning_request": {
-      "schema_version": "1.0",
-      "request_id": "planning-001",
-      "query": "27SS 아우터 기획"
-    },
-    "trend_result": {
-      "schema_version": "1.1",
-      "request_id": "planning-001",
-      "status": "ok"
-    },
-    "inventory_product_result": {
-      "schema_version": "1.0",
-      "request_id": "planning-001",
-      "agent_id": "inventory",
-      "status": "ok"
-    }
-  }
-}
-```
-
-지원 schema는 PlanningRequest 1.0, Trend 1.1, Stock 1.0입니다. 각 입력 ID, 허용 producer와 상태를 확인합니다. Trend 1.1은 원본을 보존한 채 내부 분석용 복사본만 정규화합니다. 지원하지 않는 schema, 잘못된 상태, producer 또는 request ID는 요청 오류로 반환합니다.
-
-## 분석 결과와 상태
-
-성공 응답 envelope는 `contract_version`, `request_id`, `producer`, `status`, `result`를 포함합니다. `result.draft`에는 읽을 수 있는 기획 초안, 출처가 구분된 `product_profile`, `visuals.product`, `visuals.outfit`이 들어갑니다. `result.input_evidence`와 `compatibility`에는 입력 원본, provenance, schema 변환 정보가 보존됩니다. `validation_issues`, `limitations`, `conflicts`, `questions_for_validation`에서 결과의 한계와 확인할 사항을 확인할 수 있습니다.
-
-- `ok`: 입력 분석과 요청된 출력이 완료됐습니다.
-- `partial`: 입력에 부분 결과·누락·충돌이 있거나 이미지 생성/저장이 완료되지 않았습니다. 구체적인 원인은 `validation_issues`의 코드로 확인합니다.
-- 입력 계약 오류는 4xx로 거부됩니다.
-- 처리 완료 후 같은 `request_id`를 다른 입력에 재사용하면 `409 REQUEST_ID_REUSED`를 반환합니다. 같은 입력의 동시 요청은 최초 저장된 응답으로 수렴합니다.
-- 유료 이미지 요청이 처리 중이거나 결과가 불확실하면 중복 호출을 막기 위해 `409 IMAGE_REQUEST_IN_PROGRESS_OR_OUTCOME_UNKNOWN`을 반환할 수 있습니다.
-
-기획 초안은 트렌드 하나를 기준으로 만듭니다. P06은 사용 가능한 트렌드 후보(이름·Evidence가 있고 요청 시즌·카테고리·시장·채널과 어긋나지 않는 후보) 중에서 Evidence가 연결된 디자인 속성(색상·패턴·디테일·소재·핏·실루엣·기장 등)이 가장 많은 후보를, 같으면 Evidence ID가 더 많은 후보를, 그래도 같으면 먼저 입력된 후보를 고릅니다(`src/fashion_planner_novelty/domain/trend_basis.py`). 규칙 기반 Draft의 콘셉트 문장·기회 문장·속성·상품 프로필과 텍스트 LLM 입력은 이 기준 트렌드만 사용하며, 다른 트렌드를 섞지 않습니다. 선택 결과는 `result.draft.trend_basis`(`source_style_id`, `name`, `selection_rule`=`most_evidence_linked_design_attributes`, `evidence_ids`, `design_attributes`, `candidates_considered`)에 남고, 사용할 수 있는 트렌드가 없으면 `null`입니다. LLM 경로에서도 이 값은 규칙이 정하며 모델이 바꾸지 않습니다. 기준 트렌드에 Evidence가 연결된 색이 2개 이상이면 상품 프로필 색상은 입력 순서상 첫 번째 근거 색 하나로 정합니다(요청에 색상이 있으면 요청값 유지). LLM 경로도 같은 규칙을 적용하며, 이미지와 P07 검토 입력은 이 색을 받습니다. 소재·실루엣은 값이 하나일 때만 프로필에 올립니다.
-
-P06은 P07을 호출하지 않습니다. P08은 P06의 `product_profile`에서 P07 허용 필드를 구성해 review를 호출하고, review와 Draft를 통합합니다.
-
-## 환경 변수와 데이터 연결
-
-P06은 업무용 Trend·Stock 데이터베이스에 직접 접속하지 않습니다. P08이 해당 데이터를 조회해 `trend_result`와 `inventory_product_result`로 전달합니다. 따라서 P06 `.env`에는 Trend·Stock DB 키가 필요하지 않으며, P06의 로컬 SQLite는 artifact 소유권과 요청 재생 처리만 기록합니다. `/runs`의 텍스트 기획 생성기는 `NOVELTY_TEXT_GENERATION_ENABLED=true`일 때만 호출되며 이미지 생성과 같은 `LLM_API_KEY`를 사용합니다. 비활성화 상태에서는 규칙 기반 결과를 반환합니다.
-
-향후 데이터 조회를 통합할 때는 키를 P06에 복사하는 대신, 데이터베이스 소유 서비스(P08 또는 별도 upstream)가 하나의 credential로 필요한 데이터셋을 묶어 조회하고 현재 입력 계약에 맞는 결과를 P06에 전달하도록 설계합니다. `.env`와 `.envrc`는 각 저장소·실행 컴퓨터의 로컬 설정이므로 저장소 사이에 공유되지 않습니다.
-
-`/runs`는 `NOVELTY_TEXT_GENERATION_ENABLED` 설정에 따라 규칙 기반 또는 `PromptedConceptGenerator` 경로를 사용하며, 저장소 기본 설정은 활성화(`true`)입니다. 텍스트 생성이 활성화되면 근거 ID를 검증한 구조화 응답을 생성하고, 호출·응답 검증에 실패하면 규칙 기반 결과로 fallback합니다. LLM이 성공해도 `opportunity`, `product_definition`, `product_profile`, `relation_to_own_products` 등 일반 포스터 필드를 비워 둔 경우에는 해당 필드만 규칙 기반 결과로 보충합니다. 단, `differentiation`은 LLM이 비워 둔 상태를 유지하고 `generation_metadata.llm_empty_fields`에 기록합니다. 유효한 규칙 기반 Draft로 fallback한 경우 최상위 `status`는 `ok`로 유지하고, `generation_metadata.status`, `engine`, `error_code`로 LLM 실패를 구분합니다. `find_categories` 도구나 외부 agent 도구는 호출하지 않으며, 입력에 전달된 도구 진단 문구는 provenance와 limitation에 보존합니다. 상류 status가 `ok`이고 필수 Draft·시각자료가 생성됐으며 오류·누락·충돌이 없다면, 복구된 규칙 경고 문구만으로 결과를 `partial`로 바꾸지 않습니다.
-
-## 상품·착장 이미지
-
-실제 이미지 생성은 `NOVELTY_DRAFT_IMAGE_PROVIDER=openai`와 이미지 API 키가 함께 설정된 경우에만 실행됩니다. provider를 지정하지 않으면 두 visual이 `skipped`로 반환됩니다. 지원하지 않는 provider 이름은 `IMAGE_PROVIDER_UNSUPPORTED` 오류로 나타납니다. 실제 생성 또는 artifact 저장에 실패하면 해당 visual은 `failed`가 되고 전체 결과는 `partial`입니다.
-
-P06은 이미지 두 장을 순차로 만듭니다. 먼저 상품 프로필(디테일 포함)로 product 이미지를 생성하고, 저장된 product 이미지를 참조 입력으로 OpenAI Images Edit API(`/v1/images/edits`)에 넣어 같은 옷의 착장(outfit) 이미지를 만듭니다. product 이미지가 없으면 outfit은 텍스트만으로 만들지 않고 `skipped`(`OUTFIT_REFERENCE_UNAVAILABLE`)로 둡니다. outfit visual의 `reference_image_sha256`은 참조한 product 이미지의 SHA-256입니다. 동일 상품 프로필의 hash를 각 visual에 기록하지만 이미지 픽셀의 디자인 일치는 자동 검증하지 않습니다. P08은 공유 artifact 저장소에서 `artifact://novelty/images/<sha256>.<ext>`를 해석하고, 소유권·크기·SHA-256을 검증해야 합니다. 이미지 바이트 자체는 Draft JSON에 넣지 않습니다.
-
-착장 이미지는 신상품을 재고 상품 하나와 함께 입힌 모습입니다(2026-11-17 결정). 재고 상품은 규칙으로 하나를 고릅니다: 기준 트렌드(`draft.trend_basis`)의 재고 결과(stock `trend_results`에서 같은 style_id) 중 순위가 가장 높은 상품이며, P08 기획서의 재고 카드와 같은 상품입니다. 다만 코디 역할 규칙(outfit-role-pairing)상 신상품과 같은 역할(예: 상의와 상의)이면 건너뜁니다(`src/fashion_planner_novelty/domain/outfit_companion.py`). 그 상품의 사진(stock 결과 `products[].image.data`)이 있으면 edit 호출의 두 번째 입력 이미지로 넣고, 카테고리·색상·소재·핏은 프롬프트의 `STOCK ITEM` JSON으로 함께 전달합니다. 사진이 없으면 JSON 설명만 쓰고, 고를 재고가 없으면 신상품만 입힌 착장을 만듭니다. 어떤 재고를 썼는지는 `outfit_image.companion`(`stock_product_id`, `category`, `trend_style_id`, `rank`, `role`, `selection_rule`, `image_sha256`, `image_media_type`)에 남고, 재고를 쓰지 않았으면 `null`입니다. 프롬프트 버전은 `novelty-draft-visuals`입니다.
-
-완료 응답은 동일 request ID와 동일 요청 본문에 재사용됩니다. 같은 입력의 동시 요청도 최초 저장된 응답으로 수렴합니다. 다른 본문에 같은 request ID를 사용하면 `409 REQUEST_ID_REUSED`입니다. 유료 이미지 요청의 처리 결과가 불확실하면 중복 과금을 막기 위해 같은 ID의 재호출을 거부할 수 있습니다. 실패 이미지를 의도적으로 다시 요청하려면 새 request ID를 사용하세요. 자동 재시도는 하지 않습니다.
-
-## 실행
-
-### 로컬
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-NOVELTY_HTTP_MODE=local \
-NOVELTY_DRAFT_ARTIFACT_DIR=data/local/novelty-artifacts \
-PYTHONPATH=src python3 -m fashion_planner_novelty.server
-```
-
-기본 주소는 `http://127.0.0.1:8767`이고 health check는 `GET /api/health`입니다. `local` 모드는 loopback 연결만 허용합니다. 서비스 간 격리 네트워크의 `private` 모드는 bearer 인증을 사용하고, `service` 모드는 bearer 인증과 TLS가 필요합니다.
-
-### Docker
-
-저장소의 `.env.example`을 참고해 비밀값을 로컬 환경에 준비한 뒤:
-
-```bash
-docker compose up --build
-```
-
-Docker 설정은 `NOVELTY_HTTP_MODE=service`와 TLS 인증서를 사용합니다. P08과 함께 실행할 때는 두 서비스가 같은 artifact volume을 보도록 배포 설정을 맞춰야 합니다. 키나 인증 토큰을 Git, 채팅, 로그에 기록하지 마세요.
-
-### 실제 이미지 provider 설정
-
-```bash
-NOVELTY_DRAFT_IMAGE_PROVIDER=openai
-NOVELTY_DRAFT_IMAGE_MODEL=gpt-image-2.5-sunburst
-NOVELTY_DRAFT_IMAGE_TIMEOUT_SECONDS=180
-LLM_API_KEY=<승인된 secret 저장소에서 주입>
-```
-
-### LLM 기획 생성기 설정
-
-```bash
-NOVELTY_TEXT_GENERATION_ENABLED=true
-NOVELTY_TEXT_GENERATION_MODEL=gpt-6-luna
-NOVELTY_TEXT_GENERATION_TIMEOUT_SECONDS=60
-NOVELTY_TEXT_GENERATION_MAX_OUTPUT_TOKENS=3000
-LLM_API_KEY=<승인된 secret 저장소에서 주입>
-```
-
-LLM 기획 생성기는 기본적으로 켜져 있습니다. 키가 없거나 호출·응답 검증에 실패하면 규칙 기반 Draft를 반환하며, 최상위 응답은 유효한 Draft인 경우 `ok`를 유지합니다. `generation_metadata`의 `status`, `engine`, `model`, `prompt_version`, `error_code`로 생성 경로를 확인할 수 있습니다.
-
-텍스트 LLM 입력 데이터(`UNTRUSTED_PLANNING_INPUT_JSON`)가 24,000자를 넘으면, 직렬화기가 Evidence ID 없는 6,000자 미리보기로 바꾸기 전에 P06이 모델 호출 없이 결정적으로 축약합니다(`src/fashion_planner_novelty/domain/prompt_budget.py`). 순서는 T1 중복 한계 문구 제거 → T2 참조 ID·수치만 다른 문구 묶기 → T3 구조 압축 → T4 Evidence ID 별칭(E1…, 응답에서 실제 ID로 복원) → T5 손실 축소이며, 단계마다 길이를 다시 재고 한도 안에 들면 멈춥니다. 축약한 런에만 `generation_metadata.prompt_reduction`(`version`, `cap`, `chars_before`, `chars_after`, `steps`, `aliased`, `allowed_evidence_ids`, `trimmed`)이 붙고, T5가 입력을 뺐다면 Draft limitation에 그 내용을 한 줄 남깁니다. 축약 후에도 한도를 넘으면 LLM을 호출하지 않고 규칙 기반 Draft를 쓰며 `error_code`는 `TEXT_INPUT_OVER_BUDGET`입니다. 한도 이하 입력의 프롬프트와 결과는 바뀌지 않습니다.
-
-timeout 기본값은 180초이며 허용 범위는 5–300초입니다. 이미지 API 호출은 비용이 발생할 수 있습니다. 테스트는 합성 입력과 mock provider를 사용하며 실제 모델을 호출하지 않습니다. **합성 fixture 이미지 생성 모드는 제공하지 않습니다.**
-
-## 지연·부분 상태 진단
-
-`generation_metadata.timings_ms`에는 입력 검증·정규화, Draft 분석, 각 이미지 호출, 이미지 구간 전체 시간, artifact 저장, 응답 직렬화 시간이 기록됩니다. Docker 로그의 `novelty_draft_completed`에는 캐시 저장 시간을 포함한 총 처리 시간이 추가됩니다. `novelty_http_response_serialized` 로그에는 같은 request ID의 HTTP status와 응답 JSON 직렬화 시간이 기록됩니다. 두 로그를 request ID로 연결해 확인하세요. 로그에는 프롬프트, 이미지 바이트, upstream 원본 payload, 비밀값을 남기지 않습니다.
 
 ## 테스트
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -v
+python scripts/run_offline_tests.py
 ```
 
-자세한 내용: [저장소 책임 경계](docs/repository-boundaries.md), [입력·출력 흐름](docs/design/input-output-processing-flow.md), [서비스 runbook](docs/design/prototype-runbook.md), [구조화 상품 프로필](docs/design/p06-structured-planning-draft.md).
+- 실행기는 루프백이 아닌 네트워크 연결을 모두 막고 `unittest` discover를 돌린다. 어떤 테스트든 네트워크에 닿으려 하면 실패한다.
+- `PYTHONPATH=src python -m unittest discover -s tests`도 동작하지만 차단을 강제하지는 않는다.
+- CI는 Python 3.11과 3.13에서 오프라인 실행기를 돌린다.
+
+## 트러블슈팅과 교훈
+
+[docs/troubleshooting.md](docs/troubleshooting.md)에 겪은 문제와 해결을 모았다. 예를 들어 큰 요청이 왜 `413` 대신 broken pipe로 보였는지, 디자인 디테일이 왜 이미지 프롬프트에 들어가지 않았는지를 다룬다.
+
+## 한계
+
+- Draft는 MD가 출발점으로 삼는 초안이지 결정이 아니다. 수요, 판매, 생산 가능성을 예측하지 않는다.
+- 제안값은 빈 칸을 정해진 기본값(예: "레귤러 핏")으로 채우고 표시한 것이다. 근거에서 나온 값이 아니다.
+- 근거 ID 검사는 인용한 ID가 이 요청에서 왔다는 것만 증명한다. 출처가 그 주장을 뒷받침한다는 것까지 증명하지는 않는다.
+- 두 이미지는 같은 사양을 쓰고 착장이 상품 이미지를 편집하지만, 픽셀 수준의 동일성은 검증하지 않는다.
+- 규칙 기반 Draft의 성별 값은 자리표시 제안값(`unknown`)이고, 그대로 이미지 프롬프트에 들어간다.
+- 프롬프트 구성은 다층 방어일 뿐 프롬프트 인젝션을 막는다고 보장하지 않는다. [docs/prompt-safety.md](docs/prompt-safety.md) 참고.
+- 서비스가 만드는 문장은 한국어다.
+
+## 감사의 말
+
+- 이미지와 텍스트 생성은 설정했을 때 OpenAI API를 쓴다. 이 저장소에는 모델 출력이 없다.
+- 다이어그램은 [Graphviz](https://graphviz.org/)와 [librsvg](https://gitlab.gnome.org/GNOME/librsvg)로 렌더하고, 글꼴은 [Pretendard](https://github.com/orioncactus/pretendard)(SIL Open Font License)를 쓴다. 글꼴 파일은 저장소에 넣지 않았다. 아이콘과 로고는 쓰지 않았다.
+- 상위 서비스는 Vogue Korea 기사와 공개 패션 데이터셋을 쓴다. 출처와 이용 조건은 각 저장소가 밝힌다. 이 저장소에는 그 데이터가 없다.
+- 코드와 문서의 일부는 AI(Anthropic의 Claude)의 도움을 받아 썼다. 해당 커밋에는 `Co-Authored-By`를 붙였다.
+
+## 고지
+
+- 이 프로젝트는 학습·교육 목적의 비상업 프로젝트입니다. Condé Nast, Vogue Korea(두산매거진), 무신사, H&M과 관련이 없으며 이들의 승인이나 후원을 받지 않았습니다. 'Vogue'는 해당 권리자의 상표입니다.
+- 이 레포에는 제3자 데이터(기사 원문, 이미지, 상품·거래 데이터)가 들어 있지 않습니다. 데이터를 직접 받아 쓰는 경우 각 출처의 이용약관을 따라야 합니다. 자세한 내용은 `docs/data.md`를 보세요.
+
+## 라이선스
+
+코드는 [MIT 라이선스](LICENSE)로 배포합니다. MIT 라이선스는 이 레포의 코드에만 적용되며, 외부 데이터셋과 그 파생물에는 적용되지 않습니다.
