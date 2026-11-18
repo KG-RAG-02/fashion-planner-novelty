@@ -47,7 +47,7 @@
 | OpenAI Images edits | `src/fashion_planner_novelty/workflows/image_generation.py:128` | tests/test_handoff_runs.py (urlopen mock) |
 | 재고 사진 → 착장 편집 | `src/fashion_planner_novelty/server/app.py:93` | tests/test_outfit_companion.py |
 | 상품 이미지 실패 → 착장 건너뜀 | `src/fashion_planner_novelty/server/app.py:262` | tests/test_handoff_runs.py |
-| 12 산출물 저장소: 내용 주소 이미지 | `src/fashion_planner_novelty/workflows/draft_artifacts.py:209` | tests/test_handoff_runs.py |
+| 12 산출물 저장소: 내용 주소 이미지 | `src/fashion_planner_novelty/workflows/draft_artifacts.py:212` | tests/test_handoff_runs.py |
 | 12 원장: 이미지 소유 표 | `src/fashion_planner_novelty/workflows/draft_artifacts.py:142` | tests/test_handoff_runs.py |
 | 12 원장: 이미지 실행 표 | `src/fashion_planner_novelty/workflows/draft_artifacts.py:173` | tests/test_handoff_runs.py |
 | 12 원장: 저장된 응답 | `src/fashion_planner_novelty/server/app.py:444` | tests/test_handoff_runs.py |
@@ -67,7 +67,7 @@
 | 결과 조립 때 title 추가 | `src/fashion_planner_novelty/workflows/planning_draft.py:499` | 코드 확인 |
 | review_status | `src/fashion_planner_novelty/server/app.py:204` | tests/test_handoff_runs.py |
 | 결과 조립 때 visuals 추가 | `src/fashion_planner_novelty/server/app.py:355` | tests/test_handoff_runs.py |
-| artifact 필드 | `src/fashion_planner_novelty/workflows/draft_artifacts.py:215` | tests/test_handoff_runs.py |
+| artifact 필드 | `src/fashion_planner_novelty/workflows/draft_artifacts.py:218` | tests/test_handoff_runs.py |
 | visual: product_specification_sha256 | `src/fashion_planner_novelty/server/app.py:351` | tests/test_handoff_runs.py |
 | visual: prompt_sha256 | `src/fashion_planner_novelty/server/app.py:352` | tests/test_handoff_runs.py, tests/test_prompt_registry.py |
 | visual: prompt_version novelty-draft-visuals | `src/fashion_planner_novelty/workflows/draft_artifacts.py:73` | tests/test_handoff_runs.py |
