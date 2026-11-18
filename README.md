@@ -171,7 +171,7 @@ python scripts/run_offline_tests.py
 - 근거 ID 검사는 인용한 ID가 이 요청에서 왔다는 것만 증명한다. 출처가 그 주장을 뒷받침한다는 것까지 증명하지는 않는다.
 - 두 이미지는 같은 사양을 쓰고 착장이 상품 이미지를 편집하지만, 픽셀 수준의 동일성은 검증하지 않는다.
 - 규칙 기반 Draft의 성별 값은 자리표시 제안값(`unknown`)이고, 그대로 이미지 프롬프트에 들어간다.
-- research 서비스는 상품 필드 문자열을 120자까지만 받는다. 이 서비스는 모델이 낸 프로필 값을 3,000자까지 받으므로, 긴 값이 나오면 research 단계가 요청 오류로 끝날 수 있다([docs/draft-model.md](docs/draft-model.md#research로-넘어가는-값)).
+- research 계약은 상품 필드 문자열을 120자까지만 허용한다. 이 서비스는 모델이 낸 프로필 값을 3,000자까지 받으므로, 긴 값이 나오면 그 실행의 research 단계가 계약 검증에서 멈춘다([docs/draft-model.md](docs/draft-model.md#research로-넘어가는-값)).
 - 프롬프트 구성은 다층 방어일 뿐 프롬프트 인젝션을 막는다고 보장하지 않는다. [docs/prompt-safety.md](docs/prompt-safety.md) 참고.
 - 서비스가 만드는 문장은 한국어다.
 

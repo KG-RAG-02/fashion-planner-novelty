@@ -44,7 +44,7 @@ orchestrator는 이 프로필 중 일부만 research 요청으로 옮긴다.
 - 넘기는 필드는 `category`, `product_type`, `gender`, `season`, `material` 5개와, 필드마다 출처(`kind`, `source_ref` = `novelty.draft.product_profile.<필드>`, `evidence_ids`)다. `silhouette`, `color`, `details`는 넘기지 않는다.
 - `category`는 `draft.category`와 같아야 한다.
 - `kind`가 `user_requested`, `evidence_observation`, `proposal`인 값만 그대로 넘긴다. 그 밖의 `kind`이거나 값이 비어 있으면 orchestrator가 정해진 자리값으로 바꾸고 `kind: "proposal"`로 표시한다.
-- research는 다섯 필드의 문자열을 120자까지만 받는다. novelty는 모델이 낸 값을 3,000자까지 받으므로, 120자를 넘는 값이 나오면 research 단계가 요청 오류로 끝날 수 있다(현재 한계).
+- research 계약은 다섯 필드의 문자열을 120자까지만 허용한다. novelty는 모델이 낸 값을 3,000자까지 받으므로, 120자를 넘는 값이 나오면 그 실행의 research 단계가 실패한다(현재 한계). orchestrator를 거치면 research를 부르기 전에 요청 계약 검증에서 `CONTRACT_VIOLATION`으로 멈추고, research를 직접 부르면 research가 `422`로 거절한다.
 
 ## 주 트렌드 기록: `trend_basis`
 
