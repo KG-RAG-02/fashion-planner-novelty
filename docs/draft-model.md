@@ -34,8 +34,17 @@
 - 사용자가 요청한 값이 가장 우선한다.
 - 그다음은 주 트렌드에서 근거가 연결된 값이다. 소재와 실루엣은 근거 값이 하나일 때만 올린다. 색은 근거 색이 여럿이면 입력 순서상 첫 색을 쓴다.
 - 입력이 다루지 않는 디자인 필드는 카테고리에 따른 정해진 제안값으로 채우고 `kind: "proposal"`로 표시한다. 예를 들어 아우터는 "가벼운 아우터", "나일론 혼방", "레귤러 핏", "뉴트럴 톤"이다.
-- 성별을 요청하지 않으면 `gender`는 `"unknown"`(`proposal`)이다. 카테고리나 다른 속성에서 성별을 추론하지 않는다.
-- orchestrator는 이 프로필로 research 요청을 만든다. 이미지 사양도 이 프로필에서만 만든다.
+- `gender`는 `women`, `men`, `unisex`, `unknown` 중 하나다(research 서비스가 받는 값과 같다). 성별을 요청하지 않으면 `"unknown"`(`proposal`)이다. 카테고리나 다른 속성에서 성별을 추론하지 않는다.
+- 이미지 사양은 이 프로필에서만 만든다.
+
+### research로 넘어가는 값
+
+orchestrator는 이 프로필 중 일부만 research 요청으로 옮긴다.
+
+- 넘기는 필드는 `category`, `product_type`, `gender`, `season`, `material` 5개와, 필드마다 출처(`kind`, `source_ref` = `novelty.draft.product_profile.<필드>`, `evidence_ids`)다. `silhouette`, `color`, `details`는 넘기지 않는다.
+- `category`는 `draft.category`와 같아야 한다.
+- `kind`가 `user_requested`, `evidence_observation`, `proposal`인 값만 그대로 넘긴다. 그 밖의 `kind`이거나 값이 비어 있으면 orchestrator가 정해진 자리값으로 바꾸고 `kind: "proposal"`로 표시한다.
+- research는 다섯 필드의 문자열을 120자까지만 받는다. novelty는 모델이 낸 값을 3,000자까지 받으므로, 120자를 넘는 값이 나오면 research 단계가 요청 오류로 끝날 수 있다(현재 한계).
 
 ## 주 트렌드 기록: `trend_basis`
 
