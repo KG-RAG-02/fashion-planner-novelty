@@ -6,4 +6,4 @@ The response producer is `new-product-agent`, schema version `1.0`. Its result c
 
 P06 does not call P07 and does not create a planning board. P08 projects eligible product-profile fields into its P07 review request, calls P07, and composes the final response and board.
 
-[`http-handoff-v0.3.md`](http-handoff-v0.3.md) records the current P08-facing compatibility shape. It is a compatibility note, not a frozen cross-repository schema: the source contract is owned by P08, and both repositories must be reviewed together before changing the handoff. PlanningRequest, Trend, and Stock schemas remain owned by their respective producers.
+[`http-handoff.md`](http-handoff.md) records the current P08-facing compatibility shape. It is a compatibility note, not a frozen cross-repository schema: the source contract is owned by P08, and both repositories must be reviewed together before changing the handoff. PlanningRequest, Trend, and Stock schemas remain owned by their respective producers.
