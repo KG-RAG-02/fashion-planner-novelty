@@ -141,7 +141,7 @@ timeout 기본값은 180초이며 허용 범위는 5–300초입니다. 이미�
 
 ## 지연·부분 상태 진단
 
-`generation_metadata.timings_ms`에는 입력 검증·정규화, Draft 분석, 각 이미지 호출, 이미지 구간 전체 시간, artifact 저장, 응답 직렬화 시간이 기록됩니다. Docker 로그의 `p06_draft_completed`에는 캐시 저장 시간을 포함한 총 처리 시간이 추가됩니다. `p06_http_response_serialized` 로그에는 같은 request ID의 HTTP status와 응답 JSON 직렬화 시간이 기록됩니다. 두 로그를 request ID로 연결해 확인하세요. 로그에는 프롬프트, 이미지 바이트, upstream 원본 payload, 비밀값을 남기지 않습니다.
+`generation_metadata.timings_ms`에는 입력 검증·정규화, Draft 분석, 각 이미지 호출, 이미지 구간 전체 시간, artifact 저장, 응답 직렬화 시간이 기록됩니다. Docker 로그의 `novelty_draft_completed`에는 캐시 저장 시간을 포함한 총 처리 시간이 추가됩니다. `novelty_http_response_serialized` 로그에는 같은 request ID의 HTTP status와 응답 JSON 직렬화 시간이 기록됩니다. 두 로그를 request ID로 연결해 확인하세요. 로그에는 프롬프트, 이미지 바이트, upstream 원본 payload, 비밀값을 남기지 않습니다.
 
 ## 테스트
 

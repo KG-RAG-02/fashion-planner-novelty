@@ -116,7 +116,7 @@ def _companion_photo(stock_payload: object, companion) -> tuple[bytes | None, st
 
 def _safe_completion_log(request_id: str, status: str, issues: list[dict], visuals: dict, timings: dict) -> None:
     event = {
-        "event": "p06_draft_completed",
+        "event": "novelty_draft_completed",
         "request_id": request_id,
         "status": status,
         "partial_issue_codes": sorted({item.get("code") for item in issues if isinstance(item.get("code"), str)}),
@@ -444,7 +444,7 @@ class NoveltyRequestHandler(BaseHTTPRequestHandler):
         if (isinstance(producer, dict) and producer.get("agent_id") == "new-product-agent"
                 and isinstance(payload.get("request_id"), str)):
             event = {
-                "event": "p06_http_response_serialized",
+                "event": "novelty_http_response_serialized",
                 "request_id": payload["request_id"],
                 "status": payload.get("status"),
                 "http_status": status,

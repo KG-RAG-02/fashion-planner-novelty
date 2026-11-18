@@ -215,8 +215,8 @@ class HandoffRunTests(unittest.TestCase):
         }), contextlib.redirect_stderr(logs):
             status, response = invoke(NoveltyRequestHandler, "/v1/agents/new-product-agent/runs", value, env={})
         events = [json.loads(line) for line in logs.getvalue().splitlines()]
-        completion = next(event for event in events if event["event"] == "p06_draft_completed")
-        http = next(event for event in events if event["event"] == "p06_http_response_serialized")
+        completion = next(event for event in events if event["event"] == "novelty_draft_completed")
+        http = next(event for event in events if event["event"] == "novelty_http_response_serialized")
         self.assertEqual(status, 200)
         self.assertEqual(completion["request_id"], value["request_id"])
         self.assertIn("response_cache_persistence", completion["timings_ms"])
