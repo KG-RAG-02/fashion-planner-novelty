@@ -99,7 +99,7 @@ source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 VOGUE_HTTP_MODE=local \
 VOGUE_DRAFT_ARTIFACT_DIR=data/local/p06-artifacts \
-PYTHONPATH=src python3 -m fashion_planner_novelty.prototype.server
+PYTHONPATH=src python3 -m fashion_planner_novelty.server
 ```
 
 기본 주소는 `http://127.0.0.1:8767`이고 health check는 `GET /api/health`입니다. `local` 모드는 loopback 연결만 허용합니다. 서비스 간 격리 네트워크의 `private` 모드는 bearer 인증을 사용하고, `service` 모드는 bearer 인증과 TLS가 필요합니다.

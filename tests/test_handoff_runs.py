@@ -20,7 +20,7 @@ from unittest.mock import patch
 
 from fashion_planner_novelty.domain.concept import ProductProfile, ProposedAttribute, SourcedClaim
 from fashion_planner_novelty.domain.generator import RuleBasedConceptGenerator
-from fashion_planner_novelty.prototype.server import PrototypeHandler, _build_handoff_run, _image_profile_from_draft
+from fashion_planner_novelty.server.app import NoveltyRequestHandler, _build_handoff_run, _image_profile_from_draft
 from fashion_planner_novelty.workflows.draft_artifacts import DraftArtifactStore, ImageRunAlreadyClaimed, OpenAIDraftImageProvider
 from fashion_planner_novelty.workflows.image_generation import ImageProviderError, OpenAIImageEditProvider, OpenAIImageProvider
 
@@ -142,7 +142,7 @@ class HandoffRunTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
             "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "openai",
-        }), patch("fashion_planner_novelty.prototype.server.load_settings",
+        }), patch("fashion_planner_novelty.server.app.load_settings",
                   return_value=SimpleNamespace(image_generation_api_key="test-key")), \
              patch.object(OpenAIImageProvider, "generate", side_effect=capture_image), \
              patch.object(OpenAIImageEditProvider, "edit", side_effect=capture_edit):
@@ -179,7 +179,7 @@ class HandoffRunTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
             "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "openai",
-        }), patch("fashion_planner_novelty.prototype.server.load_settings",
+        }), patch("fashion_planner_novelty.server.app.load_settings",
                   return_value=SimpleNamespace(image_generation_api_key="test-key")), \
              patch.object(OpenAIDraftImageProvider, "generate", return_value=b"mock-image"):
             response = _build_handoff_run(value)
@@ -195,7 +195,7 @@ class HandoffRunTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
             "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "openai",
-        }), patch("fashion_planner_novelty.prototype.server.load_settings",
+        }), patch("fashion_planner_novelty.server.app.load_settings",
                   return_value=SimpleNamespace(image_generation_api_key="test-key")), \
              patch.object(OpenAIDraftImageProvider, "generate", return_value=b"mock-image"):
             response = _build_handoff_run(value)
@@ -213,7 +213,7 @@ class HandoffRunTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
             "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "",
         }), contextlib.redirect_stderr(logs):
-            status, response = invoke(PrototypeHandler, "/v1/agents/new-product-agent/runs", value, env={})
+            status, response = invoke(NoveltyRequestHandler, "/v1/agents/new-product-agent/runs", value, env={})
         events = [json.loads(line) for line in logs.getvalue().splitlines()]
         completion = next(event for event in events if event["event"] == "p06_draft_completed")
         http = next(event for event in events if event["event"] == "p06_http_response_serialized")
@@ -250,7 +250,7 @@ class HandoffRunTests(unittest.TestCase):
     def test_real_provider_creates_request_owned_product_and_outfit_artifacts(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
             "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "openai",
-        }), patch("fashion_planner_novelty.prototype.server.load_settings", return_value=SimpleNamespace(image_generation_api_key="test-key")), \
+        }), patch("fashion_planner_novelty.server.app.load_settings", return_value=SimpleNamespace(image_generation_api_key="test-key")), \
              patch.object(OpenAIDraftImageProvider, "generate", return_value=b"synthetic-test-image") as generate:
             response = _build_handoff_run(request())
             result = response["result"]
@@ -303,7 +303,7 @@ class HandoffRunTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
             "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "openai",
             "VOGUE_TEXT_GENERATION_ENABLED": "false",
-        }), patch("fashion_planner_novelty.prototype.server.load_settings", return_value=SimpleNamespace(image_generation_api_key="test-key")), \
+        }), patch("fashion_planner_novelty.server.app.load_settings", return_value=SimpleNamespace(image_generation_api_key="test-key")), \
              patch("urllib.request.urlopen", side_effect=open_request):
             response = _build_handoff_run(request())
 
@@ -357,8 +357,8 @@ class HandoffRunTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
             "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "openai",
-        }), patch("fashion_planner_novelty.prototype.server.load_settings", return_value=SimpleNamespace(image_generation_api_key="test-key")), \
-             patch("fashion_planner_novelty.prototype.server._build_concept_generator", return_value=DetailedDraftGenerator()), \
+        }), patch("fashion_planner_novelty.server.app.load_settings", return_value=SimpleNamespace(image_generation_api_key="test-key")), \
+             patch("fashion_planner_novelty.server.app._build_concept_generator", return_value=DetailedDraftGenerator()), \
              patch.object(OpenAIImageProvider, "generate", side_effect=capture_generation), \
              patch.object(OpenAIImageEditProvider, "edit", side_effect=capture_edit):
             response = _build_handoff_run(request())
@@ -381,7 +381,7 @@ class HandoffRunTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
             "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "openai",
-        }), patch("fashion_planner_novelty.prototype.server.load_settings", return_value=SimpleNamespace(image_generation_api_key="test-key")), \
+        }), patch("fashion_planner_novelty.server.app.load_settings", return_value=SimpleNamespace(image_generation_api_key="test-key")), \
              patch.object(OpenAIDraftImageProvider, "generate", side_effect=fail_product) as generate:
             response = _build_handoff_run(request())
             replay = _build_handoff_run(request())
@@ -401,10 +401,10 @@ class HandoffRunTests(unittest.TestCase):
         value = request()
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
             "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "openai",
-        }), patch("fashion_planner_novelty.prototype.server.load_settings", return_value=SimpleNamespace(image_generation_api_key="test-key")), \
+        }), patch("fashion_planner_novelty.server.app.load_settings", return_value=SimpleNamespace(image_generation_api_key="test-key")), \
              patch.object(OpenAIDraftImageProvider, "generate") as generate:
             store = DraftArtifactStore(directory)
-            store.claim_image_run(value["request_id"], __import__("fashion_planner_novelty.prototype.server", fromlist=["_canonical_sha"])._canonical_sha(value))
+            store.claim_image_run(value["request_id"], __import__("fashion_planner_novelty.server.app", fromlist=["_canonical_sha"])._canonical_sha(value))
             with self.assertRaises(ImageRunAlreadyClaimed):
                 _build_handoff_run(value)
         self.assertFalse(generate.called)
@@ -415,7 +415,7 @@ class HandoffRunTests(unittest.TestCase):
         value["input"]["planning_request"].pop("season")
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
             "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "openai",
-        }), patch("fashion_planner_novelty.prototype.server.load_settings", return_value=SimpleNamespace(image_generation_api_key="test-key")), \
+        }), patch("fashion_planner_novelty.server.app.load_settings", return_value=SimpleNamespace(image_generation_api_key="test-key")), \
              patch.object(OpenAIDraftImageProvider, "generate") as generate:
             response = _build_handoff_run(value)
         self.assertFalse(generate.called)
@@ -436,10 +436,10 @@ class HandoffRunTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             env = {"VOGUE_HTTP_MODE": "private", "VOGUE_AGENT_SERVICE_BEARER_TOKEN": "local-test",
                    "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": ""}
-            status, response = invoke(PrototypeHandler, "/v1/agents/new-product-agent/runs", value, env=env)
+            status, response = invoke(NoveltyRequestHandler, "/v1/agents/new-product-agent/runs", value, env=env)
             self.assertEqual(status, 200)
             self.assertEqual(response["request_id"], value["request_id"])
-            status, response = invoke(PrototypeHandler, "/v1/agents/new-product-agent/drafts", value, env=env)
+            status, response = invoke(NoveltyRequestHandler, "/v1/agents/new-product-agent/drafts", value, env=env)
         self.assertEqual(status, 404)
         self.assertEqual(response["error"]["code"], "NOT_FOUND")
 
@@ -477,11 +477,11 @@ class HandoffRunTests(unittest.TestCase):
             "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "",
         }):
             first_status, _ = invoke(
-                PrototypeHandler, "/v1/agents/new-product-agent/runs", value,
+                NoveltyRequestHandler, "/v1/agents/new-product-agent/runs", value,
                 env={"VOGUE_HTTP_MODE": "local"},
             )
             second_status, error = invoke(
-                PrototypeHandler, "/v1/agents/new-product-agent/runs", changed,
+                NoveltyRequestHandler, "/v1/agents/new-product-agent/runs", changed,
                 env={"VOGUE_HTTP_MODE": "local"},
             )
         self.assertEqual(first_status, 200)
@@ -490,7 +490,7 @@ class HandoffRunTests(unittest.TestCase):
 
     def test_concurrent_identical_no_image_requests_converge_on_saved_response(self):
         value = request()
-        import fashion_planner_novelty.prototype.server as server_module
+        import fashion_planner_novelty.server.app as server_module
         original = server_module._analyze_planning_inputs
         both_started = threading.Barrier(2)
 

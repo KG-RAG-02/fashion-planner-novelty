@@ -419,7 +419,7 @@ def _build_handoff_run(payload: object) -> dict:
     return response
 
 
-class PrototypeHandler(BaseHTTPRequestHandler):
+class NoveltyRequestHandler(BaseHTTPRequestHandler):
     server_version = "VOGUEPlanningWorkflow/1.0"
 
     def log_message(self, fmt: str, *args: object) -> None:
@@ -539,7 +539,7 @@ def main() -> None:
             raise RuntimeError("service mode requires TLS certificate and key files.")
     elif mode not in {"local", "private"}:
         raise RuntimeError("Set VOGUE_HTTP_MODE=local, private, or service.")
-    server = ThreadingHTTPServer((host, port), PrototypeHandler)
+    server = ThreadingHTTPServer((host, port), NoveltyRequestHandler)
     if mode == "service":
         tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         tls.load_cert_chain(os.environ["VOGUE_TLS_CERT_FILE"], os.environ["VOGUE_TLS_KEY_FILE"])
@@ -550,7 +550,7 @@ def main() -> None:
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopping local prototype.")
+        print("\n서비스를 멈춥니다.")
     finally:
         server.server_close()
 

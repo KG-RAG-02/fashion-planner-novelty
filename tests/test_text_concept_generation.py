@@ -152,7 +152,7 @@ class TextConceptGenerationTests(unittest.TestCase):
         self.assertEqual(draft.product_profile.product_type.value, "lightweight jacket")
 
     def test_api_generation_boundary_accepts_injected_generator(self):
-        from fashion_planner_novelty.prototype.server import _analyze_planning_inputs
+        from fashion_planner_novelty.server.app import _analyze_planning_inputs
 
         provider = FakeStructuredProvider(valid_output())
         response = _analyze_planning_inputs({

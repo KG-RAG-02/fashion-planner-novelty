@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 import unittest
-from fashion_planner_novelty.prototype.server import (
+from fashion_planner_novelty.server.app import (
     _analyze_planning_inputs,
     _stock_article_id,
 )

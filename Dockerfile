@@ -24,4 +24,4 @@ USER vogue
 
 EXPOSE 8767
 
-CMD ["python3", "-m", "fashion_planner_novelty.prototype.server"]
+CMD ["python3", "-m", "fashion_planner_novelty.server"]

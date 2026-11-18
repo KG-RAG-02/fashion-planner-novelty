@@ -21,7 +21,7 @@ from fashion_planner_novelty.domain.context import (
 )
 from fashion_planner_novelty.domain.outfit_companion import OUTFIT_COMPANION_RULE, OutfitCompanion, select_outfit_companion
 from fashion_planner_novelty.domain.trend_basis import select_primary_trend
-from fashion_planner_novelty.prototype.server import _companion_photo
+from fashion_planner_novelty.server.app import _companion_photo
 from fashion_planner_novelty.workflows import image_generation
 from fashion_planner_novelty.workflows.draft_artifacts import OpenAIDraftImageProvider
 from fashion_planner_novelty.workflows.image_generation import ImageGenerationRequest, ImageProviderError, OpenAIImageEditProvider

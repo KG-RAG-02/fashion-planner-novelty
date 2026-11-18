@@ -34,7 +34,7 @@ from fashion_planner_novelty.domain.trend_basis import (
     build_trend_basis,
     select_primary_trend,
 )
-from fashion_planner_novelty.prototype.server import _build_handoff_run, _image_profile_from_draft
+from fashion_planner_novelty.server.app import _build_handoff_run, _image_profile_from_draft
 from fashion_planner_novelty.workflows.planning_draft import _analyze_planning_inputs
 from fashion_planner_novelty.workflows.text_concept_generation import (
     PLANNING_SYSTEM_PROMPT,

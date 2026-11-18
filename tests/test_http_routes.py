@@ -7,13 +7,13 @@ from email.message import Message
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from fashion_planner_novelty.prototype.server import PrototypeHandler
+from fashion_planner_novelty.server.app import NoveltyRequestHandler
 
 
 class LegacyRouteRemovalTests(unittest.TestCase):
     def invoke_post(self, path, payload=None):
         body = json.dumps(payload or {}).encode()
-        handler = object.__new__(PrototypeHandler)
+        handler = object.__new__(NoveltyRequestHandler)
         handler.path = path
         handler.headers = Message()
         handler.headers["Content-Type"] = "application/json"
