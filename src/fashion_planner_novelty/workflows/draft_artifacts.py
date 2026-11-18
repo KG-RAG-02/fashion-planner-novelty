@@ -171,6 +171,9 @@ class DraftArtifactStore:
         with self._connect() as conn:
             conn.execute("CREATE TABLE IF NOT EXISTS workflow_response (request_id TEXT PRIMARY KEY, source_sha256 TEXT NOT NULL, response_json TEXT NOT NULL)")
             conn.execute("CREATE TABLE IF NOT EXISTS image_run (request_id TEXT PRIMARY KEY, source_sha256 TEXT NOT NULL, status TEXT NOT NULL)")
+            # Take the write lock before reading. Without it two identical concurrent requests can both see no row
+            # and the second INSERT fails with a UNIQUE constraint error instead of returning the saved response.
+            conn.execute("BEGIN IMMEDIATE")
             existing = conn.execute("SELECT source_sha256,response_json FROM workflow_response WHERE request_id=?", (request_id,)).fetchone()
             if existing:
                 if existing[0] != source_sha256:
