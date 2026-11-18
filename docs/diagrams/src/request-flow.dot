@@ -1,0 +1,74 @@
+// novelty 실행 한 번의 요청 흐름: orchestrator 호출부터 저장된 응답까지.
+// 라이트 팔레트로 쓴다. scripts/render_diagrams.sh가 색을 바꿔 다크 버전을 만든다.
+// 모든 노드와 엣지의 코드 근거는 docs/diagrams/CLAIMS.md에 있다.
+digraph request_flow {
+  graph [rankdir=TB, bgcolor="#ffffff", fontname="Pretendard", fontcolor="#1f2328",
+         nodesep=0.4, ranksep=0.38, pad=0.3, newrank=true];
+  node  [shape=box, style="rounded,filled", fillcolor="#eef2ff", color="#4f46e5", penwidth=1.4,
+         fontname="Pretendard", fontsize=12, fontcolor="#1f2328", margin="0.18,0.08"];
+  edge  [fontname="Pretendard", fontsize=10, color="#1f2328", fontcolor="#1f2328", arrowsize=0.7, penwidth=1.1];
+
+  orchestrator [label=<<B>orchestrator</B><BR/>POST /v1/agents/novelty/runs<BR/>planning_request · trend_result · inventory_product_result>];
+
+  gate      [label=<<B>1 · HTTP 관문</B><BR/>bearer 토큰(private·service 모드)<BR/>application/json · Content-Length ≤ 1,000,000 B>];
+  normalize [label=<<B>2 · 입력 정규화</B><BR/>envelope와 request_id 확인<BR/>지원 스키마(1.0.0)·생산자 확인<BR/>내부 사본으로 정규화, 원본은 보존>];
+  replay    [label=<<B>3 · 재요청 확인</B><BR/>같은 request_id와 페이로드 해시인가?>];
+  early     [label=<<B>조기 응답</B><BR/>4xx: 인증·크기·미디어 타입·JSON·입력 오류<BR/>재요청이면 저장된 응답<BR/>ID를 다른 입력에 재사용하면 409>,
+             style="rounded,dashed", fillcolor="#ffffff", color="#b91c1c"];
+  context   [label=<<B>4 · 기획 컨텍스트</B><BR/>요청 필드 · 트렌드 후보<BR/>재고 상품 · 충돌 · 한계>];
+  primary   [label=<<B>5 · 주 트렌드 선택</B><BR/>근거 연결 디자인 속성이 많은 순,<BR/>다음은 근거 ID 수, 다음은 입력 순서<BR/>→ draft.trend_basis>];
+  rule      [label=<<B>6 · 규칙 기반 Draft</B><BR/>주 트렌드만으로 프로필 작성<BR/>빈 칸 → 표시된 제안값(proposal)>];
+
+  subgraph cluster_llm {
+    label=<<I>텍스트 LLM 경로 (기본 켜짐, API 키 필요)</I>>;
+    fontsize=11; fontcolor="#1f2328"; style="rounded,dashed"; color="#6b7280"; margin=12; labelloc=b;
+    budget   [label=<<B>7 · 프롬프트 예산</B><BR/>주 트렌드만 · 24,000자 상한<BR/>T1–T5 결정적 축약>];
+    text_llm [label=<<B>OpenAI Responses</B><BR/>구조화 JSON 출력>, style="rounded,dashed", fillcolor="#ffffff", color="#6b7280"];
+    validate [label=<<B>8 · 모델 출력 검증</B><BR/>허용된 근거 ID<BR/>필수 프로필 필드>];
+    merge    [label=<<B>9 · 병합</B><BR/>빈 필드를 규칙 Draft로 채움<BR/>첫 근거 색 규칙>];
+  }
+
+  companion [label=<<B>10 · 동반 재고 상품</B><BR/>주 트렌드의 재고 중 순위가 가장 높고<BR/>신상품과 착장 역할이 겹치지 않는 상품>];
+  spec      [label=<<B>11 · 이미지 사양</B><BR/>요청·근거·제안 값 + 디테일<BR/>두 이미지가 같은 JSON 사용 → sha256>];
+
+  product_api [label=<<B>OpenAI Images · generations</B><BR/>상품 사진>, style="rounded,dashed", fillcolor="#ffffff", color="#6b7280"];
+  outfit_api  [label=<<B>OpenAI Images · edits</B><BR/>입력 1: 상품 이미지<BR/>입력 2: 재고 사진(있을 때)>, style="rounded,dashed", fillcolor="#ffffff", color="#6b7280"];
+  skipped     [label=<<B>착장 이미지 건너뜀</B><BR/>OUTFIT_REFERENCE_UNAVAILABLE<BR/>실행 상태 partial>,
+               style="rounded,dashed", fillcolor="#ffffff", color="#b91c1c"];
+
+  ledger   [shape=cylinder, style=filled, fillcolor="#eef2ff", color="#4f46e5",
+            label=<<B>12 · 산출물 저장소와 원장</B><BR/>images/&lt;sha256&gt;.&lt;ext&gt;<BR/>SQLite: 이미지 소유 · 이미지 실행 · 응답>];
+  response [label=<<B>13 · orchestrator로 응답</B><BR/>Draft · 시각자료(산출물 참조) · 입력 근거<BR/>Draft + 이미지 2장 + 입력 모두 ok이면 status ok>];
+
+  orchestrator -> gate;
+  gate -> normalize;
+  normalize -> replay;
+  replay -> context [label="  처음"];
+  context -> primary;
+  primary -> rule;
+  primary -> budget [label="  LLM 켜짐"];
+  budget -> text_llm [label="  상한 이내"];
+  text_llm -> validate;
+  validate -> merge;
+  rule -> merge [label="  빈 칸 채움", style=dashed];
+  rule -> companion [label="  LLM 꺼짐 또는 대체"];
+  merge -> companion;
+  companion -> spec;
+  spec -> product_api;
+  product_api -> outfit_api [label="  저장된 상품 이미지"];
+  companion -> outfit_api [label="  재고 사진", style=dashed];
+  product_api -> ledger;
+  outfit_api -> ledger;
+  ledger -> response;
+
+  // 오류·대체 경로(짧은 옆 엣지)
+  gate -> early [style=dashed, color="#b91c1c", fontcolor="#b91c1c"];
+  replay -> early [style=dashed, color="#b91c1c", fontcolor="#b91c1c", label="  이미 처리됨"];
+  budget -> rule [style=dashed, color="#b91c1c", fontcolor="#b91c1c", constraint=false, label="  상한 초과:\l  호출 안 함\l"];
+  validate -> rule [style=dashed, color="#b91c1c", fontcolor="#b91c1c", constraint=false, label="  검증 실패:\l  규칙 Draft로\l"];
+  product_api -> skipped [style=dashed, color="#b91c1c", fontcolor="#b91c1c", label="  실패"];
+
+  {rank=same; normalize; early}
+  {rank=same; rule; budget}
+  {rank=same; outfit_api; skipped}
+}

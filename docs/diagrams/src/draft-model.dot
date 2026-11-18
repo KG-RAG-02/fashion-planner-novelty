@@ -1,0 +1,83 @@
+// Draft 데이터 모델: result.draft에 무엇이 들어 있고 각 값이 출처를 어떻게 기록하는지.
+// 라이트 팔레트로 쓴다. scripts/render_diagrams.sh가 색을 바꿔 다크 버전을 만든다.
+// 칸마다 끝에 줄바꿈 없는 공백 2개를 둔다: 렌더러가 Graphviz 계산보다 글자를 약간 넓게 그리기 때문이다.
+// 필드 목록은 domain/concept.py의 dataclass를 따른다. 근거는 docs/diagrams/CLAIMS.md에 있다.
+digraph draft_model {
+  graph [rankdir=LR, bgcolor="#ffffff", fontname="Pretendard", fontcolor="#1f2328",
+         nodesep=0.35, ranksep=0.7, pad=0.3];
+  node  [shape=plain, fontname="Pretendard", fontsize=11, fontcolor="#1f2328"];
+  edge  [fontname="Pretendard", fontsize=10, color="#1f2328", fontcolor="#1f2328", arrowsize=0.7, penwidth=1.1];
+
+  Draft [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" BGCOLOR="#eef2ff" COLOR="#4f46e5">
+    <TR><TD ALIGN="LEFT"><B>ProductConceptDraft</B>  (result.draft)&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">request_id · season · category&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT" PORT="claims">opportunity · target_customer · product_definition&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT" PORT="profile">product_profile&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT" PORT="attrs">attributes[]&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT" PORT="findings">opportunity_findings[]&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT" PORT="lists">relation_to_own_products[] · differentiation[] · risks[]&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT" PORT="basis">trend_basis (쓸 수 있는 트렌드가 없으면 null)&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">market[] · channel[] · request_constraints[]&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">field_origins · input_statuses · input_conflicts[]&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">evidence_ids[] · limitations[] · questions_for_validation[]&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT" PORT="visuals">결과 조립 때 추가: title · review_status · visuals&#160;&#160;</TD></TR>
+  </TABLE>>];
+
+  Profile [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" BGCOLOR="#eef2ff" COLOR="#4f46e5">
+    <TR><TD ALIGN="LEFT"><B>ProductProfile</B>&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT" PORT="fields">category · product_type · gender · season&#160;&#160;<BR ALIGN="LEFT"/>material · silhouette · color&#160;&#160;<BR ALIGN="LEFT"/></TD></TR>
+    <TR><TD ALIGN="LEFT" PORT="details">details[]&#160;&#160;</TD></TR>
+  </TABLE>>];
+
+  Claim [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" BGCOLOR="#eef2ff" COLOR="#4f46e5">
+    <TR><TD ALIGN="LEFT"><B>SourcedClaim</B>&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">value: 문자열 또는 null&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">kind&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">evidence_ids[]: 이 요청 안의 ID만&#160;&#160;</TD></TR>
+  </TABLE>>];
+
+  Attribute [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" BGCOLOR="#eef2ff" COLOR="#4f46e5">
+    <TR><TD ALIGN="LEFT"><B>ProposedAttribute</B>&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">name · value · kind · evidence_ids[]&#160;&#160;</TD></TR>
+  </TABLE>>];
+
+  Finding [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" BGCOLOR="#eef2ff" COLOR="#4f46e5">
+    <TR><TD ALIGN="LEFT"><B>OpportunityFinding</B>&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">statement · trend_name · style_id&#160;&#160;<BR ALIGN="LEFT"/>attribute_name · questions[] · limitations[]&#160;&#160;<BR ALIGN="LEFT"/></TD></TR>
+  </TABLE>>];
+
+  Basis [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" BGCOLOR="#eef2ff" COLOR="#4f46e5">
+    <TR><TD ALIGN="LEFT"><B>TrendBasis</B>&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">source_style_id · name · selection_rule&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">evidence_ids[] · candidates_considered&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">design_attributes[]: name · value · evidence_ids[]&#160;&#160;</TD></TR>
+  </TABLE>>];
+
+  Kinds [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" BGCOLOR="#ffffff" COLOR="#6b7280" STYLE="dashed">
+    <TR><TD ALIGN="LEFT"><B>kind</B> (값이 어디서 왔는가)&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">user_requested · evidence_observation&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">interpretation · hypothesis · proposal&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">to_validate · unknown&#160;&#160;</TD></TR>
+  </TABLE>>];
+
+  Visual [label=<<TABLE BORDER="1" CELLBORDER="0" CELLSPACING="0" CELLPADDING="5" BGCOLOR="#eef2ff" COLOR="#4f46e5">
+    <TR><TD ALIGN="LEFT"><B>visuals.product / visuals.outfit</B>&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">status: generated · failed · skipped · error_code&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">artifact: uri · media_type · size_bytes · sha256 · immutable&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">model · prompt_version · prompt_sha256&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">product_specification_sha256 (두 이미지 공통)&#160;&#160;</TD></TR>
+    <TR><TD ALIGN="LEFT">착장만: reference_image_sha256 · companion&#160;&#160;</TD></TR>
+  </TABLE>>];
+
+  Draft:claims  -> Claim;
+  Draft:lists   -> Claim;
+  Draft:profile -> Profile;
+  Profile:fields -> Claim [label="  7개 필드"];
+  Profile:details -> Attribute;
+  Draft:attrs   -> Attribute;
+  Draft:findings -> Finding;
+  Finding -> Claim [label="  statement"];
+  Draft:basis   -> Basis;
+  Draft:visuals -> Visual;
+  Claim -> Kinds [style=dashed, color="#6b7280", arrowhead=none];
+}
