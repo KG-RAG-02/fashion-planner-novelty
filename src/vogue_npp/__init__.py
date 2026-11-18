@@ -24,14 +24,9 @@ from .domain.analysis import OpportunityAnalysis, analyze_opportunities
 from .domain.generator import ConceptGenerator, RuleBasedConceptGenerator, generate_concept_draft
 from .settings import Settings, load_settings
 from .workflows.image_generation import (
-    ConceptImageWorkflowResult,
     GeneratedImage,
     ImageGenerationRequest,
-    ImageGenerationResult,
     OpenAIImageProvider,
-    build_image_generation_request,
-    run_concept_to_image,
-    run_image_generation,
 )
 from .domain.styling import STYLING_RULE_VERSION, StylingRelationship
 
@@ -42,14 +37,12 @@ __all__ = [
     "InventoryProductResult",
     "GeneratedImage",
     "ImageGenerationRequest",
-    "ImageGenerationResult",
     "PlanningInputs",
     "PlanningRequest",
     "ProductPlanningContext",
     "OpportunityAnalysis",
     "OpportunityFinding",
     "ConceptGenerator",
-    "ConceptImageWorkflowResult",
     "ProductConceptDraft",
     "ProposedAttribute",
     "SourcedClaim",
@@ -62,11 +55,8 @@ __all__ = [
     "OpenAIImageProvider",
     "Settings",
     "build_planning_context",
-    "build_image_generation_request",
     "analyze_opportunities",
     "generate_concept_draft",
-    "run_concept_to_image",
-    "run_image_generation",
     "load_settings",
     "validate_concept_draft",
 ]

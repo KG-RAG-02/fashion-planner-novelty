@@ -35,7 +35,6 @@ from vogue_npp.domain.trend_basis import (
     select_primary_trend,
 )
 from vogue_npp.prototype.server import _build_handoff_run, _image_profile_from_draft
-from vogue_npp.workflows import image_generation
 from vogue_npp.workflows.planning_draft import _analyze_planning_inputs
 from vogue_npp.workflows.text_concept_generation import (
     PLANNING_SYSTEM_PROMPT,
@@ -231,8 +230,7 @@ class SelectionRuleTests(unittest.TestCase):
         })
         self.assertEqual(TREND_SELECTION_RULE, "most_evidence_linked_design_attributes/1")
 
-    def test_selection_and_image_prompt_share_one_design_name_set(self):
-        self.assertIs(image_generation._DESIGN_ATTRIBUTE_NAMES, DESIGN_ATTRIBUTE_NAMES)
+    def test_design_attribute_names_cover_english_and_korean_labels(self):
         for name in ("color", "colour", "pattern", "print", "detail", "details", "material", "fabric", "fit",
                      "silhouette", "length", "texture", "decoration", "색상", "패턴", "디테일", "소재", "핏", "실루엣"):
             self.assertIn(name, DESIGN_ATTRIBUTE_NAMES)

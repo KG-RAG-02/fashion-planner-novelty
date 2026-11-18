@@ -21,9 +21,7 @@ from .context import AttributeSignal, ProductPlanningContext, TrendCandidate
 
 TREND_SELECTION_RULE = "most_evidence_linked_design_attributes/1"
 
-# The one set of attribute names P06 treats as visual design attributes: the
-# trend selection rule and the concept image prompt (workflows/image_generation.py)
-# both use it.
+# 시각 디자인 속성으로 보는 속성 이름의 단일 집합. 주 트렌드 선택 규칙이 쓴다.
 DESIGN_ATTRIBUTE_NAMES = frozenset({
     "color", "colour", "color_group", "colour_group", "색상", "컬러",
     "pattern", "print", "패턴", "프린트", "silhouette", "shape", "실루엣",
