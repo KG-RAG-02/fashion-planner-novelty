@@ -1,3 +1,4 @@
-# The active P06 service uses the standard library for HTTP and provider calls.
-# python-dotenv is optional; settings.py includes a stdlib .env fallback.
+# Docker 이미지용 런타임 의존성. 패키지 메타데이터는 pyproject.toml이 기준이다.
+# HTTP와 모델 제공자 호출은 표준 라이브러리만 쓴다. python-dotenv는 선택 사항이며,
+# 없으면 settings.py의 표준 라이브러리 .env 읽기를 쓴다.
 python-dotenv>=1.0,<2.0

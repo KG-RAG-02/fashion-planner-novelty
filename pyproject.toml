@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fashion-planner-novelty"
+version = "1.0.0"
+description = "트렌드를 바탕으로 신상품 기획안 초안과 콘셉트 이미지를 만드는 Fashion Planner 서비스"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "The Fashion Planner Contributors" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Natural Language :: Korean",
+    "Private :: Do Not Upload",
+]
+# 실행에 필요한 서드파티 패키지는 없다. python-dotenv가 없으면 settings.py의 표준 라이브러리 .env 읽기를 쓴다.
+dependencies = []
+
+[project.optional-dependencies]
+dotenv = ["python-dotenv>=1.0,<2.0"]
+
+[project.urls]
+Repository = "https://github.com/KG-RAG-02/fashion-planner-novelty"
+
+[tool.setuptools.packages.find]
+where = ["src"]
