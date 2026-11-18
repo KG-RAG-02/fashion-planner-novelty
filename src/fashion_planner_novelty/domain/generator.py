@@ -222,13 +222,14 @@ def _profile_from_planning_attributes(
                           **result, details=tuple(details))
 
 
-def _complete_product_profile_with_proposals(profile: ProductProfile) -> ProductProfile:
-    """Fill missing research-facing profile fields with deterministic review proposals.
+# research 서비스로 넘어가는 프로필 필드와 그 문자열 길이 상한(research 계약의 maxLength).
+RESEARCH_PROFILE_FIELDS = ("category", "product_type", "gender", "season", "material")
+RESEARCH_FIELD_MAX_CHARS = 120
 
-    Gender uses the explicit "unknown" enum sentinel; it does not infer a
-    demographic from category or other product attributes.
-    """
-    category = (profile.category.value or "").strip().casefold()
+
+def _proposal_defaults(category_value: str | None) -> dict[str, str]:
+    """카테고리별로 정해 둔 검토 제안값. 근거에서 나온 값이 아니다."""
+    category = (category_value or "").strip().casefold()
     if any(term in category for term in ("블라우스", "blouse")):
         defaults = {"product_type": "블라우스", "material": "코튼 혼방",
                     "silhouette": "레귤러 핏", "color": "오프화이트"}
@@ -238,8 +239,43 @@ def _complete_product_profile_with_proposals(profile: ProductProfile) -> Product
     else:
         defaults = {"product_type": "기본형 상품", "material": "혼방 소재",
                     "silhouette": "레귤러 핏", "color": "뉴트럴 톤"}
-
     defaults["gender"] = "unknown"
+    return defaults
+
+
+def limit_research_fields(
+    profile: ProductProfile, rule_profile: ProductProfile | None,
+) -> tuple[ProductProfile, tuple[str, ...]]:
+    """research로 넘어가는 프로필 값을 RESEARCH_FIELD_MAX_CHARS자 이하로 맞춘다.
+
+    product_type·gender·material 값이 상한을 넘으면 규칙 기반 Draft의 같은 필드 값으로 바꾼다.
+    그 값도 비었거나 상한을 넘으면 카테고리별 검토 제안값(kind proposal)을 쓴다.
+    category·season은 요청 값을 그대로 쓰는 식별자라 바꾸지 않는다. 그 길이는 입력 단계에서 검사한다.
+    바꾼 필드를 ``product_profile.<필드>`` 경로로 돌려준다.
+    """
+    defaults = _proposal_defaults(profile.category.value)
+    updates: dict[str, SourcedClaim] = {}
+    replaced: list[str] = []
+    for field_name in ("product_type", "gender", "material"):
+        claim = getattr(profile, field_name)
+        if claim.value is None or len(claim.value) <= RESEARCH_FIELD_MAX_CHARS:
+            continue
+        fallback = getattr(rule_profile, field_name) if rule_profile is not None else None
+        if (fallback is None or fallback.value is None or not fallback.value.strip()
+                or len(fallback.value) > RESEARCH_FIELD_MAX_CHARS):
+            fallback = SourcedClaim(value=defaults[field_name], kind="proposal")
+        updates[field_name] = fallback
+        replaced.append(f"product_profile.{field_name}")
+    return (replace(profile, **updates) if updates else profile), tuple(replaced)
+
+
+def _complete_product_profile_with_proposals(profile: ProductProfile) -> ProductProfile:
+    """Fill missing research-facing profile fields with deterministic review proposals.
+
+    Gender uses the explicit "unknown" enum sentinel; it does not infer a
+    demographic from category or other product attributes.
+    """
+    defaults = _proposal_defaults(profile.category.value)
     updates = {}
     for field_name, value in defaults.items():
         claim = getattr(profile, field_name)

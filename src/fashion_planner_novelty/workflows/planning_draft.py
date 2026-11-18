@@ -1,6 +1,8 @@
 """Convert orchestrator-supplied producer inputs into the evidence-aware planning Draft."""
 from __future__ import annotations
 
+from dataclasses import replace
+
 from ..domain.context import (
     AgentResult,
     AttributeSignal,
@@ -13,7 +15,12 @@ from ..domain.context import (
     TrendResult,
     build_planning_context,
 )
-from ..domain.generator import ConceptGenerator, RuleBasedConceptGenerator
+from ..domain.generator import (
+    RESEARCH_FIELD_MAX_CHARS,
+    ConceptGenerator,
+    RuleBasedConceptGenerator,
+    limit_research_fields,
+)
 from ..domain.outfit_companion import select_outfit_companion
 from ..domain.trend_basis import select_primary_trend
 
@@ -231,6 +238,11 @@ def _analyze_planning_inputs(
             and (raw_context.get(key, request_payload.get(key)) or {}).get("evidence_ids")
         },
     )
+    # category·season은 research로 그대로 넘어가는 요청 식별자라 대체할 값이 없다. 길면 입력 오류로 거절한다.
+    for field_name, field_value in (("category", request.category), ("season", request.season)):
+        if isinstance(field_value, str) and len(field_value) > RESEARCH_FIELD_MAX_CHARS:
+            raise ValueError(f"planning_request {field_name}은 {RESEARCH_FIELD_MAX_CHARS}자 이하여야 합니다.")
+
     def normalize_trend_candidates(data: dict) -> tuple[TrendCandidate, ...]:
         candidates = data.get("trend_candidates", data.get("candidates"))
         if candidates is not None:
@@ -431,9 +443,21 @@ def _analyze_planning_inputs(
     # experimentation remains isolated behind the explicit generator port.
     generator = concept_generator or RuleBasedConceptGenerator()
     draft, issues = generator.generate(context)
-    generation_metadata = getattr(generator, "generation_metadata", {
+    generation_metadata = dict(getattr(generator, "generation_metadata", {
         "engine": "rule_based", "status": "generated", "prompt_version": None, "model": None,
-    })
+    }))
+    # research로 넘어가는 프로필 값은 research 계약의 길이 상한을 지킨다. 넘는 값은 규칙 기반 값으로
+    # 바꾸고, 바꾼 필드를 llm_empty_fields처럼 메타데이터에 남긴다.
+    rule_profile = None
+    if any(isinstance(getattr(draft.product_profile, name).value, str)
+           and len(getattr(draft.product_profile, name).value) > RESEARCH_FIELD_MAX_CHARS
+           for name in ("product_type", "gender", "material")):
+        rule_profile = (draft.product_profile if isinstance(generator, RuleBasedConceptGenerator)
+                        else RuleBasedConceptGenerator().generate(context)[0].product_profile)
+    limited_profile, length_limited_fields = limit_research_fields(draft.product_profile, rule_profile)
+    if length_limited_fields:
+        draft = replace(draft, product_profile=limited_profile)
+    generation_metadata["length_limited_fields"] = list(length_limited_fields)
     from dataclasses import asdict
 
     input_sources = {
