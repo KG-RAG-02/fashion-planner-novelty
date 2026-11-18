@@ -25,7 +25,7 @@ novelty 서비스는 기획 요청과 트렌드·재고 결과를 받아 근거�
 | `adapters/` | 입력 envelope와 세 입력의 스키마·생산자·request ID 검증, trend 결과의 내부 사본 정규화 | `draft_inputs.py` |
 | `domain/` | 기획 컨텍스트, 주 트렌드 선택, 규칙 기반 Draft, Draft 모델과 검증, 프롬프트 예산, 동반 재고 상품 선택, 착장 역할 규칙 | `context.py`, `trend_basis.py`, `generator.py`, `concept.py`, `prompt_budget.py`, `outfit_companion.py`, `styling.py` |
 | `sources/` | OpenAI Responses API 텍스트 제공자 | `openai_text_provider.py` |
-| `workflows/` | 입력 → Draft 분석, 텍스트 LLM 생성과 검증·대체, 이미지 제공자, 산출물 저장소와 원장 | `planning_draft.py`, `text_concept_generation.py`, `image_generation.py`, `draft_artifacts.py` |
+| `workflows/` | 입력 → Draft 분석, 텍스트 LLM 생성과 검증·대체, 이미지 제공자(OpenAI, 오프라인 합성), 산출물 저장소와 원장 | `planning_draft.py`, `text_concept_generation.py`, `image_generation.py`, `synthetic_images.py`, `draft_artifacts.py` |
 | `server/` | 표준 라이브러리 HTTP 서비스, 응답 조립, 이미지 호출 순서 | `app.py` |
 
 도메인 코어는 표준 라이브러리만 쓰고 HTTP나 저장소에 의존하지 않는다([ADR 0001](decisions/0001-standard-library-core-with-a-generator-port.md)).
@@ -48,7 +48,7 @@ novelty 서비스는 기획 요청과 트렌드·재고 결과를 받아 근거�
 9. **병합**: 모델이 비운 필드를 규칙 Draft로 채우고, 색이 여럿인 주 트렌드에는 첫 근거 색 규칙을 적용한다. 그다음 규칙·LLM 경로 모두 research로 넘어가는 다섯 프로필 값이 120자 이하인지 확인하고, 넘는 값은 규칙 기반 값이나 카테고리별 제안값으로 바꾼다([draft-model.md](draft-model.md#research로-넘어가는-값)).
 10. **동반 재고 상품**: 주 트렌드의 재고 중 순위가 가장 높고 신상품과 착장 역할(상의·하의)이 겹치지 않는 상품을 고른다.
 11. **이미지 사양**: 프로필에서 출처가 `user_requested`, `evidence_observation`, `proposal`인 값과 디테일만 골라 JSON 하나로 만들고 SHA-256을 남긴다.
-12. **이미지**(설정했을 때): 상품 이미지를 만든 뒤, 저장된 상품 이미지(그리고 있으면 재고 사진)를 편집해 착장 이미지를 만든다. 동시에 한 쌍만 처리하고 자동 재시도는 없다([ADR 0004](decisions/0004-sequential-images-and-a-replay-ledger.md)).
+12. **이미지**(설정했을 때): 상품 이미지를 만든 뒤, 저장된 상품 이미지(그리고 있으면 재고 사진)를 편집해 착장 이미지를 만든다. 동시에 한 쌍만 처리하고 자동 재시도는 없다([ADR 0004](decisions/0004-sequential-images-and-a-replay-ledger.md)). `synthetic` 제공자는 같은 순서로 외부 호출 없이 SYNTHETIC 자리표시 PNG를 만든다([operations.md](operations.md#합성-이미지synthetic)).
 13. **응답**: Draft, 시각자료 참조, 입력 근거, 생성 메타데이터를 돌려주고 원장에 저장한다. Draft와 이미지 두 장이 만들어지고 상위 입력이 모두 `ok`이면 `status`는 `ok`다([ADR 0005](decisions/0005-deliverable-based-status.md)).
 
 모든 상자와 화살표의 코드 근거는 [diagrams/CLAIMS.md](diagrams/CLAIMS.md)에 있다.

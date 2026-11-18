@@ -78,6 +78,8 @@ curl -s -X POST http://127.0.0.1:8767/v1/agents/novelty/runs \
 - 입력이 다루지 않는 필드: 표시된 제안값
 - 두 이미지: `IMAGE_PROVIDER_NOT_CONFIGURED`로 `skipped`
 
+이미지 경로까지 확인하려면 서비스를 `NOVELTY_DRAFT_IMAGE_PROVIDER=synthetic`으로 시작한다. 외부 호출 없이 'SYNTHETIC' 글자가 들어간 자리표시 PNG 두 장(상품, 착장)을 만들어 실제 이미지와 같은 방식으로 저장하고 응답에 싣는다. 이 그림은 상품 디자인이 아니다.
+
 ## 설정
 
 환경변수로 설정한다. 로컬 `.env` 파일이 있으면 읽는다([.env.example](.env.example) 참고).
@@ -93,12 +95,12 @@ curl -s -X POST http://127.0.0.1:8767/v1/agents/novelty/runs \
 | `NOVELTY_TEXT_GENERATION_MODEL` | `gpt-6-luna` | 텍스트 모델 |
 | `NOVELTY_TEXT_GENERATION_TIMEOUT_SECONDS` | `60` | 5–120 범위로 제한 |
 | `NOVELTY_TEXT_GENERATION_MAX_OUTPUT_TOKENS` | `3000` | 256–8000 범위로 제한 |
-| `NOVELTY_DRAFT_IMAGE_PROVIDER` | (빈 값) | `openai`로 두면 이미지를 만든다. 비우면 `skipped` |
+| `NOVELTY_DRAFT_IMAGE_PROVIDER` | (빈 값) | `openai`: 이미지 모델로 만든다(유료). `synthetic`: 외부 호출 없이 SYNTHETIC 자리표시 PNG를 만든다(e2e·데모용, 키 불필요). 비우면 `skipped` |
 | `NOVELTY_DRAFT_IMAGE_MODEL` | `gpt-image-2.5-sunburst` | 이미지 모델 |
 | `NOVELTY_DRAFT_IMAGE_TIMEOUT_SECONDS` | `180` | 이미지 호출 하나의 시간 제한, 5–300 범위로 제한 |
 | `NOVELTY_DRAFT_ARTIFACT_DIR` | `data/local/novelty-artifacts` | 이미지와 SQLite 원장 |
 
-**비용**: `LLM_API_KEY`를 설정하면 실행 한 번에 텍스트 호출 최대 1회, 이미지 호출 최대 2회가 일어난다. 자동 재시도는 없다.
+**비용**: `LLM_API_KEY`를 설정하면 실행 한 번에 텍스트 호출 최대 1회, 이미지 호출 최대 2회가 일어난다. 자동 재시도는 없다. `synthetic` 이미지는 호출이 없다.
 
 컨테이너 실행은 [docs/operations.md](docs/operations.md)를 본다. `compose.yaml`은 TLS를 켠 `service` 모드로 서비스를 띄운다.
 

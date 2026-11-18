@@ -65,9 +65,10 @@ Draft가 기준으로 삼은 트렌드 하나를 기록한다. 쓸 수 있는 �
 | `status` | `generated`, `failed`, `skipped` |
 | `error_code` | 실패·건너뜀의 안전한 오류 코드(예: `IMAGE_PROVIDER_NOT_CONFIGURED`, `OUTFIT_REFERENCE_UNAVAILABLE`) |
 | `artifact` | 생성했을 때만: `uri`(`artifact://novelty/images/<sha256>.<ext>`), `media_type`, `size_bytes`, `sha256`, `immutable` |
-| `model`, `prompt_version`, `prompt_sha256` | 이미지 모델과 프롬프트 템플릿 식별 |
+| `model`, `prompt_version`, `prompt_sha256` | 이미지 모델과 프롬프트 템플릿 식별. 합성 제공자는 `model: "synthetic"`이고 프롬프트 식별값은 같다 |
+| `provider_calls` | 이 visual에 쓴 유료 제공자 호출 수. 합성 제공자는 늘 `0` |
 | `product_specification_sha256` | 두 이미지가 공유하는 상품 사양 JSON의 해시 |
-| `reference_image_sha256` | 착장만: 편집 입력으로 쓴 상품 이미지의 해시 |
+| `reference_image_sha256` | 착장만: 착장을 만들 때 입력으로 쓴 상품 이미지의 해시 |
 | `companion` | 착장만: 함께 입힌 재고 상품(style ID, 카테고리, 순위, 역할, 선택 규칙, 사진 해시). 없으면 `null` |
 
 이미지 바이트는 응답에 넣지 않는다. 저장 위치는 [operations.md](operations.md)에 있다.

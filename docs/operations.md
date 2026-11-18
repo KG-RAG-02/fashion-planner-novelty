@@ -41,11 +41,23 @@ docker compose up --build
 | `LLM_API_KEY` 없음 | 텍스트 LLM을 쓰지 않는다(`generation_metadata.status: "unavailable"`). 이미지는 `NOVELTY_DRAFT_IMAGE_PROVIDER`가 비었으면 `skipped`, `openai`이면 `IMAGE_API_KEY_MISSING`으로 `failed` |
 | `LLM_API_KEY` 있음, `NOVELTY_TEXT_GENERATION_ENABLED=false` | 규칙 기반 Draft만(`status: "disabled"`) |
 | `LLM_API_KEY` 있음, `NOVELTY_DRAFT_IMAGE_PROVIDER=openai` | 상품 이미지 1회와 착장 편집 1회 호출 |
+| `NOVELTY_DRAFT_IMAGE_PROVIDER=synthetic` | 외부 호출 없이 합성 PNG 두 장. API 키가 필요 없다(아래 절) |
 | `NOVELTY_DRAFT_IMAGE_PROVIDER`에 다른 값 | `IMAGE_PROVIDER_UNSUPPORTED`로 `failed` |
 
 - 이미지 호출 하나의 시간 제한은 `NOVELTY_DRAFT_IMAGE_TIMEOUT_SECONDS`(기본 180초, 5–300초)다. 상품과 착장을 차례로 부르므로 이미지 단계는 그 두 배쯤 걸릴 수 있다.
 - 모델 호출은 자동으로 다시 시도하지 않는다. 시간 초과된 클라이언트는 제공자가 이미 처리하고 청구했는지 알 수 없기 때문이다.
 - 실패한 이미지를 일부러 다시 만들려면 **새 request ID**로 요청한다.
+
+### 합성 이미지(`synthetic`)
+
+e2e와 데모에서 이미지 경로 전체를 유료 호출 없이 돌리려고 둔 제공자다(`workflows/synthetic_images.py`).
+
+- 512×512 팔레트 PNG(약 260KB)를 표준 라이브러리만으로 만든다. 그림에는 'SYNTHETIC'과 `PRODUCT`·`OUTFIT` 글자가 크게 들어가고, PNG `tEXt`에도 자리표시 그림이라고 적는다. 글자는 코드 안의 5×7 비트맵으로 그리며 제3자 이미지나 글꼴은 쓰지 않는다.
+- 색은 입력 해시에서 정한다. 상품 칸은 상품 사양에서, 착장의 테두리는 상품 이미지 바이트에서, 재고 상품 칸은 재고 상품 사양에서 나온다. 착장은 OpenAI 경로처럼 상품 이미지를 만든 뒤에만 만든다.
+- 결정적이다. 같은 입력이면 Python·zlib 판과 상관없이 같은 바이트가 나온다(deflate를 무압축 블록으로 직접 쓴다).
+- 응답은 OpenAI 경로와 같은 모양이다. `status: "generated"`, `artifact://novelty/images/<sha256>.png`, 같은 `prompt_version`·`prompt_sha256`, 착장의 `reference_image_sha256`이 들어간다. 다른 점은 `model: "synthetic"`과 `provider_calls: 0`이다. `generation_metadata.image_provider`와 `image_model`도 `synthetic`이다.
+- 이미지는 같은 저장소(`images/`, `issued` 표)에 쓰고 응답도 같은 원장에 저장한다. 유료 호출을 위한 선점(`image_run`)과 동시 처리 한도는 쓰지 않는다. 다시 만들어도 같은 바이트가 나오고 비용이 없기 때문이다.
+- `limitations`에 합성 그림이라는 문장이 들어간다. orchestrator는 `model`이 `synthetic`이면 기획서에 합성 이미지라고 표시한다.
 
 ## 재요청과 409
 
@@ -53,8 +65,8 @@ docker compose up --build
 |---|---|
 | 같은 request ID, 같은 페이로드 | 저장된 응답을 그대로 돌려준다(모델 호출 없음) |
 | 같은 request ID, 다른 페이로드 | `409 REQUEST_ID_REUSED` |
-| 같은 request ID의 유료 이미지 시도가 진행 중이거나 결과를 모름 | `409 IMAGE_REQUEST_IN_PROGRESS_OR_OUTCOME_UNKNOWN` |
-| 다른 요청이 이미지를 만드는 중 | 두 visual이 `IMAGE_CAPACITY_BUSY`로 `failed`, 결과는 `partial` |
+| 같은 request ID의 유료 이미지 시도가 진행 중이거나 결과를 모름 | `409 IMAGE_REQUEST_IN_PROGRESS_OR_OUTCOME_UNKNOWN`(`openai`만) |
+| 다른 요청이 이미지를 만드는 중 | 두 visual이 `IMAGE_CAPACITY_BUSY`로 `failed`, 결과는 `partial`(`openai`만) |
 
 ## 저장소
 

@@ -55,6 +55,7 @@ orchestrator가 novelty를 부르는 요청과 응답의 모양이다. 기준 �
 
 - `status`: `ok`는 Draft와 이미지 두 장이 만들어지고 상위 입력이 모두 `ok`일 때다. 그 밖에는 `partial`이며 이유는 `validation_issues`에 있다.
 - `result.image`와 `result.outfit_image`는 `draft.visuals.product`·`draft.visuals.outfit`과 같은 내용이다.
+- `NOVELTY_DRAFT_IMAGE_PROVIDER=synthetic`이면 두 visual이 같은 모양으로 `generated`가 되고 `model`은 `"synthetic"`, `provider_calls`는 `0`이다. 이 이미지는 상품 디자인이 아닌 자리표시 그림이다([운영](../docs/operations.md#합성-이미지synthetic)).
 - 이미지 바이트는 응답에 넣지 않는다. 생성한 이미지는 `artifact://novelty/images/<sha256>.<ext>` 참조와 `media_type`, `size_bytes`, `sha256`으로 알린다. orchestrator는 공유 볼륨에서 읽고 크기와 해시를 검증한다.
 - `generation_metadata`에는 엔진(`rule_based` 또는 모델), 상태(`generated`, `fallback`, `disabled`, `unavailable`), 오류 코드, 텍스트 프롬프트 식별(`prompt_version: "novelty-text-planning"`, `prompt_sha256`), 축약 정보(`prompt_reduction`), research 길이 상한 때문에 바꾼 프로필 필드(`length_limited_fields`), 이미지 설정, 처리 시간이 있다.
 - `planning_board`는 늘 `null`이다. 기획서는 orchestrator가 만든다.
