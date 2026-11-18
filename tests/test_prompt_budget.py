@@ -469,7 +469,7 @@ class GeneratorBudgetTests(unittest.TestCase):
                     context, lambda shown: answer(context, [first_trend_id(shown)]))
                 self.assertEqual(generator.generation_metadata["status"], "generated")
                 self.assertEqual(list(generator.generation_metadata), [
-                    "engine", "status", "prompt_version", "model", "error_code", "llm_empty_fields",
+                    "engine", "status", "prompt_version", "prompt_sha256", "model", "error_code", "llm_empty_fields",
                 ])
         disabled = tcg.PromptedConceptGenerator(enabled=False)
         disabled.generate(make_context())

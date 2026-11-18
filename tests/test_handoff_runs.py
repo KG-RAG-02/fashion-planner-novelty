@@ -326,6 +326,8 @@ class HandoffRunTests(unittest.TestCase):
         self.assertEqual(visuals["outfit"]["reference_image_sha256"], visuals["product"]["artifact"]["sha256"])
         self.assertIsNone(visuals["outfit"]["companion"])  # the fixture has no stock slot for its trend
         self.assertEqual({visual["prompt_version"] for visual in visuals.values()}, {"novelty-draft-visuals"})
+        self.assertEqual({visual["prompt_sha256"] for visual in visuals.values()},
+                         {OpenAIDraftImageProvider.prompt_sha256})
         self.assertEqual(visuals["product"]["product_specification_sha256"], visuals["outfit"]["product_specification_sha256"])
         metadata = response["result"]["generation_metadata"]
         self.assertEqual(metadata["image_call_policy"], SEQUENTIAL_IMAGE_POLICY)

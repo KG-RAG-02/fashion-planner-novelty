@@ -2,9 +2,16 @@ import json
 import unittest
 from pathlib import Path
 
-from fashion_planner_novelty.domain.prompt_registry import PROMPT_ROOT, load_prompt, prompt_version_id, render_prompt
+import hashlib
+
+from fashion_planner_novelty.domain.prompt_registry import (
+    PROMPT_ROOT, load_prompt, prompt_sha256, prompt_version_id, render_prompt,
+)
+from fashion_planner_novelty.workflows.draft_artifacts import OpenAIDraftImageProvider
 from fashion_planner_novelty.workflows.image_generation import IMAGE_DESIGNER_SYSTEM_PROMPT
-from fashion_planner_novelty.workflows.text_concept_generation import PLANNING_SYSTEM_PROMPT, PROMPT_VERSION as TEXT_PROMPT_VERSION
+from fashion_planner_novelty.workflows.text_concept_generation import (
+    PLANNING_SYSTEM_PROMPT, PROMPT_SHA256 as TEXT_PROMPT_SHA256, PROMPT_VERSION as TEXT_PROMPT_VERSION,
+)
 
 
 class PromptRegistryTests(unittest.TestCase):
@@ -27,6 +34,20 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("신뢰할 수 없는", prompt)
         with self.assertRaises(ValueError):
             render_prompt("text_planning", "user", {})
+
+
+class PromptHashTests(unittest.TestCase):
+    def test_text_prompt_hash_covers_both_templates(self):
+        expected = hashlib.sha256()
+        for part in ("system", "user"):
+            expected.update(f"{part}\0{load_prompt('text_planning', part)}\0".encode("utf-8"))
+        self.assertEqual(TEXT_PROMPT_SHA256, expected.hexdigest())
+        self.assertEqual(prompt_sha256("text_planning"), TEXT_PROMPT_SHA256)
+
+    def test_image_prompt_hash_changes_with_code_instructions(self):
+        self.assertRegex(OpenAIDraftImageProvider.prompt_sha256, r"^[0-9a-f]{64}$")
+        self.assertNotEqual(OpenAIDraftImageProvider.prompt_sha256, prompt_sha256("concept_image"))
+        self.assertNotEqual(prompt_sha256("concept_image", "a"), prompt_sha256("concept_image", "b"))
 
 
 if __name__ == "__main__":

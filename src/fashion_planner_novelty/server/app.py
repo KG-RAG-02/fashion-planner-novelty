@@ -327,6 +327,7 @@ def _build_handoff_run(payload: object) -> dict:
         } for kind in ("product", "outfit")}
     for visual in visuals.values():
         visual["product_specification_sha256"] = image_specification_sha256
+        visual["prompt_sha256"] = OpenAIDraftImageProvider.prompt_sha256
         visual["specification_alignment"] = "same_product_profile"
         visual["visual_consistency"] = "not_automatically_verified"
     draft["visuals"] = visuals

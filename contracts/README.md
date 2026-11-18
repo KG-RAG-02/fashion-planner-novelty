@@ -1,9 +1,7 @@
-# Project_06 HTTP contract notes
+# 계약
 
-P06 receives one `novelty-handoff` request from P08 at `POST /v1/agents/novelty/runs`. The request contains a `planning_request` (schema 1.0), `trend_result` (schema 1.1), and `inventory_product_result` (schema 1.0). P06 validates the envelope, producer identities, statuses, schemas, and matching request IDs before analysis.
+novelty 서비스가 orchestrator와 주고받는 HTTP 계약의 설명이다.
 
-The response producer is `novelty`, schema version `1.0`. Its result contains the Draft and sourced `product_profile`, input evidence/provenance, validation issues and limitations, and product/outfit visual statuses. Generated visuals are request-owned artifact references with media type, byte size, and SHA-256; image bytes are not embedded in the response. If images are skipped or fail, the visual status and overall result communicate that outcome.
+- [http-handoff.md](http-handoff.md): `POST /v1/agents/novelty/runs`의 요청·응답 모양과 오류 코드
 
-P06 does not call P07 and does not create a planning board. P08 projects eligible product-profile fields into its P07 review request, calls P07, and composes the final response and board.
-
-[`http-handoff.md`](http-handoff.md) records the current P08-facing compatibility shape. It is a compatibility note, not a frozen cross-repository schema: the source contract is owned by P08, and both repositories must be reviewed together before changing the handoff. PlanningRequest, Trend, and Stock schemas remain owned by their respective producers.
+기준 스키마는 orchestrator 저장소의 `contracts/agents/novelty/`에 있다. 이 저장소의 문서는 서비스 쪽에서 본 요약이다. 계약을 바꿀 때는 두 저장소를 함께 고친다. planning_request, trend_result, inventory_product_result의 스키마는 각각 그것을 만드는 서비스가 소유한다.

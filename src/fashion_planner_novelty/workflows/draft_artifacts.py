@@ -8,6 +8,8 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from ..domain.prompt_registry import prompt_sha256 as template_sha256
+
 
 class ImageRunAlreadyClaimed(RuntimeError):
     """A paid image attempt for this request has started but has no replayable response yet."""
@@ -51,6 +53,12 @@ _OUTFIT_WITH_STOCK_TAIL = (
 _ROLE_PHRASES = {"lower_body": " as the bottom", "upper_body": " as the top"}
 _SPECIFICATION_HEADER = "PRODUCT SPECIFICATION (identical for product and outfit views):\n"
 _STOCK_ITEM_HEADER = "\nSTOCK ITEM ({source}):\n"
+_INSTRUCTION_PARTS = (
+    _PRODUCT_INSTRUCTION, _OUTFIT_INSTRUCTION, _OUTFIT_WITH_STOCK_LEAD, _OUTFIT_WITH_STOCK_PHOTO_NOTE,
+    _OUTFIT_WITH_STOCK_BODY, _STOCK_ITEM_FROM_PHOTO, _STOCK_ITEM_FROM_JSON, _KEEP_STOCK_FROM_PHOTO,
+    _KEEP_STOCK_FROM_JSON, _OUTFIT_WITH_STOCK_TAIL, *_ROLE_PHRASES.values(), _SPECIFICATION_HEADER,
+    _STOCK_ITEM_HEADER,
+)
 
 
 class OpenAIDraftImageProvider:
@@ -63,6 +71,8 @@ class OpenAIDraftImageProvider:
     stock attributes are described in the prompt either way.
     """
     prompt_version = "novelty-draft-visuals"
+    # concept_image 시스템 템플릿과 위 지시문 조각의 해시. 지시문을 바꾸면 값이 바뀐다.
+    prompt_sha256 = template_sha256("concept_image", *_INSTRUCTION_PARTS)
 
     def __init__(self, api_key: str, model: str, timeout_seconds: int = 180):
         from .image_generation import OpenAIImageEditProvider, OpenAIImageProvider

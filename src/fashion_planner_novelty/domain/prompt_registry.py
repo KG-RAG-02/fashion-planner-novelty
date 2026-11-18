@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from functools import lru_cache
@@ -49,6 +50,23 @@ def load_prompt(component: str, part: str) -> str:
     except OSError as exc:
         raise RuntimeError(f"Prompt asset is missing: {component}/{part}") from exc
     return content
+
+
+def prompt_sha256(component: str, *extra_parts: str) -> str:
+    """프롬프트 템플릿 내용의 SHA-256. 순번 대신 이 해시로 어떤 템플릿을 썼는지 식별한다.
+
+    구성 요소의 system·user 템플릿(있는 것만)과, 코드에 있는 추가 지시문 조각을 정해진 순서로 해시한다.
+    """
+    digest = hashlib.sha256()
+    for part in ("system", "user"):
+        try:
+            text = load_prompt(component, part)
+        except RuntimeError:
+            continue
+        digest.update(f"{part}\0{text}\0".encode("utf-8"))
+    for text in extra_parts:
+        digest.update(f"code\0{text}\0".encode("utf-8"))
+    return digest.hexdigest()
 
 
 def render_prompt(component: str, part: str, values: Mapping[str, str]) -> str:

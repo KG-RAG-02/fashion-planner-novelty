@@ -30,11 +30,12 @@ from ..domain.prompt_budget import (
     restore_model_text,
 )
 from ..domain.prompt_safety import serialize_untrusted_prompt_data
-from ..domain.prompt_registry import load_prompt, prompt_version_id, render_prompt
+from ..domain.prompt_registry import load_prompt, prompt_sha256, prompt_version_id, render_prompt
 from ..domain.trend_basis import TREND_SELECTION_RULE, build_trend_basis, select_primary_trend
 
 
 PROMPT_VERSION = prompt_version_id("text_planning")
+PROMPT_SHA256 = prompt_sha256("text_planning")
 MAX_MODEL_OUTPUT_CHARS = 64_000
 CLAIM_KINDS = {"user_requested", "evidence_observation", "proposal", "hypothesis", "unknown"}
 PLANNING_SYSTEM_PROMPT = load_prompt("text_planning", "system")
@@ -424,6 +425,7 @@ class PromptedConceptGenerator:
             "engine": "structured_text" if self.generation_status == "generated" else "rule_based",
             "status": self.generation_status,
             "prompt_version": PROMPT_VERSION if attempted else None,
+            "prompt_sha256": PROMPT_SHA256 if attempted else None,
             "model": getattr(self.provider, "model_name", None) if attempted else None,
             "error_code": self.generation_error_code,
             "llm_empty_fields": list(self.llm_empty_fields),
