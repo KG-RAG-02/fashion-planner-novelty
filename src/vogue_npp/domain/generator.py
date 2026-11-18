@@ -107,16 +107,6 @@ def _trend_design_hypothesis(candidate: TrendCandidate) -> str | None:
     )
 
 
-def _korean_object_particle(value: str) -> str:
-    """Return 을/를 for a Korean name, defaulting safely for other scripts."""
-    if not value:
-        return "을"
-    codepoint = ord(value[-1])
-    if 0xAC00 <= codepoint <= 0xD7A3:
-        return "을" if (codepoint - 0xAC00) % 28 else "를"
-    return "을"
-
-
 def _proposed_attributes(
     context: ProductPlanningContext,
     primary: TrendCandidate | None,
