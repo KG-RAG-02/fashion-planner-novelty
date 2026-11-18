@@ -1,0 +1,30 @@
+# 오프라인 단위 테스트. 외부 네트워크 연결을 막은 채 실행하고, 시도가 있으면 실패한다.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # 런타임 서드파티 의존성은 없다. python-dotenv 없이도 테스트가 통과해야 한다.
+      - name: 오프라인 단위 테스트
+        run: python scripts/run_offline_tests.py
+      - name: 프롬프트 사본이 템플릿과 같은지 확인
+        run: |
+          PYTHONPATH=src python scripts/render_prompts.py
+          git diff --exit-code -- prompts/
