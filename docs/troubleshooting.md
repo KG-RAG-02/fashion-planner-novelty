@@ -47,7 +47,7 @@ orchestrator 저장소와 함께 쓰는 항목이다. 이 문서는 서비스 �
 - **교훈**
   - 조기 오류 응답은 클라이언트가 읽을 수 있을 때만 쓸모가 있다. 서버가 본문을 읽기 전에 요청을 거절하면 클라이언트는 연결 재설정만 볼 수 있다.
   - 한도를 API 문서에 적고, 보내는 쪽에서 크기를 먼저 확인한다. 업로드 중 재설정은 "서비스 다운"이 아니라 "너무 클 수 있음"으로 다룬다.
-- **커밋**: 한도 도입은 {{commit:ee02ebf}}. 투영 해결은 orchestrator 저장소에 있다.
+- **커밋**: 한도 도입은 [`fd25ccb`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/fd25ccba28044c9ce9dec7b55f09db6753897cd3). 투영 해결은 orchestrator 저장소에 있다.
 
 <a id="t-text-01"></a>
 ## T-TEXT-01 · 유료 호출 뒤 인용한 근거 ID가 모두 거부됨
@@ -73,7 +73,7 @@ orchestrator 저장소와 함께 쓰는 항목이다. 이 문서는 서비스 �
   - 상한 아래 요청은 바이트 단위로 같은 프롬프트를 만들었다.
   - 테스트: `tests/test_prompt_budget.py`
 - **교훈**: 데이터 모양을 조용히 바꾸는 안전 상한은 결과를 검증하는 쪽에도 보여야 한다. 원본 객체가 아니라 실제로 보내는 형태를 잰다.
-- **커밋**: {{commit:26454ed}}
+- **커밋**: [`2d870c7`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/2d870c7ca168a4d0c479079d3711eb345c96b6e4)
 
 <a id="t-text-02"></a>
 ## T-TEXT-02 · 축약한 프롬프트에서 모델 문장이 바뀌거나 값이 비는 일이 생김
@@ -89,7 +89,7 @@ orchestrator 저장소와 함께 쓰는 항목이다. 이 문서는 서비스 �
   - 묶은 줄을 복원할 때 노트만 지운다.
 - **검증**: 기록된 요청 결과가 이전과 같았다. 상한 아래 14건은 바이트 단위로 같았고, 축약한 3건의 허용 ID는 177, 177, 179개였다.
 - **교훈**: 모델 앞에 두는 되돌릴 수 있는 인코딩은 직접 만든 필드뿐 아니라 모델이 쓴 자유 문장에서도 되돌릴 수 있어야 한다.
-- **커밋**: {{commit:3abae2c}}
+- **커밋**: [`0837aa5`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/0837aa5d7c9a5cd1b356c045d86d2ab0deabe5b9)
 
 <a id="t-img-01"></a>
 ## T-IMG-01 · 디자인 디테일이 이미지 프롬프트에 들어가지 않음. 두 이미지가 서로 다른 옷을 보여 줌
@@ -108,20 +108,20 @@ orchestrator 저장소와 함께 쓰는 항목이다. 이 문서는 서비스 �
   - 상품 이미지가 없으면 착장을 텍스트만으로 그리지 않고 `OUTFIT_REFERENCE_UNAVAILABLE`로 건너뛴다.
 - **검증**: `tests/test_handoff_runs.py`의 `test_image_profile_keeps_details_of_an_asdict_draft`와 `test_outfit_is_an_edit_of_the_stored_product_image_and_never_overlaps_it`. 두 번째 테스트는 편집 호출이 상품 호출이 끝난 뒤에야 시작하는지도 확인한다.
 - **교훈**: 직렬화 왕복이 타입 버그를 숨길 수 있다. 출력은 맞아 보였고 내부 호출만 틀렸다. 투영은 직렬화 전, 실제로 넘기는 객체로 테스트한다.
-- **커밋**: {{commit:d05e74e}}
+- **커밋**: [`35c3c88`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/35c3c887aff7719a9a778c5befaf61737030c82a)
 
 <a id="t-img-02"></a>
 ## T-IMG-02 · 착장 이미지가 기존 재고를 반영하지 않음
 
 - **증상**: 착장 이미지가 신상품만 보여 줬다. 반면 기획서는 트렌드마다 기존 재고 상품을 함께 보여 줬다.
-- **원인**: 예전 재고 착장 경로를 의도적으로 지운 뒤({{commit:2addab0}}) 착장 호출에 재고 상품을 넘기는 코드가 없었다.
+- **원인**: 예전 재고 착장 경로를 의도적으로 지운 뒤([`0eba737`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/0eba7375778a8fd74ccc07e8e9b07c4db5a366c5)) 착장 호출에 재고 상품을 넘기는 코드가 없었다.
 - **해결**
   - `domain/outfit_companion.py`가 규칙(`primary_trend_stock_slot`)으로 재고 상품 하나를 고른다. 주 트렌드의 재고 중 순위가 가장 높고, 신상품과 착장 역할이 겹치지 않는 상품이다.
   - 재고 결과에 그 상품 사진이 있으면 편집 호출의 두 번째 입력 이미지로 넣는다.
   - 카테고리·색·소재·핏은 JSON으로 프롬프트에 넣는다.
 - **검증**: `tests/test_outfit_companion.py`. 착장 visual의 `companion`에 고른 상품이 기록되고, 고르지 못하면 `null`이다.
 - **교훈**: 두 화면이 "같은 기획"을 보여 준다면 같은 선택 규칙을 쓰고, 무엇을 골랐는지 기록한다.
-- **커밋**: {{commit:5f280b8}}
+- **커밋**: [`e9be9b0`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/e9be9b0f42831c666469d5adc514dd1e741101cb)
 
 <a id="t-plan-01"></a>
 ## T-PLAN-01 · Draft 하나가 여러 트렌드의 속성을 섞음
@@ -137,7 +137,7 @@ orchestrator 저장소와 함께 쓰는 항목이다. 이 문서는 서비스 �
   - 가장 큰 LLM 입력이 26,756자에서 16,795자로 줄어, 축약이 필요한 기록 요청이 더는 없었다.
   - 테스트: `tests/test_trend_basis.py`
 - **교훈**: "근거를 모두 쓴다"는 설계가 아니다. 결과가 *무엇에 관한* 것인지 정하고, 그 결정을 출력에 기록해 소비자가 기댈 수 있게 한다.
-- **커밋**: {{commit:25a4ff3}}
+- **커밋**: [`adfa93f`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/adfa93f2f2edea4268dec16c1a2a3553c9b4b628)
 
 <a id="t-plan-02"></a>
 ## T-PLAN-02 · 색이 여러 개인 트렌드에서 상품 색이 비어 있음
@@ -149,7 +149,7 @@ orchestrator 저장소와 함께 쓰는 항목이다. 이 문서는 서비스 �
   - 텍스트 LLM 경로도 빈 칸 채우기 뒤에 같은 규칙을 적용한다.
 - **검증**: `tests/test_trend_basis.py`의 `FirstEvidenceColourTests`
 - **교훈**: 보수적인 규칙은 다음 단계를 굶길 수 있다. Draft가 방어 가능한지만 보지 말고, 이미지 프롬프트가 실제로 무엇을 받는지 확인한다.
-- **커밋**: {{commit:dbcd63b}}
+- **커밋**: [`46a4844`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/46a48441dc6e68c537237abb25ddbe831d0264c9)
 
 <a id="t-plan-03"></a>
 ## T-PLAN-03 · 프로필 변경이 실패하는 테스트와 함께 병합됨
@@ -157,8 +157,8 @@ orchestrator 저장소와 함께 쓰는 항목이다. 이 문서는 서비스 �
 - **증상**: 이번 공개의 기준 커밋에서 단위 테스트 173개 중 15개가 실패했다. 바로 앞 병합에서는 모두 통과했다.
 - **원인**
   - 늦게 들어간 두 변경이 동작을 바꾸면서 테스트를 고치지 않았다.
-    - 규칙 기반 Draft의 빈 프로필 칸을 표시된 검토 제안값으로 채운다({{commit:96fc1a6}}).
-    - 텍스트 모델이 category, product_type, gender, season, material을 반드시 채워야 한다({{commit:0597005}}).
+    - 규칙 기반 Draft의 빈 프로필 칸을 표시된 검토 제안값으로 채운다([`54965d9`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/54965d94642426a7ba0a7a39dca101aae7bdf052)).
+    - 텍스트 모델이 category, product_type, gender, season, material을 반드시 채워야 한다([`f960873`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/f9608739a9280be6cb759c6d74ac79277af49b81)).
   - 14건은 오래된 테스트 픽스처와 기대값 때문이었다.
   - 1건은 실제 회귀였다. `generation_metadata.llm_empty_fields`에 보고하는 필드 목록이 더는 빌 수 없는 필드로 좁혀져서, 색·실루엣을 채운 사실이 보고되지 않았다.
 - **해결**
@@ -167,7 +167,7 @@ orchestrator 저장소와 함께 쓰는 항목이다. 이 문서는 서비스 �
   - 보고 대상을 프로필 7개 필드 전체로 되돌렸다.
 - **검증**: 테스트를 고친 뒤 기준 커밋의 173개가 모두 통과했다. 이후 운영 경로에서 쓰지 않는 코드와 그 테스트를 정리하고 관문 테스트를 더해 현재 145개이며, 네트워크를 막은 실행기에서 모두 통과한다.
 - **교훈**: CI가 없으면 "테스트 통과"는 아무도 확인하지 않은 주장이다. 이 저장소는 이제 push와 pull request마다 오프라인 테스트를 돌린다.
-- **커밋**: {{commit:96fc1a6}}, {{commit:0597005}}
+- **커밋**: [`54965d9`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/54965d94642426a7ba0a7a39dca101aae7bdf052), [`f960873`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/f9608739a9280be6cb759c6d74ac79277af49b81)
 
 <a id="t-status-01"></a>
 ## T-STATUS-01 · 실데이터 실행이 모두 `partial`로 보고됨
@@ -179,7 +179,7 @@ orchestrator 저장소와 함께 쓰는 항목이다. 이 문서는 서비스 �
   - 한계와 검증 이슈는 그대로 모두 돌려준다.
 - **검증**: `tests/test_handoff_runs.py`의 `test_complete_deliverables_with_informational_limitations_are_ok`
 - **교훈**: 상태 필드는 질문 하나에만 답해야 한다. 세부 사항은 상태에 접어 넣지 말고 이슈 목록에 둔다.
-- **커밋**: {{commit:46555a2}}
+- **커밋**: [`63f76cd`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/63f76cd9415c37dc9b885917819278e8bbc44adc)
 
 <a id="t-ops-01"></a>
 ## T-OPS-01 · 컨테이너가 시작하자마자 종료됨
@@ -189,7 +189,7 @@ orchestrator 저장소와 함께 쓰는 항목이다. 이 문서는 서비스 �
 - **해결**: Dockerfile에 `COPY prompts/ ./prompts/`를 넣었다.
 - **검증**: 컨테이너가 시작하고 `GET /api/health`가 `200`을 돌려준다.
 - **교훈**: import 시점에 읽는 파일은 런타임 이미지의 일부다. 서버 모듈을 import하는 컨테이너 스모크 테스트를 돌린다.
-- **커밋**: {{commit:8c78c82}}
+- **커밋**: [`8df776e`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/8df776e5e2536a8d1937daddc52212601c1113d3)
 
 <a id="t-test-01"></a>
 ## T-TEST-01 · 오프라인 테스트가 가짜 키로 실제 API에 접속함
@@ -201,4 +201,4 @@ orchestrator 저장소와 함께 쓰는 항목이다. 이 문서는 서비스 �
   - 공개판의 테스트 실행기는 루프백이 아닌 연결을 모두 막고, 시도가 있으면 실패한다(README의 '테스트' 절 참고).
 - **검증**: 가짜 키와 이미지 생성을 켠 채 전체 테스트를 돌려 외부 연결 시도 0건을 확인했다.
 - **교훈**: "오프라인"은 가정하지 말고 강제해야 한다. 외부 연결을 실패로 만드는 가드가 예상 못 한 청구서 한 장보다 싸다.
-- **커밋**: {{commit:d05e74e}}
+- **커밋**: [`35c3c88`](https://github.com/KG-RAG-02/fashion-planner-novelty/commit/35c3c887aff7719a9a778c5befaf61737030c82a)
