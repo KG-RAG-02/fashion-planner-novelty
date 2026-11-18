@@ -17,6 +17,42 @@ class RequestReplayConflict(ValueError):
     """A request ID was already committed with a different input payload."""
 
 
+# 이미지 지시문 조각. 상품·착장 프롬프트는 이 조각과 상품 사양 JSON으로만 만든다.
+_PRODUCT_INSTRUCTION = (
+    "Create a standalone new fashion product, studio product photograph. "
+    "The JSON product specification below is the single source of truth. "
+    "Use only its specified attributes; do not invent unspecified material, color, fit, or decoration. "
+    "Show every listed design detail clearly.\n"
+)
+_OUTFIT_INSTRUCTION = (
+    "Input image 1 is the product photograph of this new garment. Change only the presentation: show "
+    "this exact garment worn by a model in a clean studio fashion photograph. Keep the garment identical "
+    "to input image 1: the same color, pattern, silhouette, length, material and texture, construction, "
+    "and every design detail. Do not redesign, recolor, add, remove, or substitute any detail, and do not "
+    "add logos, text, or watermarks. The JSON product specification below describes the same garment.\n"
+)
+_OUTFIT_WITH_STOCK_LEAD = "Input image 1 is the product photograph of this new garment."
+_OUTFIT_WITH_STOCK_PHOTO_NOTE = " Input image 2 is the photograph of an existing stock item."
+_OUTFIT_WITH_STOCK_BODY = (
+    " Show one model in a clean studio fashion photograph wearing this exact new garment together "
+    "with {stock_item}{role}, styled as one outfit. Keep the new garment identical to input image 1: "
+    "the same color, pattern, silhouette, length, material and texture, construction, and every design "
+    "detail. "
+)
+_STOCK_ITEM_FROM_PHOTO = "the exact existing stock item shown in input image 2"
+_STOCK_ITEM_FROM_JSON = "the existing stock item described in the STOCK ITEM JSON below"
+_KEEP_STOCK_FROM_PHOTO = "Keep the stock item identical to input image 2 in the same way. "
+_KEEP_STOCK_FROM_JSON = "Render the stock item with exactly the listed category, color, material and fit. "
+_OUTFIT_WITH_STOCK_TAIL = (
+    "Do not redesign, recolor, add, remove, or substitute any detail of either item, do not hide either "
+    "item, and do not add logos, text, or watermarks. The JSON product specification below describes the "
+    "new garment.\n"
+)
+_ROLE_PHRASES = {"lower_body": " as the bottom", "upper_body": " as the top"}
+_SPECIFICATION_HEADER = "PRODUCT SPECIFICATION (identical for product and outfit views):\n"
+_STOCK_ITEM_HEADER = "\nSTOCK ITEM ({source}):\n"
+
+
 class OpenAIDraftImageProvider:
     """Explicitly opted-in product/outfit images: the product is generated, the outfit edits that product image.
 
@@ -27,7 +63,6 @@ class OpenAIDraftImageProvider:
     stock attributes are described in the prompt either way.
     """
     prompt_version = "p06-draft-visuals/4"
-    _ROLE_PHRASES = {"lower_body": " as the bottom", "upper_body": " as the top"}
 
     def __init__(self, api_key: str, model: str, timeout_seconds: int = 180):
         from .image_generation import OpenAIImageEditProvider, OpenAIImageProvider
@@ -50,40 +85,22 @@ class OpenAIDraftImageProvider:
         companion = companion if kind == "outfit" else None
         companion_image = companion.get("image") if companion else None
         if kind == "product":
-            instruction = (
-                "Create a standalone new fashion product, studio product photograph. "
-                "The JSON product specification below is the single source of truth. "
-                "Use only its specified attributes; do not invent unspecified material, color, fit, or decoration. "
-                "Show every listed design detail clearly.\n"
-            )
+            instruction = _PRODUCT_INSTRUCTION
         elif companion is None:
-            instruction = (
-                "Input image 1 is the product photograph of this new garment. Change only the presentation: show "
-                "this exact garment worn by a model in a clean studio fashion photograph. Keep the garment identical "
-                "to input image 1: the same color, pattern, silhouette, length, material and texture, construction, "
-                "and every design detail. Do not redesign, recolor, add, remove, or substitute any detail, and do not "
-                "add logos, text, or watermarks. The JSON product specification below describes the same garment.\n"
-            )
+            instruction = _OUTFIT_INSTRUCTION
         else:
-            role = self._ROLE_PHRASES.get(companion.get("role") or "", "")
-            stock_item = ("the exact existing stock item shown in input image 2" if companion_image
-                          else "the existing stock item described in the STOCK ITEM JSON below")
+            role = _ROLE_PHRASES.get(companion.get("role") or "", "")
+            stock_item = _STOCK_ITEM_FROM_PHOTO if companion_image else _STOCK_ITEM_FROM_JSON
             instruction = (
-                "Input image 1 is the product photograph of this new garment."
-                + (" Input image 2 is the photograph of an existing stock item." if companion_image else "")
-                + f" Show one model in a clean studio fashion photograph wearing this exact new garment together "
-                f"with {stock_item}{role}, styled as one outfit. Keep the new garment identical to input image 1: "
-                "the same color, pattern, silhouette, length, material and texture, construction, and every design "
-                "detail. "
-                + ("Keep the stock item identical to input image 2 in the same way. " if companion_image
-                   else "Render the stock item with exactly the listed category, color, material and fit. ")
-                + "Do not redesign, recolor, add, remove, or substitute any detail of either item, do not hide either "
-                "item, and do not add logos, text, or watermarks. The JSON product specification below describes the "
-                "new garment.\n"
+                _OUTFIT_WITH_STOCK_LEAD
+                + (_OUTFIT_WITH_STOCK_PHOTO_NOTE if companion_image else "")
+                + _OUTFIT_WITH_STOCK_BODY.format(stock_item=stock_item, role=role)
+                + (_KEEP_STOCK_FROM_PHOTO if companion_image else _KEEP_STOCK_FROM_JSON)
+                + _OUTFIT_WITH_STOCK_TAIL
             )
-        prompt = instruction + "PRODUCT SPECIFICATION (identical for product and outfit views):\n" + specification
+        prompt = instruction + _SPECIFICATION_HEADER + specification
         if companion is not None:
-            prompt += ("\nSTOCK ITEM (" + ("input image 2" if companion_image else "no photograph") + "):\n"
+            prompt += (_STOCK_ITEM_HEADER.format(source="input image 2" if companion_image else "no photograph")
                        + json.dumps(companion["specification"], sort_keys=True, ensure_ascii=False,
                                     separators=(",", ":")))
         request = ImageGenerationRequest(
