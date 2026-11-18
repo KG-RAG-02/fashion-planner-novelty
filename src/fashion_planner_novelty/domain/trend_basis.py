@@ -1,4 +1,4 @@
-"""The one trend a P06 Draft is planned around (VOGUE decision 2026-11-17).
+"""The one trend a Draft is planned around.
 
 A Draft is built around a single primary trend instead of pooling every usable
 trend. The rule is deterministic and shared by the rule-based generator and the

@@ -1,4 +1,4 @@
-"""Text-LLM input budget (VOGUE decision 2026-11-17): deterministic reduction instead of the preview collapse.
+"""Text-LLM input budget: deterministic reduction instead of the preview collapse.
 
 Offline only: scripted fake providers, no network.
 """

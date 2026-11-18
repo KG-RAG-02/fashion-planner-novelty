@@ -201,7 +201,7 @@ def _profile_from_planning_attributes(
         if len(distinct_values) == 1:
             match = matches[0]
         elif key == "color" and len(distinct_values) > 1:
-            # VOGUE decision 2026-11-17: a primary trend with several colours passes its first
+            # A primary trend with several colours passes its first
             # evidence-linked colour (input order). Material and silhouette stay unset when ambiguous.
             match = next((item for item in matches
                           if item.kind == "evidence_observation" and item.evidence_ids), None)
@@ -223,7 +223,7 @@ def _profile_from_planning_attributes(
 
 
 def _complete_product_profile_with_proposals(profile: ProductProfile) -> ProductProfile:
-    """Fill missing P07-facing profile fields with deterministic review proposals.
+    """Fill missing research-facing profile fields with deterministic review proposals.
 
     Gender uses the explicit "unknown" enum sentinel; it does not infer a
     demographic from category or other product attributes.
@@ -481,7 +481,7 @@ def generate_concept_draft(
     future wire adapter emits a shared ``ProductConcept`` response.
     """
 
-    # One primary trend per Draft (VOGUE decision 2026-11-17); the other trends are not mixed in.
+    # One primary trend per Draft; the other trends are not mixed in.
     primary = select_primary_trend(context)
     analysis = analyze_opportunities(context, primary_trend=primary)
     analysis_evidence_ids = tuple(

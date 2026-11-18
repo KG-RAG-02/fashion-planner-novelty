@@ -1,8 +1,8 @@
-"""The existing stock item the outfit image pairs with the new product (VOGUE decision 2026-11-17).
+"""The existing stock item the outfit image pairs with the new product.
 
 One item, chosen by rule: the stock agent's per-trend result (slot) for the primary trend, best rank
-first. The stock agent already picks that item from the new product's pair categories, and P08's planning
-sheet shows the same item as the trend's stock card. An item that P06's outfit role rule
+first. The stock agent already picks that item from the new product's pair categories, and the orchestrator's
+planning sheet shows the same item as the trend's stock card. An item that this service's outfit role rule
 (outfit-role-pairing-v1) places in the same role as the requested product (two tops, two bottoms) is
 skipped, because the model could not wear both.
 """

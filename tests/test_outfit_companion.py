@@ -1,4 +1,4 @@
-"""The outfit image pairs the new product with one stock item (VOGUE decision 2026-11-17)."""
+"""The outfit image pairs the new product with one stock item."""
 
 from __future__ import annotations
 

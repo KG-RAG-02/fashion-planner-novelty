@@ -20,10 +20,10 @@ class RequestReplayConflict(ValueError):
 class OpenAIDraftImageProvider:
     """Explicitly opted-in product/outfit images: the product is generated, the outfit edits that product image.
 
-    Sequential by design (VOGUE decision 2026-11-17): the outfit call receives the generated product image as its
+    Sequential by design: the outfit call receives the generated product image as its
     reference input, so both visuals show the same garment. Both prompts carry the same product specification.
-    The outfit shows the new product worn with one existing stock item (VOGUE decision 2026-11-17,
-    domain/outfit_companion.py): its photograph is input image 2 when the stock result carried one, and its
+    The outfit shows the new product worn with one existing stock item
+    (domain/outfit_companion.py): its photograph is input image 2 when the stock result carried one, and its
     stock attributes are described in the prompt either way.
     """
     prompt_version = "p06-draft-visuals/4"

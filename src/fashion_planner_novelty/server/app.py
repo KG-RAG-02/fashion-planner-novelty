@@ -1,4 +1,4 @@
-"""Project_08-facing planning API server; stdlib HTTP adapter."""
+"""Orchestrator-facing planning API server; stdlib HTTP adapter."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ from ..workflows.draft_artifacts import (
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 MAX_RUN_BODY_BYTES = 1_000_000
 IMAGE_REQUEST_SLOT = BoundedSemaphore(1)
-IMAGE_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="p06-image")
+IMAGE_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="novelty-image")
 
 
 def _env_flag(name: str, *, default: bool = False) -> bool:
@@ -91,7 +91,7 @@ _COMPANION_IMAGE_MAX_BYTES = 4 * 1024 * 1024
 
 def _companion_photo(stock_payload: object, companion) -> tuple[bytes | None, str | None]:
     """The stock item's photo from the received stock result: its own entry first, else the first entry of the
-    same style_id that still carries one (P08's p06-input/2 view sends each product's photo once)."""
+    same style_id that still carries one (the orchestrator's input projection sends each product's photo once)."""
     products = stock_payload.get("products") if isinstance(stock_payload, dict) else None
     if companion is None or not isinstance(products, list):
         return None, None
@@ -164,7 +164,7 @@ def _image_profile_from_draft(draft: dict) -> dict[str, object]:
 
 
 def _build_handoff_run(payload: object) -> dict:
-    """Handle P08's vogue-handoff/0.3 native P06 planning-draft request."""
+    """Handle the orchestrator's planning-draft request."""
     total_started = time.perf_counter()
     timings: dict[str, int] = {}
     validation_started = time.perf_counter()
@@ -278,13 +278,13 @@ def _build_handoff_run(payload: object) -> dict:
                                              "reason": "ARTIFACT_PERSISTENCE_FAILED", "error_code": "ARTIFACT_PERSISTENCE_FAILED"}
                         artifact_timings[kind] = round((time.perf_counter() - artifact_started) * 1000)
 
-                    # Sequential, never concurrent (VOGUE decision 2026-11-17): the outfit edits the generated product
+                    # Sequential, never concurrent: the outfit edits the generated product
                     # image, so it starts only after that image exists and is stored. Without it the outfit could show
                     # a different garment, so it is skipped instead of being generated from text alone.
                     product_bytes, product_error = call_image("product")
                     record_visual("product", product_bytes, product_error)
                     if visuals["product"]["status"] == "generated":
-                        # The outfit pairs the new product with one stock item (VOGUE decision 2026-11-17).
+                        # The outfit pairs the new product with one stock item.
                         companion_image, companion_media_type = _companion_photo(
                             normalized.source_inputs.get("inventory_product_result"), companion)
                         companion_input = None if companion is None else {
@@ -336,7 +336,7 @@ def _build_handoff_run(payload: object) -> dict:
     visual_limitations.append("outfit 이미지는 먼저 생성한 product 이미지를 참조 입력으로 편집해 같은 상품을 착장으로 표현하지만, 두 이미지의 시각적 동일성은 자동 검증하지 않습니다.")
     draft["limitations"] = list(dict.fromkeys([*draft["limitations"], *visual_limitations]))
     result["limitations"] = draft["limitations"]
-    # Deliverable-based status (VOGUE integration decision 2026-11-13, reapplied 2026-11-16): ok when the Draft and
+    # Deliverable-based status: ok when the Draft and
     # both visuals were produced and every upstream input was ok. Analysis gaps and upstream limitation notes stay
     # in limitations and validation_issues; they no longer turn a complete deliverable into partial.
     if result["status"] in {"ok", "partial"}:
@@ -397,7 +397,7 @@ def _build_handoff_run(payload: object) -> dict:
     }
     result["image"] = visuals["product"]
     result["outfit_image"] = visuals["outfit"]
-    result["planning_board"] = None  # Board composition belongs to P08.
+    result["planning_board"] = None  # Board composition belongs to the orchestrator.
     response = {"contract_version": "vogue-handoff/0.3", "request_id": request_id,
                 "producer": {"agent_id": "new-product-agent", "schema_version": "1.0"},
                 "status": result["status"], "result": result}
@@ -546,7 +546,7 @@ def main() -> None:
         server.socket = tls.wrap_socket(server.socket, server_side=True)
     display_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
     scheme = "https" if mode == "service" else "http"
-    print(f"VOGUE planning API running at {scheme}://{display_host}:{port}")
+    print(f"novelty 서비스 실행 중: {scheme}://{display_host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

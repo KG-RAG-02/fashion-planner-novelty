@@ -1,4 +1,4 @@
-"""Convert P08 producer inputs into the evidence-aware P06 planning draft."""
+"""Convert orchestrator-supplied producer inputs into the evidence-aware planning Draft."""
 from __future__ import annotations
 
 from ..domain.context import (
@@ -142,7 +142,7 @@ def _analyze_planning_inputs(
         explicit_origins = request_payload.get("field_origins")
         explicit = explicit_origins.get(name) if isinstance(explicit_origins, dict) else None
         explicit = context_origin(explicit)
-        # A concrete P08 context value with no provenance marker is a normalized
+        # A concrete orchestrator context value with no provenance marker is a normalized
         # user request. A stale `unknown` override must not erase that provenance.
         return explicit if explicit != "unknown" else detected
 
@@ -423,7 +423,7 @@ def _analyze_planning_inputs(
         trend_results=inventory_trend_results,
         mapping_issues=mapping_issues,
     )
-    # Product planning/image generation deliberately excludes Project_07 data and
+    # Product planning/image generation deliberately excludes research data and
     # synthetic catalog/guideline RAG. Only the three declared inputs are used.
     context = build_planning_context(PlanningInputs(request, trend, inventory))
     draft_data_limitations = []
@@ -474,7 +474,7 @@ def _analyze_planning_inputs(
     )))
     draft_data["title"] = f"{draft.season or '시즌 미정'} {draft.category or '카테고리 미정'} 신제품 기획 초안"
     draft_data["review_status"] = "md_review_required"
-    # Text-provider fallback is represented in generation_metadata so P08 can
+    # Text-provider fallback is represented in generation_metadata so the orchestrator can
     # distinguish the engine without treating a valid deterministic Draft as
     # an invalid/partial handoff.
     validation_issue_data = [

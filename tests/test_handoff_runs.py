@@ -1,4 +1,4 @@
-"""P08 vogue-handoff/0.3 planning draft producer tests."""
+"""Tests for the planning-draft handoff the orchestrator calls."""
 import base64
 import copy
 import contextlib
@@ -226,7 +226,7 @@ class HandoffRunTests(unittest.TestCase):
         self.assertIsInstance(http["http_response_serialization_ms"], int)
         self.assertNotIn("mock-key", logs.getvalue())
 
-    def test_p08_native_response_envelope_and_required_result_fields(self):
+    def test_native_response_envelope_and_required_result_fields(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
             "VOGUE_DRAFT_ARTIFACT_DIR": directory, "VOGUE_DRAFT_IMAGE_PROVIDER": "",
         }):

@@ -1,4 +1,4 @@
-"""Local settings for P06 image generation."""
+"""Local runtime settings: the model API key."""
 
 from __future__ import annotations
 

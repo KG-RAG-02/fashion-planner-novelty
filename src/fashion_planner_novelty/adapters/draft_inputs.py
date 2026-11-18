@@ -1,4 +1,4 @@
-"""Versioned Project_06 workflow input registry and compatibility adapter."""
+"""Workflow input registry and compatibility adapter for the novelty service."""
 
 from __future__ import annotations
 

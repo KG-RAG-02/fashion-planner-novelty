@@ -59,7 +59,7 @@ class OpportunityFinding:
 
 @dataclass(frozen=True)
 class ProductProfile:
-    """One sourced product definition shared by draft, image, and P07 handoff."""
+    """One sourced product definition shared by draft, image, and the research handoff."""
 
     category: SourcedClaim
     product_type: SourcedClaim
@@ -139,7 +139,7 @@ class TrendBasisAttribute:
 
 @dataclass(frozen=True)
 class TrendBasis:
-    """The one trend a Draft is planned around, chosen by P06's selection rule.
+    """The one trend a Draft is planned around, chosen by this service's selection rule.
 
     Serialized as ``draft.trend_basis``. ``design_attributes`` are the
     attributes the rule counted (first key) and ``evidence_ids`` the IDs it
@@ -304,7 +304,7 @@ def validate_concept_draft(
     }:
         issues.append(ValidationIssue(
             path="product_profile.gender", code="INVALID_GENDER",
-            message="Gender must match the Project_07 allowed enum.",
+            message="Gender must match the research service's allowed values.",
         ))
     if profile.category.value != draft.category and profile.category.value is not None:
         issues.append(ValidationIssue(

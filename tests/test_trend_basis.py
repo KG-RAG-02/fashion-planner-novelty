@@ -1,4 +1,4 @@
-"""One primary trend per Draft (VOGUE decision 2026-11-17): selection rule, rule/LLM paths, record, images.
+"""One primary trend per Draft: selection rule, rule/LLM paths, record, images.
 
 Offline only: fake providers, no network.
 """
@@ -62,7 +62,7 @@ def trend(name, *attributes, ids=(), description_ids=(), description=None, style
 
 
 def context_of(*candidates, trend_status="ok", request_status="ok"):
-    # The trend envelope lists every ID it carries, as the P06 input normalizer does.
+    # The trend envelope lists every ID it carries, as the input normalizer does.
     all_ids = tuple(dict.fromkeys(
         evidence_id for candidate in candidates for evidence_id in (
             *candidate.evidence_ids, *candidate.description_evidence_ids,
@@ -308,7 +308,7 @@ def colour_of(draft):
 
 
 class FirstEvidenceColourTests(unittest.TestCase):
-    """VOGUE decision 2026-11-17: a primary trend with 2+ colours passes its first evidence colour."""
+    """A primary trend with 2+ colours passes its first evidence colour."""
 
     def test_rule_profile_and_image_take_the_first_evidence_colour(self):
         draft, issues = RuleBasedConceptGenerator().generate(context_of(*DRESS_TRENDS))
@@ -435,7 +435,7 @@ class TextPathTests(unittest.TestCase):
 
 
 def trend_payload(request_id):
-    """trend_result in the P08 `trends` shape (style + items)."""
+    """trend_result in the orchestrator's `trends` shape (style + items)."""
     return {
         "schema_version": "1.0", "request_id": request_id, "status": "ok",
         "trends": [

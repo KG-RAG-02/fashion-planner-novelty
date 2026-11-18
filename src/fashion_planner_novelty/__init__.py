@@ -1,4 +1,4 @@
-"""Internal, contract-neutral core for VOGUE's New Product Planning Agent."""
+"""Internal, contract-neutral core of the Fashion Planner novelty service."""
 
 from .domain.context import (
     AgentResult,

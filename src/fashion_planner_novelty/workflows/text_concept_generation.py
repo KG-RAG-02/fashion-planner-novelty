@@ -96,7 +96,7 @@ def build_planning_prompt(context: ProductPlanningContext) -> PlanningPrompt:
     trend_usable = _usable(context, "trend_result") and request_usable
     inventory_usable = _usable(context, "inventory_product_result")
     request = context.request
-    # The model sees only the primary trend chosen by P06's rule (the same trend the
+    # The model sees only the primary trend chosen by this service's rule (the same trend the
     # rule-based Draft uses); it does not choose among trends. None: no usable trend.
     primary = select_primary_trend(context)
     trend_candidates = []
@@ -292,7 +292,7 @@ def parse_concept_output(
             raise ValueError("invalid product_profile.details")
         details.append(ProposedAttribute(name.strip(), detail_value, kind, tuple(dict.fromkeys(ids))))
     base_profile = base_product_profile(context)
-    # The LLM must return concrete values for every P08-required profile field.
+    # The LLM must return concrete values for every orchestrator-required profile field.
     # Category and season remain exact echoes of normalized request identity.
     required_profile_fields = ("category", "product_type", "gender", "season", "material")
     for field_name in required_profile_fields:
@@ -558,7 +558,7 @@ def _apply_first_evidence_colour(
     rule_draft: ProductConceptDraft,
     context: ProductPlanningContext,
 ) -> ProductConceptDraft:
-    """Apply the colour rule on the model path too (VOGUE decision 2026-11-17).
+    """Apply the colour rule on the model path too.
 
     When the primary trend has two or more evidence-linked colours and the request fixes none,
     the profile colour is the rule's first evidence colour, whatever colour the model chose.

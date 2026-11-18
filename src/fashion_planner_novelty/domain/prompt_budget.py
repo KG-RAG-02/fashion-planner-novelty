@@ -38,7 +38,7 @@ LADDER = ("T1", "T2", "T3", "T4", "T5")
 EVIDENCE_ID_KEYS = frozenset({"evidence_id", "evidence_ids", "description_evidence_ids"})
 LIMITATION_KEYS = ("trend_limitations", "inventory_limitations", "limitations")
 
-# T5 parameters approved on 2026-11-17.
+# T5 parameters (lossy trimming limits).
 KEEP_INVENTORY_PRODUCTS = 3
 TREND_DESCRIPTION_CHARS = 160
 KEEP_TREND_CANDIDATES = 3

@@ -1,4 +1,4 @@
-"""Regression checks for retired HTTP paths and the active P08 workflow route."""
+"""Regression checks for retired HTTP paths and the active workflow route."""
 import io
 import json
 import os
