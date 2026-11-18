@@ -14,6 +14,7 @@
 - 응답의 `generation_metadata.prompt_sha256`과 `draft.visuals.*.prompt_sha256`: 프롬프트 템플릿을 내용 해시로 식별한다.
 - `pyproject.toml`(Python 3.11 이상), `scripts/run_offline_tests.py`(네트워크를 막은 테스트 실행), GitHub Actions CI(Python 3.11·3.13).
 - HTTP 관문 테스트: 401·413(본문을 읽기 전)·415·400 응답.
+- research로 넘어가는 다섯 프로필 값을 research 계약의 120자 이하로 보장한다. 넘는 값은 규칙 기반 값이나 카테고리별 제안값으로 바꾸고 `generation_metadata.length_limited_fields`에 남긴다. 120자를 넘는 요청 `category`·`season`은 422로 거절한다.
 - 문서: 아키텍처, Draft 데이터 모델, 운영, 데이터 카드, 프롬프트 안전, 트러블슈팅, 설계 결정(ADR 6개), 다이어그램과 근거표.
 
 ### 변경

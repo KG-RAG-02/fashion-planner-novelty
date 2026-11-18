@@ -91,3 +91,5 @@ orchestrator는 같은 볼륨을 읽기 전용으로 마운트하고, 가져올 
 | `ARTIFACT_PERSISTENCE_FAILED` | 이미지 저장 실패 |
 
 텍스트 LLM 경로의 대체 이유는 `generation_metadata.status`와 `error_code`에 있다(예: `TEXT_OUTPUT_INVALID`, `TEXT_INPUT_OVER_BUDGET`, `TEXT_API_NOT_CONFIGURED`).
+
+research 계약의 120자 상한 때문에 프로필 값을 바꿨다면 `generation_metadata.length_limited_fields`에 그 필드가 `product_profile.<필드>` 경로로 남는다. 바뀐 값은 규칙 기반 값이거나 카테고리별 검토 제안값이다([draft-model.md](draft-model.md#research로-넘어가는-값)).
