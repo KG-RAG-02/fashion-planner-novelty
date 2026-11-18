@@ -23,6 +23,7 @@
 - 서비스 식별자를 역할 이름으로 바꿨다: agent_id `novelty`, 전송 이름 `novelty-handoff`, `schema_version` `1.0.0`, 산출물 URI `artifact://novelty/images/`, 환경변수 `NOVELTY_*`와 공용 토큰 `FASHION_PLANNER_SERVICE_TOKEN`.
 - 규칙·프롬프트 이름에서 순번을 뺐다(예: `most_evidence_linked_design_attributes`, `novelty-draft-visuals`). 버전은 `schema_version` 필드 한 곳에만 둔다.
 - 프롬프트 디렉터리에서 버전 경로를 뺐다(`prompts/text_planning/`, `prompts/concept_image/`).
+- 공개 전 히스토리 정리 때 커밋 메시지의 옛 이름(VOGUE, P06~P08, 옛 레포·패키지 이름)을 현재 이름이나 중립 표현으로 바꿨다. 과거 커밋의 코드와 메시지 속 이름이 다를 수 있다.
 
 ### 수정
 - `generation_metadata.llm_empty_fields`가 LLM이 비운 색·실루엣을 보고하지 않던 회귀를 고쳤다.
