@@ -107,7 +107,7 @@ def cited_ids(draft):
     return into
 
 
-# The live 2027SS dress run (req-synthetic) in miniature: the rule must pick 시럽코어 (two colours,
+# A recorded 2027SS dress run in miniature: the rule must pick 시럽코어 (two colours,
 # most evidence), and 폴카 도트's pattern must not reach the plan.
 POLKA = trend("폴카 도트 패턴", signal("pattern", "도트", "dot:1"), ids=("dot:0", "dot:1"),
               description="도트 원피스", description_ids=("dot:0",), style="990102-s0")
